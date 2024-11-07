@@ -1,0 +1,59 @@
+# Python
+*.pyc
+**/.ipynb_checkpoints/
+.pytype/
+*__pycache__*
+
+# Visual Studio files
+.env
+.vs/
+.vscode/
+*.sdf
+*.opensdf
+*.VC.opendb
+*.suo
+*.user
+
+# docs
+docs/**/build/
+docs/**/*.pdf
+docs/**/*.zip
+
+# macOS files
+.DS_Store
+
+# Emacs autosaves
+*~
+\#*\#
+
+# Vim swap files
+[._]*.sw[a-p]
+
+# Source indexing files
+compile_commands.json
+.cache/clangd
+.clangd/
+
+# Pyenv files
+.python-version
+*.venv
+.venv
+venv/
+
+# Python deployment artifacts
+*.whl
+
+# Archive files
+*.tar
+*.tar.*
+
+# coverage
+genhtml
+
+# cscope files
+cscope.*
+tags
+
+*egg-info
+.pytest*
+
