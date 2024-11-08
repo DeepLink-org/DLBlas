@@ -9,7 +9,7 @@ from dlblas.kernels.context_flashattention_nopad import (
 )
 
 
-class TestExtendAttention(unittest.TestCase):
+class TestContentFlashAttention(unittest.TestCase):
 
     def torch_att(self, q, q_rope, kv, kv_rope, bs, seqlen, num_head, q_head_dim, rope_head_dim):
 
