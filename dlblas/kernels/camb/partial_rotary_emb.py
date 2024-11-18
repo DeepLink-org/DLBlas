@@ -52,14 +52,10 @@ def _get_cos_sin(
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SEQ": BS, "BLOCK_HEAD": BH}, num_stages=s, num_warps=w)
-        for BS in [512]
-        for BH in [128]
+        for BS in [1024]
+        for BH in [4]
         for s in [4]
         for w in [4]
-        # for BS in [1, 2]
-        # for BH in [1, 2, 4]
-        # for s in [1, 2, 3, 4]
-        # for w in [1, 2, 4]
     ],
     key=["seq_len", "q_head_dim", "v_head_dim"],
 )
@@ -116,45 +112,64 @@ def _partial_rotary_emb_fwd_kernel(
     nope_dims = tl.arange(0, BLOCK_NOPE_DIM)
     rope_dim_range0 = tl.arange(0, BLOCK_ROPE_DIM // 2)
     rope_dim_range1 = tl.arange(BLOCK_ROPE_DIM // 2, BLOCK_ROPE_DIM)
+    rope_dim_range = tl.arange(0, BLOCK_ROPE_DIM)
     rope_dim0_interleaved = 2 * rope_dim_range0
     rope_dim1_interleaved = 1 + 2 * rope_dim_range0
-    cos0_data, cos1_data, sin0_data, sin1_data = _get_cos_sin(
-        batch_idx,
-        offs_seq,
-        rope_dim_range0,
-        rope_dim_range1,
-        seq_len,
-        rope_head_dim,
-        cos,
-        sin,
-        stride_cos_bsz,
-        stride_cos_seq,
-        stride_cos_dim,
+    rope_dim_interleaved = tl.arange(0, BLOCK_ROPE_DIM)
+
+    #load cos & sin
+    offs_cs = (
+        batch_idx * stride_cos_bsz
+        + offs_seq[:, None] * stride_cos_seq
+        + rope_dim_range[None, :] * stride_cos_dim
     )
-    # load k_pe, k_pe num_heads is 1
-    offs_kpe0 = (
+
+    cos_data = tl.load(
+        cos + offs_cs,
+        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < rope_head_dim),
+    )
+
+    sin_data = tl.load(
+        sin + offs_cs,
+        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < rope_head_dim),
+    )
+
+    #load kpe
+    offs_kpe = (
         batch_idx * stride_kpe_bsz
         + offs_seq[:, None] * stride_kpe_seq
-        + rope_dim0_interleaved[None, :] * stride_kpe_dim
+        + rope_dim_interleaved[None, :] * stride_kpe_dim
     )
-    offs_kpe1 = (
-        batch_idx * stride_kpe_bsz
-        + offs_seq[:, None] * stride_kpe_seq
-        + rope_dim1_interleaved[None, :] * stride_kpe_dim
-    )
-    kpe0_data = tl.load(
-        k_pe + offs_kpe0,
+
+    kpe_data = tl.load(
+        k_pe + offs_kpe,
         mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim0_interleaved[None, :] < rope_head_dim),
+        & (rope_dim_interleaved[None, :] < rope_head_dim),
     )
-    kpe1_data = tl.load(
-        k_pe + offs_kpe1,
-        mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim1_interleaved[None, :] < rope_head_dim),
-    )
-    out_kpe0_data = kpe0_data * cos0_data - kpe1_data * sin0_data
-    out_kpe1_data = kpe1_data * cos1_data + kpe0_data * sin1_data
+
+    #compute kpe
+    out_kpe0_data = kpe_data[:,0:BLOCK_ROPE_DIM:2] * cos_data[:,:BLOCK_ROPE_DIM//2] - kpe_data[:,1:BLOCK_ROPE_DIM:2] * sin_data[:,:BLOCK_ROPE_DIM//2]
+    out_kpe1_data = kpe_data[:,1:BLOCK_ROPE_DIM:2] * cos_data[:,BLOCK_ROPE_DIM//2:] + kpe_data[:,0:BLOCK_ROPE_DIM:2] * sin_data[:,BLOCK_ROPE_DIM//2:]
+
     for head_idx in tl.range(head_start, head_end):
+        #load q: (BLOCK_SEQ,BLOCK_ROPE_DIM)
+        offs_q = (
+            batch_idx * stride_q_bsz
+            + offs_seq[:, None] * stride_q_seq
+            + head_idx * stride_q_head
+        )
+        q_data = tl.load(
+            q
+            + offs_q
+            + (nope_head_dim + rope_dim_interleaved[None, :]) * stride_q_dim,
+            mask=(offs_seq[:, None] < seq_len)
+            & (rope_dim_interleaved[None, :] < q_head_dim),
+        )
+
+
+        #compute q
+        out_q0_data = q_data[:,0:BLOCK_ROPE_DIM:2] * cos_data[:,:BLOCK_ROPE_DIM//2] - q_data[:,1:BLOCK_ROPE_DIM:2] * sin_data[:,:BLOCK_ROPE_DIM//2]
+        out_q1_data = q_data[:,1:BLOCK_ROPE_DIM:2] * cos_data[:,BLOCK_ROPE_DIM//2:] + q_data[:,0:BLOCK_ROPE_DIM:2] * sin_data[:,BLOCK_ROPE_DIM//2:]
         offs_q0 = (
             batch_idx * stride_q_bsz
             + offs_seq[:, None] * stride_q_seq
@@ -165,20 +180,21 @@ def _partial_rotary_emb_fwd_kernel(
             + offs_seq[:, None] * stride_q_seq
             + head_idx * stride_q_head
         )
-        q0_data = tl.load(
-            q
-            + offs_q0
-            + (nope_head_dim + rope_dim0_interleaved[None, :]) * stride_q_dim,
+        # store q
+        tl.store(
+            q + offs_q0 + (nope_head_dim + rope_dim_range0[None, :]) * stride_q_dim,
+            out_q0_data,
             mask=(offs_seq[:, None] < seq_len)
-            & (rope_dim0_interleaved[None, :] < q_head_dim),
+            & (rope_dim_range0[None, :] < q_head_dim),
         )
-        q1_data = tl.load(
-            q
-            + offs_q1
-            + (nope_head_dim + rope_dim1_interleaved[None, :]) * stride_q_dim,
+
+        tl.store(
+            q + offs_q1 + (nope_head_dim + rope_dim_range1[None, :]) * stride_q_dim,
+            out_q1_data,
             mask=(offs_seq[:, None] < seq_len)
-            & (rope_dim1_interleaved[None, :] < q_head_dim),
+            & (rope_dim_range1[None, :] < q_head_dim),
         )
+        #load k
         offs_kv = (
             batch_idx * stride_kv_bsz
             + offs_seq[:, None] * stride_kv_seq
@@ -192,24 +208,7 @@ def _partial_rotary_emb_fwd_kernel(
             kv + offs_kv + (nope_head_dim + v_dims) * stride_kv_dim,
             mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
         )
-
-        # compute q
-        out_q0_data = q0_data * cos0_data - q1_data * sin0_data
-        out_q1_data = q1_data * cos1_data + q0_data * sin1_data
-        tl.store(
-            q + offs_q0 + (nope_head_dim + rope_dim_range0[None, :]) * stride_q_dim,
-            out_q0_data,
-            mask=(offs_seq[:, None] < seq_len)
-            & (rope_dim_range0[None, :] < q_head_dim),
-        )
-        tl.store(
-            q + offs_q1 + (nope_head_dim + rope_dim_range1[None, :]) * stride_q_dim,
-            out_q1_data,
-            mask=(offs_seq[:, None] < seq_len)
-            & (rope_dim_range1[None, :] < q_head_dim),
-        )
-        # read k_nope from kv, then write to out_kv
-
+        # store k
         offs_okv_k_nope = (
             batch_idx * stride_okv_bsz
             + offs_seq[:, None] * stride_okv_seq
@@ -222,12 +221,12 @@ def _partial_rotary_emb_fwd_kernel(
             mask=(offs_seq[:, None] < seq_len) & (nope_dims[None, :] < nope_head_dim),
         )
 
-        # write out_kpe to out_kv
         offs_okv_kpe = (
             batch_idx * stride_okv_bsz
             + offs_seq[:, None] * stride_okv_seq
             + head_idx * stride_okv_head
         )
+
         tl.store(
             out_kv + offs_okv_kpe + (nope_head_dim + rope_dim_range0) * stride_okv_dim,
             out_kpe0_data,
@@ -240,8 +239,8 @@ def _partial_rotary_emb_fwd_kernel(
             mask=(offs_seq[:, None] < seq_len)
             & (rope_dim_range1[None, :] < rope_head_dim),
         )
-        # write v to out_kv
 
+        # store v
         tl.store(
             out_kv
             + batch_idx * stride_okv_bsz
@@ -263,13 +262,13 @@ def _partial_rotary_emb_fwd_kernel(
             mask=(offs_seq[:, None] < seq_len) & (v_pad_dims[None, :] < v_pad_dim),
         )
 
-
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)
-        for BS in [4]
-        for s in [2]
+        triton.Config({"BLOCK_SEQ": BS, "BLOCK_HEAD": BH},num_stages=s, num_warps=w)
+        for BS in [128]
+        for BH in [128]
+        for s in [4]
         for w in [4]
     ],
     key=["seq_len", "q_head_dim", "rope_head_dim"],
@@ -309,130 +308,146 @@ def _partial_rotary_emb_bwd_kernel(
     nope_head_dim,
     v_head_dim,
     BLOCK_SEQ: tl.constexpr,
+    BLOCK_HEAD: tl.constexpr,
     BLOCK_ROPE_DIM: tl.constexpr,
     BLOCK_NOPE_DIM: tl.constexpr,
     BLOCK_V_DIM: tl.constexpr,
 ):
     batch_idx = tl.program_id(0)
     seq_idx = tl.program_id(1)
-    head_idx = tl.program_id(2)
+    batch_head_idx = tl.program_id(2)
+    head_start = batch_head_idx * BLOCK_HEAD
+    head_end = (batch_head_idx + 1) * BLOCK_HEAD
     offs_seq = seq_idx * BLOCK_SEQ + tl.arange(0, BLOCK_SEQ)
     v_dims = tl.arange(0, BLOCK_V_DIM)
     nope_dim_range = tl.arange(0, BLOCK_NOPE_DIM)
     rope_dim_range0 = tl.arange(0, BLOCK_ROPE_DIM // 2)
     rope_dim_range1 = tl.arange(BLOCK_ROPE_DIM // 2, BLOCK_ROPE_DIM)
+    rope_dim_range = tl.arange(0, BLOCK_ROPE_DIM)
     rope_dim0_interleaved = 2 * rope_dim_range0
     rope_dim1_interleaved = 1 + 2 * rope_dim_range0
-    offs_dq = (
-        batch_idx * stride_dq_bsz
-        + offs_seq[:, None] * stride_dq_seq
-        + head_idx * stride_dq_head
+    rope_dim_interleaved = rope_dim_range
+
+    #load cos & sin
+    offs_cs = (
+        batch_idx * stride_cos_bsz
+        + offs_seq[:, None] * stride_cos_seq
+        + rope_dim_range[None, :] * stride_cos_dim
     )
-    dq0_data = tl.load(
-        d_q + offs_dq + (nope_head_dim + rope_dim_range0[None, :]) * stride_dq_dim,
-        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range0[None, :] < q_head_dim),
+
+    cos_data = tl.load(
+        cos + offs_cs,
+        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < rope_head_dim),
     )
-    dq1_data = tl.load(
-        d_q + offs_dq + (nope_head_dim + rope_dim_range1[None, :]) * stride_dq_dim,
-        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range1[None, :] < q_head_dim),
+
+    sin_data = tl.load(
+        sin + offs_cs,
+        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < rope_head_dim),
     )
-    cos0_data, cos1_data, sin0_data, sin1_data = _get_cos_sin(
-        batch_idx,
-        offs_seq,
-        rope_dim_range0,
-        rope_dim_range1,
-        seq_len,
-        rope_head_dim,
-        cos,
-        sin,
-        stride_cos_bsz,
-        stride_cos_seq,
-        stride_cos_dim,
-    )
-    do_q0_data = dq1_data * sin1_data + dq0_data * cos0_data
-    do_q1_data = dq1_data * cos1_data - dq0_data * sin0_data
-    tl.store(
-        do_q
-        + offs_dq
-        + (nope_head_dim + rope_dim0_interleaved[None, :]) * stride_dq_dim,
-        do_q0_data,
-        mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim0_interleaved[None, :] < q_head_dim),
-    )
-    tl.store(
-        do_q
-        + offs_dq
-        + (nope_head_dim + rope_dim1_interleaved[None, :]) * stride_dq_dim,
-        do_q1_data,
-        mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim1_interleaved[None, :] < q_head_dim),
-    )
-    dq_nope_data = tl.load(
-        d_q + offs_dq + nope_dim_range[None, :] * stride_dq_dim,
-        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
-    )
-    tl.store(
-        do_q + offs_dq + nope_dim_range * stride_dq_dim,
-        dq_nope_data,
-        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
-    )
-    # for do_k_pe
-    offs_d_kv = (
-        batch_idx * stride_dkv_bsz
-        + offs_seq[:, None] * stride_dkv_seq
-        + head_idx * stride_dkv_head
-    )
-    d_k_pe0_data = tl.load(
-        d_kv + offs_d_kv + (nope_head_dim + rope_dim_range0[None, :]) * stride_dkv_dim,
-        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range0[None, :] < q_head_dim),
-    )
-    d_k_pe1_data = tl.load(
-        d_kv + offs_d_kv + (nope_head_dim + rope_dim_range1[None, :]) * stride_dkv_dim,
-        mask=(offs_seq[:, None] < seq_len) & (rope_dim_range1[None, :] < q_head_dim),
-    )
-    do_kpe0_data = d_k_pe1_data * sin1_data + d_k_pe0_data * cos0_data
-    do_kpe1_data = d_k_pe1_data * cos1_data - d_k_pe0_data * sin0_data
-    offs_do_kpe = (
-        batch_idx * stride_dokpe_bsz
-        + offs_seq[:, None] * stride_dokpe_seq
-        + head_idx * stride_dokpe_head
-    )
-    tl.store(
-        do_k_pe + offs_do_kpe + rope_dim0_interleaved[None, :],
-        do_kpe0_data,
-        mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim0_interleaved[None, :] < rope_head_dim),
-    )
-    tl.store(
-        do_k_pe + offs_do_kpe + rope_dim1_interleaved[None, :],
-        do_kpe1_data,
-        mask=(offs_seq[:, None] < seq_len)
-        & (rope_dim1_interleaved[None, :] < rope_head_dim),
-    )
-    # for do_kv
-    d_k_nope_data = tl.load(
-        d_kv + offs_d_kv + nope_dim_range[None, :] * stride_dkv_dim,
-        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
-    )
-    d_v_data = tl.load(
-        d_kv + offs_d_kv + stride_dkv_kv + v_dims[None, :] * stride_dkv_dim,
-        mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
-    )
-    offs_do_kv = (
-        batch_idx * stride_kv_bsz
-        + offs_seq[:, None] * stride_kv_seq
-        + head_idx * stride_kv_head
-    )
-    tl.store(
-        do_kv + offs_do_kv + nope_dim_range[None, :],
-        d_k_nope_data,
-        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
-    )
-    tl.store(
-        do_kv + offs_do_kv + nope_head_dim + v_dims[None, :],
-        d_v_data,
-        mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
-    )
+
+    for head_idx in tl.range(head_start, head_end):
+        #load q
+        offs_dq = (
+            batch_idx * stride_dq_bsz
+            + offs_seq[:, None] * stride_dq_seq
+            + head_idx * stride_dq_head
+        )
+        dq_data = tl.load(
+            d_q + offs_dq + (nope_head_dim + rope_dim_range[None, :]) * stride_dq_dim,
+            mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < q_head_dim),
+        )
+
+        #compute q
+        do_q0_data = dq_data[:,1:BLOCK_ROPE_DIM:2] * sin_data[:,BLOCK_ROPE_DIM//2:] + dq_data[:,0:BLOCK_ROPE_DIM:2] * cos_data[:,:BLOCK_ROPE_DIM//2]
+        do_q1_data = dq_data[:,1:BLOCK_ROPE_DIM:2] * cos_data[:,BLOCK_ROPE_DIM//2:] - dq_data[:,0:BLOCK_ROPE_DIM:2] * sin_data[:,:BLOCK_ROPE_DIM//2]
+        
+        tl.store(
+            do_q
+            + offs_dq
+            + (nope_head_dim + rope_dim0_interleaved[None, :]) * stride_dq_dim,
+            do_q0_data,
+            mask=(offs_seq[:, None] < seq_len)
+            & (rope_dim0_interleaved[None, :] < q_head_dim),
+        )
+        tl.store(
+            do_q
+            + offs_dq
+            + (nope_head_dim + rope_dim1_interleaved[None, :]) * stride_dq_dim,
+            do_q1_data,
+            mask=(offs_seq[:, None] < seq_len)
+            & (rope_dim1_interleaved[None, :] < q_head_dim),
+        )
+
+        dq_nope_data = tl.load(
+            d_q + offs_dq + nope_dim_range[None, :] * stride_dq_dim,
+            mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+        )
+        tl.store(
+            do_q + offs_dq + nope_dim_range * stride_dq_dim,
+            dq_nope_data,
+            mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+        )
+
+        # for do_k_pe
+        offs_d_kv = (
+            batch_idx * stride_dkv_bsz
+            + offs_seq[:, None] * stride_dkv_seq
+            + head_idx * stride_dkv_head
+        )
+
+        d_k_pe_data = tl.load(
+            d_kv + offs_d_kv + (nope_head_dim + rope_dim_range[None, :]) * stride_dkv_dim,
+            mask=(offs_seq[:, None] < seq_len) & (rope_dim_range[None, :] < q_head_dim),
+        )
+
+        do_kpe0_data = d_k_pe_data[:,1:BLOCK_ROPE_DIM:2] * sin_data[:,BLOCK_ROPE_DIM//2:] + d_k_pe_data[:,0:BLOCK_ROPE_DIM:2] * cos_data[:,:BLOCK_ROPE_DIM//2]
+        do_kpe1_data = d_k_pe_data[:,1:BLOCK_ROPE_DIM:2] * cos_data[:,BLOCK_ROPE_DIM//2:] - d_k_pe_data[:,0:BLOCK_ROPE_DIM:2] * sin_data[:,:BLOCK_ROPE_DIM//2]
+
+        offs_do_kpe = (
+            batch_idx * stride_dokpe_bsz
+            + offs_seq[:, None] * stride_dokpe_seq
+            + head_idx * stride_dokpe_head
+        )
+        tl.store(
+            do_k_pe + offs_do_kpe + rope_dim0_interleaved[None, :],
+            do_kpe0_data,
+            mask=(offs_seq[:, None] < seq_len)
+            & (rope_dim0_interleaved[None, :] < rope_head_dim),
+        )
+        tl.store(
+            do_k_pe + offs_do_kpe + rope_dim1_interleaved[None, :],
+            do_kpe1_data,
+            mask=(offs_seq[:, None] < seq_len)
+            & (rope_dim1_interleaved[None, :] < rope_head_dim),
+        )
+        # for do_kv
+        offs_do_kv = (
+            batch_idx * stride_kv_bsz
+            + offs_seq[:, None] * stride_kv_seq
+            + head_idx * stride_kv_head
+        )
+
+        d_k_nope_data = tl.load(
+            d_kv + offs_d_kv + nope_dim_range[None, :] * stride_dkv_dim,
+            mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+        )
+
+        tl.store(
+            do_kv + offs_do_kv + nope_dim_range[None, :],
+            d_k_nope_data,
+            mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+        )
+
+        d_v_data = tl.load(
+            d_kv + offs_d_kv + stride_dkv_kv + v_dims[None, :] * stride_dkv_dim,
+            mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
+        )
+
+        tl.store(
+            do_kv + offs_do_kv + nope_head_dim + v_dims[None, :],
+            d_v_data,
+            mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
+        )
 
 
 class PartialRotaryEmb(torch.autograd.Function):
@@ -532,7 +547,7 @@ class PartialRotaryEmb(torch.autograd.Function):
             grid = lambda META: (
                 bsz,
                 triton.cdiv(seq_len, META["BLOCK_SEQ"]),
-                num_heads,
+                triton.cdiv(num_heads, META["BLOCK_HEAD"]),
             )
             _partial_rotary_emb_bwd_kernel[grid](
                 d_q,
