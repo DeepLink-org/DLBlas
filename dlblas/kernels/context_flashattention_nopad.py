@@ -306,8 +306,11 @@ def _fwd_kernel_no_prompt_cache(
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
     block_mask = tl.where(block_start_loc < cur_batch_seq_len, 1, 0)
+    split = (start_m + 1) * BLOCK_M - BLOCK_N
+    split1 = (start_m + 2) * BLOCK_M - BLOCK_N
 
-    for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
+    # left lower corner
+    for start_n in range(0, split, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         kv = tl.load(
@@ -315,22 +318,96 @@ def _fwd_kernel_no_prompt_cache(
             mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
             other=0.0,
         )
-        if start_n >= (start_m + 2) * BLOCK_M - BLOCK_N:
-            qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - float("inf")
-        else:
-            kv_rope = tl.load(
-                kv_rope_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_rope_bs,
-                mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
-                other=0.0,
-            )
+        kv_rope = tl.load(
+            kv_rope_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_rope_bs,
+            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+            other=0.0,
+        )
 
-            qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-            qk += tl.dot(q, kv)
-            qk += tl.dot(q_rope, kv_rope)
-            qk *= sm_scale
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, kv)
+        qk += tl.dot(q_rope, kv_rope)
+        qk *= sm_scale
 
-            if start_n >= (start_m + 1) * BLOCK_M - BLOCK_N:
-                qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        # -- compute m_ij, p, l_ij
+        m_ij = tl.max(qk, 1)
+        p = tl_exp(qk - m_ij[:, None])
+        l_ij = tl.sum(p, 1)
+        # -- update m_i and l_i
+        m_i_new = tl.maximum(m_i, m_ij)
+        alpha = tl_exp(m_i - m_i_new)
+        beta = tl_exp(m_ij - m_i_new)
+        l_i_new = alpha * l_i + beta * l_ij
+        # -- update output accumulator --
+        # scale p
+        p_scale = beta / l_i_new
+        p = p * p_scale[:, None]
+        # scale acc
+        acc_scale = l_i / l_i_new * alpha
+        acc = acc * acc_scale[:, None]
+        # update acc
+        v = tl.trans(kv)
+        p = p.to(v.dtype)
+        acc += tl.dot(p, v)
+        # update m_i and l_i
+        l_i = l_i_new
+        m_i = m_i_new
+
+    # diagonal positions
+    for start_n in range(split, split1, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # -- compute qk ----
+        kv = tl.load(
+            kv_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_bs,
+            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+            other=0.0,
+        )
+        kv_rope = tl.load(
+            kv_rope_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_rope_bs,
+            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+            other=0.0,
+        )
+
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        qk += tl.dot(q, kv)
+        qk += tl.dot(q_rope, kv_rope)
+        qk *= sm_scale
+        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+
+        # -- compute m_ij, p, l_ij
+        m_ij = tl.max(qk, 1)
+        p = tl_exp(qk - m_ij[:, None])
+        l_ij = tl.sum(p, 1)
+        # -- update m_i and l_i
+        m_i_new = tl.maximum(m_i, m_ij)
+        alpha = tl_exp(m_i - m_i_new)
+        beta = tl_exp(m_ij - m_i_new)
+        l_i_new = alpha * l_i + beta * l_ij
+        # -- update output accumulator --
+        # scale p
+        p_scale = beta / l_i_new
+        p = p * p_scale[:, None]
+        # scale acc
+        acc_scale = l_i / l_i_new * alpha
+        acc = acc * acc_scale[:, None]
+        # update acc
+        v = tl.trans(kv)
+        p = p.to(v.dtype)
+        acc += tl.dot(p, v)
+        # update m_i and l_i
+        l_i = l_i_new
+        m_i = m_i_new
+
+    # right upper corner
+    for start_n in range(split1, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
+        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # -- compute qk ----
+        kv = tl.load(
+            kv_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kv_bs,
+            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+            other=0.0,
+        )
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - float("inf")
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
