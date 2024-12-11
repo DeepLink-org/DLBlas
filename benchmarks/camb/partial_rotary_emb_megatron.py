@@ -260,8 +260,8 @@ def test():
         device=device_,
     )
 
-    cos = torch.randn((bsz, q_len, rope_head_dim), dtype=torch.bfloat16, device=device_)
-    sin = torch.randn((bsz, q_len, rope_head_dim), dtype=torch.bfloat16, device=device_)
+    cos = torch.randn((bsz, q_len, rope_head_dim), dtype=torch.float32, device=device_)
+    sin = torch.randn((bsz, q_len, rope_head_dim), dtype=torch.float32, device=device_)
 
     with torch.no_grad():
         q_tri, k_pe_tri, k_nope_tri = (

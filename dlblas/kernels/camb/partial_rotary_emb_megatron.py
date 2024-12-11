@@ -315,8 +315,8 @@ def _partial_rotary_emb_bwd_kernel(
     d_k_pe1_data = d_k_pe_data[:, BLOCK_ROPE_DIM//2:] 
 
     do_kpe_data = tl.empty_like(d_k_pe_data)
-    do_kpe_data[:, :BLOCK_ROPE_DIM//2]  = d_k_pe1_data * sin1_data + d_k_pe0_data * cos0_data
-    do_kpe_data[:, BLOCK_ROPE_DIM//2:]  = d_k_pe1_data * cos1_data - d_k_pe0_data * sin0_data
+    do_kpe_data[:, :BLOCK_ROPE_DIM//2]  = (d_k_pe1_data * sin1_data + d_k_pe0_data * cos0_data).to(tl.bfloat16)
+    do_kpe_data[:, BLOCK_ROPE_DIM//2:]  = (d_k_pe1_data * cos1_data - d_k_pe0_data * sin0_data).to(tl.bfloat16)
 
     do_kpe_data_view = tl.view(do_kpe_data, [BLOCK_SEQ, BLOCK_ROPE_DIM//2, 2])
     do_kpe_data_view = tl.trans(do_kpe_data_view, 2, 0, 1)
@@ -349,8 +349,8 @@ def _partial_rotary_emb_bwd_kernel(
         dq1_data = dq_data[:, BLOCK_ROPE_DIM//2:]
 
         do_q_data = tl.empty_like(dq_data)
-        do_q_data[:, :BLOCK_ROPE_DIM//2] = dq1_data * sin1_data + dq0_data * cos0_data
-        do_q_data[:, BLOCK_ROPE_DIM//2:] = dq1_data * cos1_data - dq0_data * sin0_data
+        do_q_data[:, :BLOCK_ROPE_DIM//2] = (dq1_data * sin1_data + dq0_data * cos0_data).to(tl.bfloat16)
+        do_q_data[:, BLOCK_ROPE_DIM//2:] = (dq1_data * cos1_data - dq0_data * sin0_data).to(tl.bfloat16)
         do_q_data_view = tl.view(do_q_data, [BLOCK_SEQ, BLOCK_ROPE_DIM//2, 2])
         do_q_data_view = tl.trans(do_q_data_view, 2, 0, 1)
         tl.store(
@@ -450,11 +450,7 @@ class PartialRotaryEmb(torch.autograd.Function):
                 BLOCK_ROPE_DIM=triton.next_power_of_2(qk_rope_head_dim),
                 BLOCK_NOPE_DIM=triton.next_power_of_2(qk_nope_head_dim),
             )
-            # print(
-            #     f"_partial_rotary_emb_kernel.best_config ",
-            #     _partial_rotary_emb_fwd_kernel.best_config,
-            # )
-            # quit()
+
         ctx.save_for_backward(k_nope, cos, sin)
         return q, out_k
 
@@ -468,7 +464,7 @@ class PartialRotaryEmb(torch.autograd.Function):
         d_k_nope = torch.empty_like(k_nope)
         d_q = d_q.contiguous()
         d_k_out = d_k_out.contiguous()
-        #import pdb;pdb.set_trace()
+
         with torch.cuda.device(d_q.device):
             grid = lambda META: (
                 bsz,
