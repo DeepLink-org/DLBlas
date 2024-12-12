@@ -8,8 +8,6 @@ import triton.language as tl
 
 import dlblas
 import time 
-from test_utils import check_output, test_latency_and_output
-# from dlblas.kernels.camb.grouped_gemm import group_gemm_batch
 from dlblas.kernels.camb import grouped_gemm
 
 def parse_args():
@@ -76,68 +74,6 @@ class GroupedGemm(torch.autograd.Function):
 def gmm_op(a, b, batch_sizes, trans_b=False):
     return GroupedGemm.apply(a, b, batch_sizes, trans_b)
 
-# def main():
-#     args = parse_args()
-#     dtype = torch.float16
-#     device = 'mlu'
-#     batch_group_A = []
-#     batch_group_B = []
-#     batch_group_A_test = []
-#     batch_group_B_test = []
-#     for i in range(len(args.batch_sizes)):
-#         group_m = [1024, 512, 256, 128]
-#         group_n = [1024, 512, 256, 128]
-#         group_k = [1024, 512, 256, 128]
-#         group_A = []
-#         group_B = []
-#         assert len(group_m) == len(group_n)
-#         assert len(group_n) == len(group_k)
-#         group_size = len(group_m)
-#         for i in range(group_size):
-#             M = group_m[i]
-#             N = group_n[i]
-#             K = group_k[i]
-#             A = torch.rand((M, K), device = device, dtype=torch.float16)
-#             B = torch.rand((K, N), device = device, dtype=torch.float16)
-#             group_A.append(A)
-#             group_B.append(B)
-#         # batch_group_A += group_A
-#         # batch_group_B += group_B
-#         # batch_group_A_test += group_A
-#         # batch_group_B_test += group_B
-        
-#         batch_group_A.append(torch.stack(group_A, dim=0))
-#         batch_group_B.append(torch.stack(group_A, dim=0))
-#         batch_group_A_test.append(torch.stack(group_A, dim=0))
-#         batch_group_B_test.append(torch.stack(group_A, dim=0))
-        
-#     # with torch.no_grad():
-#     #     batch_group_A_test, batch_group_B_test = (batch_group_A.clone(), batch_group_B.clone())
-#     # batch_group_A = torch.tensor(batch_group_A)
-#     # batch_group_B = torch.tensor(batch_group_B)
-#     # batch_group_A_test = torch.tensor(batch_group_A_test)
-#     # batch_group_B_test = torch.tensor(batch_group_B_test)
-#     batch_group_A = torch.stack(batch_group_A, dim=0)
-#     batch_group_B = torch.stack(batch_group_B, dim=0)
-#     batch_group_A_test = torch.stack(batch_group_A_test, dim=0)
-#     batch_group_B_test = torch.stack(batch_group_B_test, dim=0)
-    
-#     batch_group_A.requires_grad = True
-#     batch_group_B.required_grad = True
-#     batch_group_A_test.requires_grad = True
-#     batch_group_B_test.required_grad = True
-#     # test
-    
-#     tri_out = GroupedGemm.apply(batch_group_A, batch_group_B)
-#     ref_out = GroupedGemm_ref.apply(batch_group_A_test, batch_group_B_test)
-#     check_output(tri_out, ref_out)
-#     loss_tri = torch.sum(torch.mean(tri_out))
-#     loss_tri.backward(retain_graph=True)
-#     loss_ref = torch.sum(torch.mean(ref_out))
-#     loss_ref.backward(retain_graph=True)
-#     check_output(batch_group_A.grad, batch_group_A_test.grad)
-#     check_output(batch_group_B.grad, batch_group_B_test.grad)
-
 def main():
     # grouped_gemm.test()
     # return 
@@ -163,16 +99,11 @@ def main():
     out = gmm_op(a, b, batch_sizes, trans_b)
     expected_out = gmm(a_ref, b_ref, batch_sizes, trans_b)
 
-    # check_output(out, expected_out, reduce_dim=k)
     assert torch.allclose(out, expected_out, atol=1e-2, rtol=0.001)
-    # assert torch.allclose(out[8192:, :], expected_out[8192:, :], atol=1e-2, rtol=0.001)
-    # assert torch.allclose(out[4096:, :], expected_out[4096:, :], atol=1e-2, rtol=0.001)
     
     # Check gradients.
     out.sum().backward()
     expected_out.sum().backward()
-    check_output(a.grad, a_ref.grad)
-    check_output(b.grad, b_ref.grad)
     assert torch.allclose(a.grad, a_ref.grad, atol=1e-2, rtol=0.001)
     assert torch.allclose(b.grad, b_ref.grad, atol=1e-2, rtol=0.001)
     device_ = "mlu"
