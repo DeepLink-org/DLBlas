@@ -1,0 +1,62 @@
+{
+    "LLM-Research/Meta-Llama-3.1-8B": {
+        "model_path": "/home/work/models_all/LLM-Research/Meta-Llama-3.1-8B",
+        "status": "completed",
+        "throughput": "162.14"
+    },
+    "baichuan-inc/Baichuan2-7B-Chat": {
+        "model_path": "/home/work/models_all/baichuan-inc/Baichuan2-7B-Chat",
+        "status": "completed",
+        "throughput": "107.07"
+    },
+    "Shanghai_AI_Laboratory/internlm2_5-7b": {
+        "model_path": "/home/work/models_all/Shanghai_AI_Laboratory/internlm2_5-7b",
+        "status": "completed",
+        "throughput": "165.65"
+    },
+    "ZhipuAI/chatglm2-6b": {
+        "model_path": "/home/work/models_all/ZhipuAI/chatglm2-6b",
+        "status": "completed",
+        "throughput": "213.17"
+    },
+    "AI-ModelScope/falcon-7b": {
+        "model_path": "/home/work/models_all/AI-ModelScope/falcon-7b",
+        "status": "completed",
+        "throughput": "209.27"
+    },
+    "AI-ModelScope/starcoder2-7b": {
+        "model_path": "/home/work/models_all/AI-ModelScope/starcoder2-7b",
+        "status": "completed",
+        "throughput": "175.32"
+    },
+    "LLM-Research/Phi-3___5-mini-instruct": {
+        "model_path": "/home/work/models_all/LLM-Research/Phi-3___5-mini-instruct",
+        "status": "completed",
+        "throughput": "186.28"
+    },
+    "Qwen/Qwen2-VL-7B-Instruct": {
+        "model_path": "/home/work/models_all/Qwen/Qwen2-VL-7B-Instruct",
+        "status": "completed",
+        "throughput": "170.19"
+    },
+    "LLM-Research/Phi-3-vision-128k-instruct": {
+        "model_path": "/home/work/models_all/LLM-Research/Phi-3-vision-128k-instruct",
+        "status": "completed",
+        "throughput": "186.64"
+    },
+    "AI-ModelScope/llava-v1___6-vicuna-7b": {
+        "model_path": "/home/work/models_all/AI-ModelScope/llava-v1___6-vicuna-7b",
+        "status": "completed",
+        "throughput": "108.44"
+    },
+    "OpenGVLab/InternVL2-8B": {
+        "model_path": "/home/work/models_all/OpenGVLab/InternVL2-8B",
+        "status": "completed",
+        "throughput": "165.34"
+    },
+    "LLM-Research/Phi-3___5-vision-instruct": {
+        "model_path": "/home/work/models_all/LLM-Research/Phi-3___5-vision-instruct",
+        "status": "completed",
+        "throughput": "185.96"
+    }
+}
