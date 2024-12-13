@@ -35,12 +35,44 @@ def test():
         q_states, k_states, cached_cos, cached_sin, position_ids_1d
     )
     q_embed_tri, k_embed_tri = apply_rotary_pos_emb(
-        q_states, k_states, cached_cos, cached_sin,
+        q_states, k_states, cached_cos, cached_sin
     )
     print("max abs diff: ", torch.max(abs(q_embed - q_embed_tri)))
     print("max abs diff: ", torch.max(abs(k_embed - k_embed_tri)))
     assert torch.allclose(q_embed, q_embed_tri, atol=1e-2, rtol=1e-1)
     assert torch.allclose(k_embed, k_embed_tri, atol=1e-2, rtol=1e-1)
+
+    configs = []
+    configs.append(
+        triton.testing.Benchmark(
+            x_names=["op"],
+            x_vals=["fwd"],
+            line_arg="provider",
+            line_vals=["triton", "pytorch"],
+            line_names=["Triton", "PyTorch"],
+            ylabel="ms",
+            plot_name="",
+            args={},
+        )
+    )
+
+    @triton.testing.perf_report(configs)
+    def bench_fn(op, provider, device="cuda"):
+        warmup = 100
+        rep = 200
+
+        if "triton" in provider:
+            # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
+            fn = lambda: apply_rotary_pos_emb(
+                    q_states, k_states, cached_cos, cached_sin)
+        if "pytorch" in provider:
+            fn = lambda: torch_rotary_pos_emb(
+                    q_states, k_states, cached_cos, cached_sin, position_ids_1d)
+
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+        return ms
+
+    bench_fn.run(show_plots=True, print_data=True)
 
 
 if __name__ == "__main__":
