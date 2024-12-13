@@ -66,7 +66,21 @@ def run_pipeline_chat_test(
     device_type,
 ):
     tp = 1
-    hf_path = "/nvme/share_data/models/internlm2-chat-7b/"
+    hf_path = "/home/work/models_all/ZhipuAI/glm-4v-9b/"
+    # hf_path = "/home/work/models_all/ZhipuAI/glm-4-9b/"
+    # hf_path = "/home/work/models_all/ZhipuAI/cogvlm2-llama3-chat-19B/"
+    # hf_path = "/home/work/models_all/ZhipuAI/cogvlm-chat/"
+    # hf_path = "/home/work/models_all/swift/llava-1___5-7b-hf/"
+    # hf_path = "/home/work/models_all/Shanghai_AI_Laboratory/internlm-7b/"
+    # hf_path = "/home/work/models_all/Qwen/Qwen1.5-MoE-A2.7B-Chat/"
+    # hf_path = "/home/work/models_all/OpenGVLab/InternVL-Chat-V1-5/"
+    # hf_path = "/home/work/models_all/OpenBMB/MiniCPM3-4B/"
+    # hf_path = "/home/work/models_all/LLM-Research/Phi-3-vision-128k-instruct/"
+    # hf_path = "/home/work/models_all/LLM-Research/Phi-3-mini-4k-instruct/"
+    # hf_path = "/home/work/models_all/LLM-Research/Phi-3___5-vision-instruct/"
+    # hf_path = "/home/work/models_all/LLM-Research/Phi-3___5-MoE-instruct/"
+    # hf_path = "/home/work/models_all/LLM-Research/Phi-3___5-mini-instruct/"
+    # hf_path = "/home/work/models_all/01ai/Yi-6B/"
     # hf_path = "/workspace/volume/shangda/share/llm_models/Shanghai_AI_Laboratory/internlm2-chat-7b/"  # done
     # hf_path = '/workspace/volume/shangda/share/llm_models/Shanghai_AI_Laboratory/internlm2_5-7b/'
     # hf_path = "/workspace/volume/shangda/share/llm_models/Qwen/Qwen2-7B/"  # done

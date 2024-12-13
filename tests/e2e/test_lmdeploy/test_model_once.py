@@ -94,7 +94,7 @@ def run_pipeline_image_test(model_name, model_path, common_prefix, device_type="
     pipe = pipeline(model_name, backend_config=backend_config)
     
     from lmdeploy.vl import load_image
-    image_path = "/workspace/volume/shangda/zhanglantian/Triton/python/dlBLAS/tests/e2e/test_lmdeploy/tiger.jpeg"
+    image_path = "/private/liutao/Triton/python/dlBLAS/tests/e2e/test_lmdeploy/tiger.jpeg"
     image = load_image(image_path)
     response = pipe(("describe this image", image)).text
     print(f"Response from model at {model_path}: {response}")
