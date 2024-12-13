@@ -1,7 +1,8 @@
 import triton
 import torch
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
 
 
 def _rotate_half(x):
@@ -33,8 +34,8 @@ def test():
     q_embed, k_embed = torch_rotary_pos_emb(
         q_states, k_states, cached_cos, cached_sin, position_ids_1d
     )
-    q_embed_tri, k_embed_tri = dlblas.apply_rotary_pos_emb(
-        q_states, k_states, cached_cos, cached_sin, position_ids_1d
+    q_embed_tri, k_embed_tri = apply_rotary_pos_emb(
+        q_states, k_states, cached_cos, cached_sin,
     )
     print("max abs diff: ", torch.max(abs(q_embed - q_embed_tri)))
     print("max abs diff: ", torch.max(abs(k_embed - k_embed_tri)))
