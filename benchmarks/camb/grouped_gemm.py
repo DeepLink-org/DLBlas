@@ -80,7 +80,7 @@ def main():
 
     args = parse_args()
     # z = args.z
-    z = 3
+    z = 64
     m = 1024
     k = 1024
     n = 1024
