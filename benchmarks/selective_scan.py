@@ -2,11 +2,12 @@ import torch
 from einops import einsum, rearrange, repeat
 import triton
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.selective_scan import SelectiveScan
 
 
 # credit: https://github.com/johnma2006/mamba-minimal/blob/master/model.py#L275
-def ref_selective_scan(u, delta, A, B, C, D, initial_state):
+def ref_selective_scan(u, delta, A, B, C, initial_state):
     """Does selective scan algorithm. See:
         - Section 2 State Space Models in the Mamba paper [1]
         - Algorithm 2 in Section 3.2 in the Mamba paper [1]
@@ -34,7 +35,7 @@ def ref_selective_scan(u, delta, A, B, C, D, initial_state):
 
     """
     original_dtype = u.dtype
-    u, delta, A, B, C, D = map(lambda x: x.float(), (u, delta, A, B, C, D))
+    u, delta, A, B, C = map(lambda x: x.float(), (u, delta, A, B, C))
     (b, l, d_in) = u.shape
     n = A.shape[1]
 
@@ -57,7 +58,8 @@ def ref_selective_scan(u, delta, A, B, C, D, initial_state):
         ys.append(y)
     y = torch.stack(ys, dim=1)  # shape (b, l, d_in)
 
-    y = y + u * D[None, None, :]
+    # to fit with kernel implementation
+    # y = y + u * D[None, None, :]
 
     return y.to(original_dtype), x
 
@@ -81,7 +83,7 @@ def test():
 
     initial_state = torch.randn(B, D, K, dtype=dtype).cuda().requires_grad_(False)
 
-    tri, tri_final = dlblas.selective_scan(x, delta, A, B2, C, D2, initial_state)
+    tri, tri_final = SelectiveScan.apply(x, delta, A, B2, C, initial_state)
     do = torch.randn_like(tri)
     tri.backward(do)
 
@@ -91,7 +93,7 @@ def test():
     tri_delta, delta.grad = delta.grad.clone(), None
     tri_A, A.grad = A.grad.clone(), None
 
-    ref, ref_final = ref_selective_scan(x, delta, A, B2, C, D2, initial_state)
+    ref, ref_final = ref_selective_scan(x, delta, A, B2, C, initial_state)
 
     print(f"max diff {(tri-ref).abs().max()}")
     assert torch.allclose(tri, ref, rtol=1e-05, atol=1e-05)
@@ -138,13 +140,13 @@ def test():
         rep = 200
         if "triton" in provider:
             if "fwd" == op:
-                fn = lambda: dlblas.selective_scan(
-                    x, delta, A, B2, C, D2, initial_state
+                fn = lambda: SelectiveScan.apply(
+                    x, delta, A, B2, C, initial_state
                 )
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
             elif "bwd" == op:
-                tri, tri_final = dlblas.selective_scan(
-                    x, delta, A, B2, C, D2, initial_state
+                tri, tri_final = SelectiveScan.apply(
+                    x, delta, A, B2, C, initial_state
                 )
                 do = torch.randn_like(tri)
                 bwd_fn = lambda: tri.backward(do, retain_graph=True)
@@ -154,11 +156,11 @@ def test():
 
         if "pytorch" in provider:
             if "fwd" == op:
-                fn = lambda: ref_selective_scan(x, delta, A, B2, C, D2, initial_state)
+                fn = lambda: ref_selective_scan(x, delta, A, B2, C, initial_state)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
             elif "bwd" == op:
                 tri, tri_final = ref_selective_scan(
-                    x, delta, A, B2, C, D2, initial_state
+                    x, delta, A, B2, C, initial_state
                 )
                 do = torch.randn_like(tri)
                 bwd_fn = lambda: tri.backward(do, retain_graph=True)

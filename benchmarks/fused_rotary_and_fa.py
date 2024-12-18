@@ -1,6 +1,9 @@
 import triton
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
+from dlblas.kernels.fused_rotary_and_fa import _flash_attn_forward as fused_rotary_and_fa
+from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
 import torch
 import torch.nn.functional as F
 
@@ -52,12 +55,12 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 def none_fused_rotary_and_fa(
     seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
 ):
-    query_emb, key_emb = dlblas.apply_rotary_pos_emb(
-        query.view(seq_len, heads, dim),
-        key.view(seq_len, heads, dim),
-        cos.view(seq_len, dim),
-        sin.view(seq_len, dim),
-        position_ids_1d,
+    query_emb, key_emb = apply_rotary_pos_emb(
+        query.view(1, seq_len, heads, dim),
+        key.view(1, seq_len, heads, dim),
+        cos.view(1, seq_len, dim),
+        sin.view(1, seq_len, dim),
+        2,
     )
     return dlblas.flash_attention_v2(
         query_emb.view(1, seq_len, heads, dim),
@@ -83,7 +86,7 @@ def test():
         seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
     )
 
-    tt_out = dlblas.fused_rotary_and_fa(query, key, value, cos, sin)
+    tt_out = fused_rotary_and_fa(query, key, value, cos, sin)
 
     for i, j in zip(ref_out.shape, tt_out.shape):
         assert i == j
@@ -113,19 +116,19 @@ def test():
         rep = 200
 
         if "fused" in provider:
-            fn = lambda: dlblas.fused_rotary_and_fa(query, key, value, cos, sin)
+            fn = lambda: fused_rotary_and_fa(query, key, value, cos, sin)
 
         if "none-fused" in provider:
             fn = lambda: none_fused_rotary_and_fa(
                 seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
             )
         if "rotary" in provider:
-            fn = lambda: dlblas.apply_rotary_pos_emb(
-                query.view(seq_len, heads, dim),
-                key.view(seq_len, heads, dim),
-                cos.view(seq_len, dim),
-                sin.view(seq_len, dim),
-                position_ids_1d,
+            fn = lambda: apply_rotary_pos_emb(
+                query.view(1, seq_len, heads, dim),
+                key.view(1, seq_len, heads, dim),
+                cos.view(1, seq_len, dim),
+                sin.view(1, seq_len, dim),
+                2,
             )
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         return ms
