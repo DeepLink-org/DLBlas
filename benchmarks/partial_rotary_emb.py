@@ -6,8 +6,9 @@ import torch.nn.functional as F
 from torch.profiler import profile, record_function, ProfilerActivity
 import triton
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
-
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
+from dlblas.kernels.partial_rotary_emb import PartialRotaryEmb
 from functorch.compile import aot_module, make_boxed_func, aot_function
 from torch._dynamo.backends.common import aot_autograd
 
@@ -339,11 +340,11 @@ def test():
 
         if "triton" in provider:
             if "fwd" == op:
-                fn = lambda: dlblas.partial_rotary_emb(
+                fn = lambda: PartialRotaryEmb.apply(
                     q_tri, k_pe_tri, kv_tri, cos, sin
                 )
             elif "bwd" == op:
-                out_tri_q, out_tri_kv = dlblas.partial_rotary_emb(
+                out_tri_q, out_tri_kv = PartialRotaryEmb.apply(
                     q_tri, k_pe_tri, kv_tri, cos, sin
                 )
                 loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_kv))
