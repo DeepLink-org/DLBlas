@@ -7,7 +7,8 @@ import triton
 import time
 from torch.profiler import profile, record_function, ProfilerActivity
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.topk_gating import TopKGatingFunc
 
 
 def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
@@ -236,7 +237,7 @@ def test():
     logits_test.requires_grad = True
 
     model_torch = fused_topkgating_opt
-    model_triton = dlblas.topk_gating
+    model_triton = TopKGatingFunc.apply
 
     output1_torch, out_torch_pack = model_torch(
         logits_torch, k, capacity_factor, min_capacity, enable_token_rearrange_opt

@@ -1,6 +1,7 @@
 import triton
 import dlblas
-from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device
+from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 import torch
 import torch.nn.functional as F
 
@@ -17,7 +18,7 @@ def test():
     cos = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
     sin = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
 
-    tt_out = dlblas.flash_attention_v2(query, key, value)
+    tt_out = flash_attention_v2(query, key, value)
     ref_out = F.scaled_dot_product_attention(
         query.permute(0, 2, 1, 3),
         key.permute(0, 2, 1, 3),
@@ -49,7 +50,7 @@ def test():
         rep = 200
 
         if "triton" in provider:
-            fn = lambda: dlblas.flash_attention_v2(query, key, value)
+            fn = lambda: flash_attention_v2(query, key, value)
 
         if "torch" in provider:
             fn = lambda: F.scaled_dot_product_attention(
