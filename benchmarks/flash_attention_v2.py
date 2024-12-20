@@ -1,18 +1,18 @@
 import triton
 import dlblas
-from dlblas.utils.device_utils import get_idle_device, is_muxi
+from dlblas.utils.device_utils import get_idle_device, is_muxi, is_cuda
 from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 import torch
 import torch.nn.functional as F
 
-MUXI = is_muxi()
+MUXI_CUDA = is_muxi() or is_cuda()
 
 
 def test():
     device_ = torch.device(get_idle_device())
     torch.cuda.set_device(device_)
     dtype = torch.float16
-    if MUXI:
+    if MUXI_CUDA:
         dtype = torch.float32
 
     seq_len, heads, dim = 25600, 32, 64
