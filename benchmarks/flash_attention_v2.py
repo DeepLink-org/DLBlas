@@ -5,11 +5,15 @@ from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_atten
 import torch
 import torch.nn.functional as F
 
+MUXI = "4001" in torch.cuda.get_device_name(0)
+
 
 def test():
     device_ = torch.device(get_idle_device())
     torch.cuda.set_device(device_)
     dtype = torch.float16
+    if MUXI:
+        dtype = torch.float32
 
     seq_len, heads, dim = 25600, 32, 64
     query = torch.rand([1, seq_len, heads, dim], dtype=dtype, device=device_)
@@ -18,15 +22,15 @@ def test():
     cos = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
     sin = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
 
-    tt_out = flash_attention_v2(query, key, value)
+    tt_out, _, _ = flash_attention_v2(query, key, value)
     ref_out = F.scaled_dot_product_attention(
-        query.permute(0, 2, 1, 3),
-        key.permute(0, 2, 1, 3),
-        value.permute(0, 2, 1, 3),
+        query.permute(0, 2, 1, 3).cpu(),
+        key.permute(0, 2, 1, 3).cpu(),
+        value.permute(0, 2, 1, 3).cpu(),
     ).permute(0, 2, 1, 3)
 
     print("TEST: ")
-    # print(tt_out)
+    tt_out = tt_out.cpu()
     print("max abs diff: ", torch.max(abs(tt_out - ref_out)))
     assert torch.allclose(tt_out, ref_out, atol=1e-2, rtol=0)
 
@@ -54,9 +58,9 @@ def test():
 
         if "torch" in provider:
             fn = lambda: F.scaled_dot_product_attention(
-                query.permute(0, 2, 1, 3),
-                key.permute(0, 2, 1, 3),
-                value.permute(0, 2, 1, 3),
+                query.permute(0, 2, 1, 3).cpu(),
+                key.permute(0, 2, 1, 3).cpu(),
+                value.permute(0, 2, 1, 3).cpu(),
             ).permute(0, 2, 1, 3)
 
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)

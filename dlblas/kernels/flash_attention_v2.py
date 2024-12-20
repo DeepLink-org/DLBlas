@@ -11,12 +11,18 @@ else:
     from triton.language.math import fast_expf as tl_exp
     from triton.language.math import fast_logf as tl_log
 
+MUXI = "4001" in torch.cuda.get_device_name(0)
+if MUXI:
+    device_dtype = tl.float32
+else:
+    device_dtype = tl.float16
+
 
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
-        for BM in [128, 256]
-        for BN in [32, 64]
+        for BM in [64, 128, 256]
+        for BN in [16, 32, 64]
         for s in [2]
         for w in [4]
     ],
@@ -99,7 +105,7 @@ def _fwd_kernel(
     t_ptrs = TMP + off_hb * seqlen_q_rounded + offs_m
     lse_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    acc_o = tl.zeros([BLOCK_M, head_dim], dtype=tl.float16)
+    acc_o = tl.zeros([BLOCK_M, head_dim], dtype=device_dtype)
     # load q: it will stay in SRAM throughout
     # [2022-10-30] TD: Triton bug - in the case of EVEN_M=True and EVEN_N=False, if we just call
     # tl.load(q_ptrs), we get the wrong output!
@@ -121,7 +127,7 @@ def _fwd_kernel(
                 other=0.0,
             )
 
-        qk = tl.dot(q, tl.trans(k), out_dtype=tl.float16)
+        qk = tl.dot(q, tl.trans(k), out_dtype=device_dtype)
 
         # Trying to combine the two masks seem to make the result wrong
         if not EVEN_N:
@@ -167,7 +173,7 @@ def _fwd_kernel(
         l_ij = tl.sum(p, 1)
 
         # scale acc_o
-        acc_o_scale = tl_exp(m_i - m_ij).to(tl.float16)
+        acc_o_scale = tl_exp(m_i - m_ij).to(device_dtype)
         # # -- update output accumulator --
 
         acc_o = acc_o * acc_o_scale[:, None]
@@ -184,7 +190,7 @@ def _fwd_kernel(
                 other=0.0,
             )
         p = p.to(v.dtype)
-        acc_o += tl.dot(p, v, out_dtype=tl.float16)
+        acc_o += tl.dot(p, v, out_dtype=device_dtype)
         # -- update statistics
         m_i = m_ij
         l_i_new = tl_exp(lse_i - m_ij) + l_ij
@@ -220,7 +226,7 @@ def _flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
     assert v.shape == (batch, seqlen_k, nheads, d)
     assert d <= 128, "FlashAttention only support head dimensions up to 128"
     assert q.dtype == k.dtype == v.dtype, "All tensors must have the same type"
-    assert q.dtype in [torch.float16, torch.bfloat16], "Only support fp16 and bf16"
+    assert q.dtype in [torch.float16, torch.bfloat16, torch.float32], "Only support fp16, bf16 and fp32"
     assert q.is_cuda and k.is_cuda and v.is_cuda
     softmax_scale = softmax_scale or 1.0 / math.sqrt(d)
 

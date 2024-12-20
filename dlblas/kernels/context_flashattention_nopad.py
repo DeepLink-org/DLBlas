@@ -8,8 +8,8 @@ if triton.__version__ >= "3.0.0":
 else:
     from triton.language.math import fast_expf as tl_exp
 
-
 TESLA = "Tesla" in torch.cuda.get_device_name(0)
+TESLA = TESLA or "4001" in torch.cuda.get_device_name(0)
 
 
 @triton.jit

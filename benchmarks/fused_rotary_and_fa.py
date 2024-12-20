@@ -8,6 +8,9 @@ import torch
 import torch.nn.functional as F
 
 
+MUXI = "4001" in torch.cuda.get_device_name(0)
+
+
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
@@ -62,7 +65,7 @@ def none_fused_rotary_and_fa(
         sin.view(1, seq_len, dim),
         2,
     )
-    return dlblas.flash_attention_v2(
+    return flash_attention_v2(
         query_emb.view(1, seq_len, heads, dim),
         key_emb.view(1, seq_len, heads, dim),
         value,
@@ -73,6 +76,8 @@ def test():
     device_ = torch.device(get_idle_device())
     torch.cuda.set_device(device_)
     dtype = torch.float16
+    if MUXI:
+        dtype = torch.float32
 
     seq_len, heads, dim = 25600, 32, 64
     query = torch.rand([1, seq_len, heads, dim], dtype=dtype, device=device_)
@@ -82,11 +87,11 @@ def test():
     sin = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
     position_ids_1d = torch.arange(0, seq_len, device=device_)
     # query_emb, key_emb = apply_rotary_pos_emb(query, key, cos, sin, unsqueeze_dim=2)
-    ref_out = none_fused_rotary_and_fa(
+    ref_out, _, _ = none_fused_rotary_and_fa(
         seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
     )
 
-    tt_out = fused_rotary_and_fa(query, key, value, cos, sin)
+    tt_out, _, _ = fused_rotary_and_fa(query, key, value, cos, sin)
 
     for i, j in zip(ref_out.shape, tt_out.shape):
         assert i == j
