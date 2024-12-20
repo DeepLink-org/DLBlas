@@ -3,6 +3,7 @@ import torch
 import triton
 import triton.language as tl
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils.device_utils import is_muxi
 
 if triton.__version__ >= "3.0.0":
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
@@ -11,7 +12,7 @@ else:
     from triton.language.math import fast_expf as tl_exp
     from triton.language.math import fast_logf as tl_log
 
-MUXI = "4001" in torch.cuda.get_device_name(0)
+MUXI = is_muxi()
 if MUXI:
     device_dtype = tl.float32
 else:

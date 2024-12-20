@@ -1,11 +1,11 @@
 import triton
 import dlblas
-from dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import get_idle_device, is_muxi
 from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 import torch
 import torch.nn.functional as F
 
-MUXI = "4001" in torch.cuda.get_device_name(0)
+MUXI = is_muxi()
 
 
 def test():
