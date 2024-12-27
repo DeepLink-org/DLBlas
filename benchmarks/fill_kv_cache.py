@@ -91,8 +91,8 @@ def test():
     num_heads = 8
     head_dim = 128
     block_size = 4
-    seq_lens = [128]
-    history_lens = [128]
+    seq_lens = [10]
+    history_lens = [10]
 
     batch_size = len(seq_lens)
     kv_lens = [s + h for s, h, in zip(seq_lens, history_lens)]
