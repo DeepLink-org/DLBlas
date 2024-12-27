@@ -1,7 +1,7 @@
 import triton
 import triton.language as tl
 from torch import Tensor
-from dlblas.utils.device_utils import is_mlu_592
+from dlblas.utils.device_utils import is_mlu_592, is_muxi
 
 
 def get_autotune_config():
@@ -142,7 +142,10 @@ def fill_kv_cache(
     """fill key/value state to cache for paged attention."""
     block_offsets = block_offsets.contiguous()
     batch_size = block_offsets.size(0)
-    block_size, num_heads, head_dim = k_caches.size()[1:]
+    if is_muxi():
+        num_heads, block_size, head_dim = k_states.size()
+    else:
+        block_size, num_heads, head_dim = k_caches.size()[1:]
     head_dim_v = v_states.size(-1)
     max_num_blocks = triton.cdiv(max_q_seq_length, block_size) + 1
 
