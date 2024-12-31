@@ -5,7 +5,7 @@ import argparse
 import torch
 import triton
 import triton.language as tl
-import dlblas
+from dlblas.kernels.matmul import call as matmul
 
 
 def parse_args():
@@ -40,7 +40,7 @@ def main():
     )
 
     # test
-    out = dlblas.matmul(a, b)
+    out = matmul(a, b)
     ref_out = a @ b
     tol = {
         'atol': 1.0,
@@ -104,7 +104,7 @@ def main():
                 lambda: torch.matmul(a, b), quantiles=quantiles)
         if provider == 'triton':
             ms, min_ms, max_ms = triton.testing.do_bench(
-                lambda: dlblas_op(a, b), quantiles=quantiles)
+                lambda: matmul(a, b), quantiles=quantiles)
         perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
         return perf(ms), perf(max_ms), perf(min_ms)
 

@@ -90,10 +90,10 @@ def get_autotune_config():
 #       meta-parameters (e.g., `BLOCK_SIZE_M`) and compilation options (e.g., `num_warps`) to try
 #   - An auto-tuning *key* whose change in values will trigger evaluation of all the
 #       provided configs
-# @triton.autotune(
-#     configs=get_autotune_config(),
-#     key=['M', 'N', 'K'],
-# )
+@triton.autotune(
+    configs=get_autotune_config(),
+    key=['M', 'N', 'K'],
+)
 @triton.jit
 def matmul_kernel(
         # Pointers to matrices
