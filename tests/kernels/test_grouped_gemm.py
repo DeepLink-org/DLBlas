@@ -6,7 +6,6 @@ class TestGroupedGemm:
 
     def test_grouped_gemm(self):
         DEVICE = 'cuda'
-        block_size = 32
         group_m = [1024, 512, 256, 128]
         group_n = [1024, 512, 256, 128]
         group_k = [1024, 512, 256, 128]
@@ -21,7 +20,6 @@ class TestGroupedGemm:
             M = group_m[i]
             N = group_n[i]
             K = group_k[i]
-            num = int(K / block_size)
             A = torch.rand((M, K), device=DEVICE, dtype=torch.float16)
             B = torch.rand((K, N), device=DEVICE, dtype=torch.float16)
             group_A.append(A)
