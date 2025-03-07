@@ -1,5 +1,4 @@
 import ctypes
-import os
 import torch
 
 from typing import Any, Dict
@@ -20,8 +19,6 @@ def map_ctype(value: Any) -> Any:
 class TestFp8Convert:
 
     def test_fp8_convert(self):
-        os.system('git clone git@github.com:NVIDIA/cutlass.git && nvcc ../../../dlblas/kernels/cutlass/fp8_convert.cu -I./cutlass/include -shared --compiler-options=-fPIC -o ../../../dlblas/kernels/cutlass/fp8_convert.so')
-
         lib = ctypes.CDLL('../../../dlblas/kernels/cutlass/fp8_convert.so')
         inp = torch.rand(1).to(torch.float8_e5m2)
         out = torch.zeros(1, device='cuda')
