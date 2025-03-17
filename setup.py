@@ -10,9 +10,6 @@ subprocess.check_call(f"nvcc {cwd}/dlblas/kernels/cutlass/fp8_convert.cu -I{cwd}
 setup(
     name="dlblas",
     version="0.0.1",
-    package_data = {
-        '': ['*.so'],
-    }
     # install_requires=[
     # ],
 )
