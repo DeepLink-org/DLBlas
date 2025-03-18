@@ -1,7 +1,9 @@
 import ctypes
 import torch
+import subprocess
 
 from typing import Any, Dict
+
 
 ctype_map: Dict[Any, Any] = {
     **{t: getattr(ctypes, f'c_{t.__name__}') for t in (bool, int, float)},
@@ -19,6 +21,7 @@ def map_ctype(value: Any) -> Any:
 class TestFp8Convert:
 
     def test_fp8_convert(self):
+        subprocess.check_call('nvcc ../../../dlblas/kernels/cutlass/fp8_convert.cu -I../../../dlblas/third_party/cutlass/include -shared -std=c++17 --compiler-options=-fPIC -o ../../../dlblas/kernels/cutlass/fp8_convert.so', shell=True)
         lib = ctypes.CDLL('../../../dlblas/kernels/cutlass/fp8_convert.so')
         inp = torch.rand(1).to(torch.float8_e5m2)
         out = torch.zeros(1, device='cuda')
