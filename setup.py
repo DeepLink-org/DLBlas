@@ -1,6 +1,3 @@
-import os
-import subprocess
-from pathlib import Path
 from setuptools import setup
 
 setup(
