@@ -3,14 +3,12 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
-from dlblas.utils.libentry import libentry
 if triton.__version__ >= "3.0.0":
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
 else:
     from triton.language.math import fast_expf as tl_exp
 
 
-@libentry()
 @triton.autotune(
     configs = [
         triton.Config({'BLOCK_S': BS}, num_stages=7, num_warps=4, num_ctas=2) \

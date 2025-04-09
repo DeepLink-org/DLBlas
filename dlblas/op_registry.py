@@ -125,8 +125,8 @@ class OpRegistry:
         best_idx = -1
         best_perf = None
         for i, op in enumerate(candidates):
-            # perf = op.bench(*args)
-            perf = tunning(op, args, configs)
+            perf = op.bench(*args)
+            # perf = tunning(op, args, configs)
             if best_perf is None or perf < best_perf:
                 best_perf = perf
                 best_idx = i

@@ -3,9 +3,8 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor
-from dlblas.utils.libentry import libentry
 
-@libentry()
+
 @triton.autotune(
     configs=[
         triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w, num_ctas=c)

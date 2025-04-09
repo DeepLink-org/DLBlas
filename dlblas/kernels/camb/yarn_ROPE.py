@@ -1,10 +1,9 @@
 import torch
 import triton
 import triton.language as tl
-from dlblas.utils.libentry import libentry
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
-@libentry()
+
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)

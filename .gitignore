@@ -42,7 +42,7 @@ venv/
 
 # Python deployment artifacts
 *.whl
-
+build/
 # Archive files
 *.tar
 *.tar.*

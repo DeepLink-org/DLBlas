@@ -26,5 +26,5 @@ pip install -r python/dlBLAS/requirements.txt
 2. install packages
 
 ```
-pip install -e .
+pip install .
 ```

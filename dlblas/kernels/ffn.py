@@ -2,8 +2,6 @@ import torch
 
 import triton
 import triton.language as tl
-# register
-from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 @triton.jit
 def ff_llama(
@@ -116,62 +114,3 @@ def bench_fn(x: torch.Tensor, w1: torch.Tensor, w3: torch.Tensor, rms_w: torch.T
     fn = lambda: call(x, w1, w3, rms_w)
     ms = triton.testing.do_bench(fn, warmup=100, rep=100)
     return ms
-
-# register
-# name = 'matmul'
-# for dtype in [torch.float16, torch.float32]:
-#     for activation in ["", "leaky_relu"]:
-#         # for now, epilogue is not added to op name
-#         for device in ['cuda']:
-#             m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
-#             # we dont' actually allocate tensor
-#             a = Tensor((m, k), dtype=dtype, device=device)
-#             b = Tensor((k, n), dtype=dtype, device=device)
-
-#             # NOTE: the underlying kernel is the same jit'ed function, but Triton
-#             # will dispatch to different kernels based on the input params
-#             #
-#             # why do we still need another dispatch layer in op_registry?
-#             # because e.g. matmul may have different Triton implemetation...
-#             #
-#             space = ChoiceSpace()
-#             if activation == '':
-#                 register_dlblas_op(name, space, (a, b), call, bench_fn, ff_llama)
-#             else:
-#                 register_dlblas_op(name, space, (a, b, activation), call, bench_fn, ff_llama)
-
-
-
-
-# x = torch.randn([1, 16, 4096], dtype=torch.float16, device="cuda")
-# # weights tends to be very small values
-# rms_w = torch.randn([4096], dtype=torch.float16, device="cuda") * 0.2
-# w1_w = torch.randn([11008, 4096], dtype=torch.float16, device="cuda") * 0.2
-# w3_w = torch.randn([11008, 4096], dtype=torch.float16, device="cuda") * 0.2
-
-# def rms_norm_pytorch(x: torch.Tensor, rms_w: torch.Tensor, eps=1e-6) -> torch.Tensor:
-#     x = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
-#     return x * rms_w
-
-# x_norm_p = rms_norm_pytorch(x, rms_w, eps=1e-6)
-# w1_p = x_norm_p @ w1_w.t()
-# w1_silu_p = torch.nn.functional.silu(w1_p)
-# w3_p = x_norm_p @ w3_w.t()
-
-
-# def ff_pytorch(x: torch.Tensor, w1: torch.Tensor, w3: torch.Tensor, rms_w: torch.Tensor) -> torch.Tensor:
-#     x_norm = rms_norm_pytorch(x, rms_w, eps=1e-6)
-#     a = torch.nn.functional.silu(torch.matmul(x_norm, w1.t()))
-#     b = torch.matmul(x_norm, w3.t())
-#     return a * b
-
-
-# output_triton = kernel_ff(x=x, w1=w1_w, w3=w3_w, rms_w=rms_w)
-# output_pytorch = ff_pytorch(x=x, w1=w1_w, w3=w3_w, rms_w=rms_w)
-
-# assert torch.allclose(output_triton, w1_silu_p * w3_p, atol=1e-1), f"max diff: {torch.max(torch.abs(output_triton - w1_silu_p * w3_p))}"
-# assert torch.allclose(output_triton, output_pytorch, atol=1e-1), f"max diff: {torch.max(torch.abs(output_triton - output_pytorch))}"
-
-# print("rms matmul silu mul triton", triton.testing.do_bench(lambda: kernel_ff(x=x, w1=w1_w, w3=w3_w, rms_w=rms_w)))
-# print("rms matmul silu mul pytorch", triton.testing.do_bench(lambda: ff_pytorch(x=x, w1=w1_w, w3=w3_w, rms_w=rms_w)))
-

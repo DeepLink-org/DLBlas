@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-from dlblas.utils.libentry import libentry
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
@@ -48,7 +47,6 @@ def _get_cos_sin(
     return cos0_data, cos1_data, sin0_data, sin1_data
 
 
-# @libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SEQ": BS, "BLOCK_HEAD": BH}, num_stages=s, num_warps=w)
@@ -260,7 +258,6 @@ def _partial_rotary_emb_fwd_kernel(
         )
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)
@@ -433,7 +430,7 @@ def _partial_rotary_emb_bwd_kernel(
 
 class PartialRotaryEmb(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: torch.Any, q, k_pe, kv, cos, sin):
+    def forward(ctx, q, k_pe, kv, cos, sin):
         assert (
             q.is_contiguous()
             and k_pe.is_contiguous()
