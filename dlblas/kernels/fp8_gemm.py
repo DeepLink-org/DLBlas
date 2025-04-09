@@ -1,5 +1,3 @@
-# yapf: disable
-
 import torch
 
 import triton

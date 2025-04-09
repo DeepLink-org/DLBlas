@@ -3,11 +3,8 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
-from dlblas.utils.libentry import libentry
 
     
-
-@libentry()
 @triton.jit
 def _topk_gating_fwd_part3(
     mask_with_capacity,

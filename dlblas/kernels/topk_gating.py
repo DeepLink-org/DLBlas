@@ -6,7 +6,6 @@ import triton
 import triton.language as tl
 
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
-from dlblas.utils.libentry import libentry
 from dlblas.op_registry import op_registry
 import dlblas
 
@@ -25,7 +24,7 @@ def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> T
 
 class TopKGatingFunc(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: torch.Any, logits: torch.Tensor, k: int, capacity_factor: float = 1.0, probs_policy: bool = False, min_capacity: int = 2, higher_precision: bool = False):
+    def forward(ctx, logits: torch.Tensor, k: int, capacity_factor: float = 1.0, probs_policy: bool = False, min_capacity: int = 2, higher_precision: bool = False):
         # compute the capacity
         capacity = _capacity(logits, torch.tensor(capacity_factor * k), torch.tensor(min_capacity)).item()
         scores, masks, masked_gates, topk_indices, topk_values = dlblas._topk_gating_fwd_part1(logits, k)
@@ -43,7 +42,7 @@ class TopKGatingFunc(torch.autograd.Function):
 
 
     @staticmethod
-    def backward(ctx: torch.Any, *grad_outputs: torch.Any) -> torch.Any:
+    def backward(ctx, *grad_outputs):
         grad_l_aux = grad_outputs[0]
         tokens_per_expert_before_capacity, scores, k = ctx.saved_tensors
         # print("TopKGatingFunc-tokens_per_expert_before_capacity:\n", tokens_per_expert_before_capacity)

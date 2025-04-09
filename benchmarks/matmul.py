@@ -5,7 +5,7 @@ import argparse
 import torch
 import triton
 import triton.language as tl
-from dlblas.kernels.matmul import call as matmul
+from dlblas.utils import get_op
 
 
 def parse_args():
@@ -38,7 +38,7 @@ def main():
         dtype=dtype,
         device=device,
     )
-
+    matmul = get_op("matmul", (a, b))
     # test
     out = matmul(a, b)
     ref_out = a @ b
@@ -92,6 +92,8 @@ def main():
 
     @triton.testing.perf_report(configs)
     def benchmark(cnt, M, N, K, provider, fp8_inputs):
+        warmup = 500
+        rep = 500
         a = torch.randn((M, K), device='cuda', dtype=torch.float16)
         b = torch.randn((K, N), device='cuda', dtype=torch.float16)
         if TORCH_HAS_FP8 and fp8_inputs:
@@ -101,14 +103,14 @@ def main():
         quantiles = [0.5, 0.2, 0.8]
         if provider == ref_lib.lower():
             ms, min_ms, max_ms = triton.testing.do_bench(
-                lambda: torch.matmul(a, b), quantiles=quantiles)
+                lambda: torch.matmul(a, b), quantiles=quantiles, warmup=warmup, rep = rep)
         if provider == 'triton':
             ms, min_ms, max_ms = triton.testing.do_bench(
-                lambda: matmul(a, b), quantiles=quantiles)
+                lambda: matmul(a, b), quantiles=quantiles, warmup=warmup, rep = rep)
         perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
         return perf(ms), perf(max_ms), perf(min_ms)
 
-    benchmark.run(show_plots=True, print_data=True)
+    benchmark.run(show_plots=False, print_data=True)
 
 
 if __name__ == '__main__':

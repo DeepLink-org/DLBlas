@@ -390,7 +390,7 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
 
 class FusedRotaryAndFA(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: torch.Any, q, k, v, cos, sin):
+    def forward(ctx, q, k, v, cos, sin):
         o, lse, softmax_scale = _flash_attn_forward(q, k, v, cos, sin)
         return o
 

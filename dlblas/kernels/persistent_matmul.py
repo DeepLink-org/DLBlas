@@ -14,8 +14,6 @@ import triton.language as tl
 # register
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, DictSpace, FixedSpace
 
-# yapf: disable
-
 
 def _matmul_launch_metadata(grid, kernel, args):
     ret = {}
@@ -218,7 +216,6 @@ def bench_fn(a, b):
     return ms
 
 
-# yapf: enable
 # register
 name = 'matmul'
 for dtype in [torch.float16, torch.float32]:

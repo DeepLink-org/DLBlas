@@ -309,7 +309,7 @@ def _flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
 
 class FlashAttentionV2(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: torch.Any, q, k, v):
+    def forward(ctx, q, k, v):
         o, lse, softmax_scale = _flash_attn_forward(q, k, v)
         return o
 
