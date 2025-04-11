@@ -1,10 +1,9 @@
-
+import pytest
 import torch
 import torch.nn.functional as F
-import dlblas
-import pytest
+from einops import rearrange
 
-from einops import rearrange, repeat
+import dlblas
 
 
 def rms_norm_ref(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_before_gate=True, upcast=True):
@@ -21,29 +20,30 @@ def rms_norm_ref(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_before
         rstd = 1 / torch.sqrt((x.square()).mean(dim=-1, keepdim=True) + eps)
         out = (x * rstd * weight) + bias if bias is not None else (x * rstd * weight)
     else:
-        x_group = rearrange(x, "... (g d) -> ... g d", d=group_size)
+        x_group = rearrange(x, '... (g d) -> ... g d', d=group_size)
         rstd = 1 / torch.sqrt((x_group.square()).mean(dim=-1, keepdim=True) + eps)
-        out = rearrange(x_group * rstd, "... g d -> ... (g d)") * weight
+        out = rearrange(x_group * rstd, '... g d -> ... (g d)') * weight
         if bias is not None:
             out = out + bias
     if z is not None and norm_before_gate:
         out *= F.silu(z)
     return out.to(dtype)
 
-@pytest.mark.parametrize("norm_before_gate", [True, False])
+
+@pytest.mark.parametrize('norm_before_gate', [True, False])
 # @pytest.mark.parametrize("norm_before_gate", [False])
-@pytest.mark.parametrize("has_group", [False, True])
+@pytest.mark.parametrize('has_group', [False, True])
 # @pytest.mark.parametrize("has_group", [False])
-@pytest.mark.parametrize("is_rms_norm", [False, True])
+@pytest.mark.parametrize('is_rms_norm', [False, True])
 # @pytest.mark.parametrize("is_rms_norm", [True])
-@pytest.mark.parametrize("has_z", [False, True])
+@pytest.mark.parametrize('has_z', [False, True])
 # @pytest.mark.parametrize("has_z", [True])
-@pytest.mark.parametrize("has_bias", [False, True])
+@pytest.mark.parametrize('has_bias', [False, True])
 # @pytest.mark.parametrize("has_bias", [False])
 # @pytest.mark.parametrize('dtype', [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize('dtype', [torch.float32])
 # @pytest.mark.parametrize("wtype", [torch.float32, torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("wtype", [torch.float32])
+@pytest.mark.parametrize('wtype', [torch.float32])
 @pytest.mark.parametrize('d', [2048, 4096])
 # @pytest.mark.parametrize('d', [4096])
 def test_layer_norm_gated(d, dtype, wtype, has_bias, has_z, is_rms_norm, has_group, norm_before_gate):
@@ -76,27 +76,51 @@ def test_layer_norm_gated(d, dtype, wtype, has_bias, has_z, is_rms_norm, has_gro
     weight_pt = weight.detach().clone().requires_grad_()
     bias_ref = bias.detach().clone().requires_grad_() if bias is not None else None
     bias_pt = bias.detach().clone().requires_grad_() if bias is not None else None
-    out = dlblas.layernorm_gated(x, weight, bias, z=z, eps=1e-5, group_size=group_size, norm_before_gate=norm_before_gate,
-                       is_rms_norm=is_rms_norm)
+    out = dlblas.layernorm_gated(x,
+                                 weight,
+                                 bias,
+                                 z=z,
+                                 eps=1e-5,
+                                 group_size=group_size,
+                                 norm_before_gate=norm_before_gate,
+                                 is_rms_norm=is_rms_norm)
     if not is_rms_norm:
         if not has_group:
-            out_ref = F.layer_norm(x_ref.float(), (d,), weight=weight_ref.float(), bias=bias_ref.float() if bias_ref is not None else None, eps=1e-5)
-            out_pt = F.layer_norm(x_pt.to(wtype), (d,), weight=weight_pt, bias=bias_pt, eps=1e-5)
+            out_ref = F.layer_norm(x_ref.float(), (d, ),
+                                   weight=weight_ref.float(),
+                                   bias=bias_ref.float() if bias_ref is not None else None,
+                                   eps=1e-5)
+            out_pt = F.layer_norm(x_pt.to(wtype), (d, ), weight=weight_pt, bias=bias_pt, eps=1e-5)
         else:
-            out_ref = rearrange(F.layer_norm(rearrange(x_ref, "... (g d) -> ... g d", d=group_size).float(), (group_size,), eps=1e-5), "... g d -> ... (g d)") * weight_ref.float()
+            out_ref = rearrange(
+                F.layer_norm(rearrange(x_ref, '... (g d) -> ... g d', d=group_size).float(),
+                             (group_size, ), eps=1e-5), '... g d -> ... (g d)') * weight_ref.float()
             if has_bias:
                 out_ref = out_ref + bias_ref.float()
-            out_pt = rearrange(F.layer_norm(rearrange(x_pt, "... (g d) -> ... g d", d=group_size), (group_size,), eps=1e-5), "... g d -> ... (g d)") * weight_pt
+            out_pt = rearrange(
+                F.layer_norm(rearrange(x_pt, '... (g d) -> ... g d', d=group_size),
+                             (group_size, ), eps=1e-5), '... g d -> ... (g d)') * weight_pt
             if has_bias:
                 out_pt = out_pt + bias_pt
         if has_z and norm_before_gate:
             out_ref = out_ref * F.silu(z_ref.float())
             out_pt = out_pt * F.silu(z_pt)
     else:
-        out_ref = rms_norm_ref(x_ref, weight_ref, bias_ref, z=z_ref, eps=1e-5, group_size=group_size,
+        out_ref = rms_norm_ref(x_ref,
+                               weight_ref,
+                               bias_ref,
+                               z=z_ref,
+                               eps=1e-5,
+                               group_size=group_size,
                                norm_before_gate=norm_before_gate)
-        out_pt = rms_norm_ref(x_pt, weight_pt, bias_pt, z=z_pt, eps=1e-5, group_size=group_size,
-                              norm_before_gate=norm_before_gate, upcast=False)
+        out_pt = rms_norm_ref(x_pt,
+                              weight_pt,
+                              bias_pt,
+                              z=z_pt,
+                              eps=1e-5,
+                              group_size=group_size,
+                              norm_before_gate=norm_before_gate,
+                              upcast=False)
     print(f"Max diff = {(out - out_ref).abs().max().item()}")
     print(f"Max diff Pytorch = {(out_pt - out_ref).abs().max().item()}")
     # assert (out - out_ref).abs().max().item() <= 2 * (out_pt - out_ref).abs().max().item() + atol
@@ -121,7 +145,9 @@ def test_layer_norm_gated(d, dtype, wtype, has_bias, has_z, is_rms_norm, has_gro
         assert torch.allclose(z.grad, z_ref.grad, rtol=1e-3, atol=1e-3) and torch.allclose(z_pt.grad, z_ref.grad)
         # assert (z.grad - z_ref.grad).abs().max().item() <= 2 * (z_pt.grad - z_ref.grad).abs().max().item() + atol
     # assert (weight.grad - weight_ref.grad).abs().max().item() <= 2 * (weight_pt.grad - weight_ref.grad).abs().max().item() + atol
-    assert torch.allclose(weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3) and torch.allclose(weight_pt.grad, weight_ref.grad)
+    assert torch.allclose(weight.grad, weight_ref.grad, rtol=1e-3, atol=1e-3) and torch.allclose(
+        weight_pt.grad, weight_ref.grad)
     if has_bias:
-        assert torch.allclose(bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3) and torch.allclose(bias_pt.grad, bias_ref.grad)
+        assert torch.allclose(bias.grad, bias_ref.grad, rtol=1e-3, atol=1e-3) and torch.allclose(
+            bias_pt.grad, bias_ref.grad)
         # assert (bias.grad - bias_ref.grad).abs().max().item() <= 2 * (bias_pt.grad - bias_ref.grad).abs().max().item() + atol

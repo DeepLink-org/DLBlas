@@ -20,12 +20,9 @@ def tanh(x):
 
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_N": BN}, num_stages=s, num_warps=w)
-        for BN in [32, 64]
-        for s in [1, 2]
-        for w in [4, 8]
+        triton.Config({'BLOCK_N': BN}, num_stages=s, num_warps=w) for BN in [32, 64] for s in [1, 2] for w in [4, 8]
     ],
-    key=["kv_group_num", "Lk"],
+    key=['kv_group_num', 'Lk'],
 )
 @triton.jit
 def _fwd_kernel_stage1(
@@ -79,11 +76,7 @@ def _fwd_kernel_stage1(
             mask=offs_n_new < cur_batch_end_index,
             other=0,
         )
-        offs_buf_k = (
-            k_loc[:, None] * stride_buf_kbs
-            + cur_kv_head * stride_buf_kh
-            + offs_d[None, :]
-        )
+        offs_buf_k = (k_loc[:, None] * stride_buf_kbs + cur_kv_head * stride_buf_kh + offs_d[None, :])
         k = tl.load(
             K_Buffer + offs_buf_k,
             mask=(offs_n_new[:, None] < cur_batch_end_index) & (offs_d[None, :] < Lk),
@@ -134,35 +127,29 @@ def _fwd_kernel_stage2(
     offs_buf_v = cur_kv_head * stride_buf_vh + offs_d[None, :]
     v_ptrs = V_Buffer + offs_buf_v
 
-    e_max = float("-inf")
+    e_max = float('-inf')
     e_sum = 0.0
     acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
 
     for start_n in range(0, cur_batch_seq_len, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         v_index = tl.load(
-            Req_to_tokens
-            + cur_batch_req_idx * stride_req_to_token_b
-            + (start_n + offs_n),
+            Req_to_tokens + cur_batch_req_idx * stride_req_to_token_b + (start_n + offs_n),
             mask=(start_n + offs_n) < cur_batch_seq_len,
             other=0,
         )
 
         qk = tl.load(
-            logits
-            + cur_head * stride_logic_h
-            + (cur_batch_start_loc + start_n + offs_n),
+            logits + cur_head * stride_logic_h + (cur_batch_start_loc + start_n + offs_n),
             mask=start_n + offs_n < cur_batch_seq_len,
-            other=float("-inf"),
+            other=float('-inf'),
         )
 
         n_e_max = tl.maximum(tl.max(qk, 0), e_max)
         old_scale = tl.exp(e_max - n_e_max)
         p = tl.exp(qk - n_e_max)
         e_sum = e_sum * old_scale + tl.sum(p, 0)
-        v = tl.load(
-            v_ptrs + v_index[:, None] * stride_buf_vbs, mask=(offs_d[None, :] < Lv)
-        )
+        v = tl.load(v_ptrs + v_index[:, None] * stride_buf_vbs, mask=(offs_d[None, :] < Lv))
         acc = acc * old_scale + tl.sum(p[:, None] * v, 0)
         e_max = n_e_max
 
@@ -189,7 +176,7 @@ def _decode_att_m_fwd(
     grid = lambda META: (
         batch,
         head_num,
-        triton.cdiv(max_len_in_batch, META["BLOCK_N"]),
+        triton.cdiv(max_len_in_batch, META['BLOCK_N']),
     )
     kv_group_num = q.shape[1] // k_buffer.shape[1]
     BLOCK_DMODEL = triton.next_power_of_2(Lk)
@@ -259,13 +246,8 @@ def _decode_softmax_reducev_fwd(
 
 
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_N": BN}, num_stages=s, num_warps=w)
-        for BN in [32]
-        for s in [1]
-        for w in [4]
-    ],
-    key=["kv_group_num", "Lk"],
+    configs=[triton.Config({'BLOCK_N': BN}, num_stages=s, num_warps=w) for BN in [32] for s in [1] for w in [4]],
+    key=['kv_group_num', 'Lk'],
 )
 @triton.jit
 def _fwd_grouped_kernel_stage1(
@@ -313,9 +295,7 @@ def _fwd_grouped_kernel_stage1(
 
     if BLOCK_DPE > 0:
         offs_dpe = BLOCK_DMODEL + tl.arange(0, BLOCK_DPE)
-        off_qpe = (
-            cur_batch * stride_qbs + cur_head[:, None] * stride_qh + offs_dpe[None, :]
-        )
+        off_qpe = (cur_batch * stride_qbs + cur_head[:, None] * stride_qh + offs_dpe[None, :])
 
     offs_n = start_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
@@ -323,20 +303,14 @@ def _fwd_grouped_kernel_stage1(
     block_mask = tl.where(block_stard_index < cur_batch_seq_len, 1, 0)
 
     for start_mark in range(0, block_mask, 1):
-        q = tl.load(
-            Q + offs_q + start_mark, mask=(mask_h[:, None]) & (offs_d[None, :] < Lk)
-        ).to(reduce_dtype)
+        q = tl.load(Q + offs_q + start_mark, mask=(mask_h[:, None]) & (offs_d[None, :] < Lk)).to(reduce_dtype)
         offs_n_new = cur_batch_start_index + offs_n
         k_loc = tl.load(
             Req_to_tokens + stride_req_to_tokens_b * cur_batch_req_idx + offs_n_new,
             mask=offs_n_new < cur_batch_end_index,
             other=0,
         )
-        offs_buf_k = (
-            k_loc[None, :] * stride_buf_kbs
-            + cur_kv_head * stride_buf_kh
-            + offs_d[:, None]
-        )
+        offs_buf_k = (k_loc[None, :] * stride_buf_kbs + cur_kv_head * stride_buf_kh + offs_d[:, None])
         k = tl.load(
             K_Buffer + offs_buf_k,
             mask=(offs_n_new[None, :] < cur_batch_end_index) & (offs_d[:, None] < Lk),
@@ -344,14 +318,8 @@ def _fwd_grouped_kernel_stage1(
         ).to(reduce_dtype)
         qk = tl.dot(q, k)
         if BLOCK_DPE > 0:
-            qpe = tl.load(Q + off_qpe + start_mark, mask=mask_h[:, None]).to(
-                reduce_dtype
-            )
-            offs_buf_kpe = (
-                k_loc[None, :] * stride_buf_kbs
-                + cur_kv_head * stride_buf_kh
-                + offs_dpe[:, None]
-            )
+            qpe = tl.load(Q + off_qpe + start_mark, mask=mask_h[:, None]).to(reduce_dtype)
+            offs_buf_kpe = (k_loc[None, :] * stride_buf_kbs + cur_kv_head * stride_buf_kh + offs_dpe[:, None])
             kpe = tl.load(
                 K_Buffer + offs_buf_kpe,
                 mask=offs_n_new[None, :] < cur_batch_end_index,
@@ -363,9 +331,7 @@ def _fwd_grouped_kernel_stage1(
         if logit_cap > 0:
             qk = logit_cap * tanh(qk / logit_cap)
 
-        offs_o = cur_head[:, None] * att_stride_h + (
-            cur_batch_in_all_start_index + offs_n[None, :]
-        )
+        offs_o = cur_head[:, None] * att_stride_h + (cur_batch_in_all_start_index + offs_n[None, :])
 
         tl.store(
             Att_Out + offs_o,
@@ -413,37 +379,31 @@ def _fwd_grouped_kernel_stage2(
     offs_buf_v = cur_kv_head * stride_buf_vh + offs_d[None, :]
     v_ptrs = V_Buffer + offs_buf_v
 
-    e_max = tl.zeros([BLOCK_H], dtype=tl.float32) - float("inf")
+    e_max = tl.zeros([BLOCK_H], dtype=tl.float32) - float('inf')
     e_sum = tl.zeros([BLOCK_H], dtype=tl.float32)
     acc = tl.zeros([BLOCK_H, BLOCK_DMODEL], dtype=tl.float32)
 
     for start_n in range(0, cur_batch_seq_len, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         v_index = tl.load(
-            Req_to_tokens
-            + cur_batch_req_idx * stride_req_to_token_b
-            + (start_n + offs_n),
+            Req_to_tokens + cur_batch_req_idx * stride_req_to_token_b + (start_n + offs_n),
             mask=(start_n + offs_n) < cur_batch_seq_len,
             other=0,
         )
 
-        offs_qk = cur_head[:, None] * stride_logic_h + (
-            cur_batch_start_loc + start_n + offs_n[None, :]
-        )
+        offs_qk = cur_head[:, None] * stride_logic_h + (cur_batch_start_loc + start_n + offs_n[None, :])
 
         qk = tl.load(
             logits + offs_qk,
             mask=mask_h[:, None] & (start_n + offs_n[None, :] < cur_batch_seq_len),
-            other=float("-inf"),
+            other=float('-inf'),
         )
 
         n_e_max = tl.maximum(tl.max(qk, 1), e_max)
         old_scale = tl.exp(e_max - n_e_max)
         p = tl.exp(qk - n_e_max[:, None])
         e_sum = e_sum * old_scale + tl.sum(p, 1)
-        v = tl.load(
-            v_ptrs + v_index[:, None] * stride_buf_vbs, mask=(offs_d[None, :] < Lv)
-        )
+        v = tl.load(v_ptrs + v_index[:, None] * stride_buf_vbs, mask=(offs_d[None, :] < Lv))
         p = p.to(v.dtype)
         acc = acc * old_scale[:, None] + tl.dot(p, v)
         e_max = n_e_max
@@ -484,7 +444,7 @@ def _decode_grouped_att_m_fwd(
     grid = lambda META: (
         batch,
         triton.cdiv(head_num, min(BLOCK_H, kv_group_num)),
-        triton.cdiv(max_len_in_batch, META["BLOCK_N"]),
+        triton.cdiv(max_len_in_batch, META['BLOCK_N']),
     )
     _fwd_grouped_kernel_stage1[grid](
         q,

@@ -76,7 +76,7 @@ class TestFusedLoRA:
     def gt(self, input, start_loc, seq_lens, adapter_ids, lora_a, lora_b, scaling):
         out = []
         for loc, s_len, r_id in zip(start_loc, seq_lens, adapter_ids):
-            inp = input[loc : loc + s_len]
+            inp = input[loc:loc + s_len]
             l_a = lora_a[r_id]
             l_b = lora_b[r_id]
             s = scaling[r_id]
@@ -85,7 +85,7 @@ class TestFusedLoRA:
         yield torch.cat(out)
 
     @pytest.mark.parametrize(
-        "seq_lens",
+        'seq_lens',
         [
             (2, 4, 6, 8),
             (1, 1, 1, 1),

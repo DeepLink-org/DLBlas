@@ -2,10 +2,7 @@ import os
 
 import torch
 import triton
-
-from liger_kernel.transformers.fused_linear_cross_entropy import (
-    LigerFusedLinearCrossEntropyLoss,
-)
+from liger_kernel.transformers.fused_linear_cross_entropy import LigerFusedLinearCrossEntropyLoss
 
 
 class TorchLMHeadCE(torch.nn.Module):
@@ -19,12 +16,8 @@ class TorchLMHeadCE(torch.nn.Module):
 
     def __init__(self, H: int, V: int, dtype: torch.dtype, ignore_index: int = -100):
         super().__init__()
-        self.lin = torch.nn.Linear(
-            in_features=H, out_features=V, bias=False, dtype=dtype
-        )
-        self.ce_loss = torch.nn.CrossEntropyLoss(
-            ignore_index=ignore_index, reduction="mean"
-        )
+        self.lin = torch.nn.Linear(in_features=H, out_features=V, bias=False, dtype=dtype)
+        self.ce_loss = torch.nn.CrossEntropyLoss(ignore_index=ignore_index, reduction='mean')
 
     def forward(self, x, y):
         logits = self.lin(x)
@@ -32,14 +25,11 @@ class TorchLMHeadCE(torch.nn.Module):
 
 
 class LigerLMHeadCE(torch.nn.Module):
+
     def __init__(self, H: int, V: int, dtype: torch.dtype, ignore_index: int = -100):
         super().__init__()
-        self.lin = torch.nn.Linear(
-            in_features=H, out_features=V, bias=False, dtype=dtype
-        )
-        self.ce_loss = LigerFusedLinearCrossEntropyLoss(
-            ignore_index=ignore_index, reduction="mean"
-        )
+        self.lin = torch.nn.Linear(in_features=H, out_features=V, bias=False, dtype=dtype)
+        self.ce_loss = LigerFusedLinearCrossEntropyLoss(ignore_index=ignore_index, reduction='mean')
 
     def forward(self, x, y):
         return self.ce_loss(self.lin.weight, x, y)
@@ -57,29 +47,29 @@ def test_memory(func, _iter):
     return sum(total_mem) / len(total_mem)
 
 
-@triton.testing.perf_report(
-    [
-        triton.testing.Benchmark(
-            x_names=["BT"],
-            x_vals=[2**i for i in range(10, 13)], # 1024, 2048, 4096
-            xlabel="B x T",
-            line_arg="provider",
-            line_vals=["liger", "huggingface"],
-            line_names=["Liger", "Hugging Face"],
-            styles=[
-                ("blue", "solid"),
-                ("orange", "solid"),
-            ],
-            ylabel="GPU memory usage (MB)",
-            plot_name="fused-linear-cross-entropy-memory-benchmark",
-            args={"H": 4096, "V": 128256, "dtype": torch.float32},
-        )
-    ]
-)
-def bench_memory_cross_entropy(BT, H, V, provider, dtype, device="mlu"):
-    print(
-        f"Running benchmark with BT={BT}, H={H}, V={V}, dtype={dtype} provider={provider}"
+@triton.testing.perf_report([
+    triton.testing.Benchmark(
+        x_names=['BT'],
+        x_vals=[2**i for i in range(10, 13)],  # 1024, 2048, 4096
+        xlabel='B x T',
+        line_arg='provider',
+        line_vals=['liger', 'huggingface'],
+        line_names=['Liger', 'Hugging Face'],
+        styles=[
+            ('blue', 'solid'),
+            ('orange', 'solid'),
+        ],
+        ylabel='GPU memory usage (MB)',
+        plot_name='fused-linear-cross-entropy-memory-benchmark',
+        args={
+            'H': 4096,
+            'V': 128256,
+            'dtype': torch.float32
+        },
     )
+])
+def bench_memory_cross_entropy(BT, H, V, provider, dtype, device='mlu'):
+    print(f"Running benchmark with BT={BT}, H={H}, V={V}, dtype={dtype} provider={provider}")
     torch_lm_head_ce = TorchLMHeadCE(H=H, V=V, dtype=dtype).to(device)
     liger_lm_head_ce = LigerLMHeadCE(H=H, V=V, dtype=dtype).to(device)
 
@@ -87,9 +77,9 @@ def bench_memory_cross_entropy(BT, H, V, provider, dtype, device="mlu"):
     target = torch.randint(V, (BT, 1), dtype=torch.long, device=device).squeeze(1)
 
     def fwd():
-        if provider == "liger":
+        if provider == 'liger':
             return liger_lm_head_ce(_input, target)
-        elif provider == "huggingface":
+        elif provider == 'huggingface':
             return torch_lm_head_ce(_input, target)
 
     def full():
@@ -99,29 +89,30 @@ def bench_memory_cross_entropy(BT, H, V, provider, dtype, device="mlu"):
     mem = test_memory(full, _iter=10, provider=provider)
     return mem
 
-@triton.testing.perf_report(
-    [
-        triton.testing.Benchmark(
-            x_names=["BT"],
-            x_vals=[2**i for i in range(10, 13)], # 1024, 2048, 4096
-            xlabel="B x T",
-            line_arg="provider",
-            line_vals=["liger", "huggingface"],
-            line_names=["Liger", "Hugging Face"],
-            styles=[
-                ("blue", "solid"),
-                ("orange", "solid"),
-            ],
-            ylabel="Time (ms)",
-            plot_name="fused-linear-cross-entropy-speed-benchmark",
-            args={"H": 4096, "V": 128256, "dtype": torch.float32},
-        )
-    ]
-)
-def bench_speed_cross_entropy(BT, H, V, provider, dtype, device="mlu"):
-    print(
-        f"Running benchmark with BT={BT}, H={H}, V={V}, dtype={dtype} provider={provider}"
+
+@triton.testing.perf_report([
+    triton.testing.Benchmark(
+        x_names=['BT'],
+        x_vals=[2**i for i in range(10, 13)],  # 1024, 2048, 4096
+        xlabel='B x T',
+        line_arg='provider',
+        line_vals=['liger', 'huggingface'],
+        line_names=['Liger', 'Hugging Face'],
+        styles=[
+            ('blue', 'solid'),
+            ('orange', 'solid'),
+        ],
+        ylabel='Time (ms)',
+        plot_name='fused-linear-cross-entropy-speed-benchmark',
+        args={
+            'H': 4096,
+            'V': 128256,
+            'dtype': torch.float32
+        },
     )
+])
+def bench_speed_cross_entropy(BT, H, V, provider, dtype, device='mlu'):
+    print(f"Running benchmark with BT={BT}, H={H}, V={V}, dtype={dtype} provider={provider}")
     torch_lm_head_ce = TorchLMHeadCE(H=H, V=V, dtype=dtype).to(device)
     liger_lm_head_ce = LigerLMHeadCE(H=H, V=V, dtype=dtype).to(device)
 
@@ -129,9 +120,9 @@ def bench_speed_cross_entropy(BT, H, V, provider, dtype, device="mlu"):
     target = torch.randint(V, (BT, 1), dtype=torch.long, device=device).squeeze(1)
 
     def fwd():
-        if provider == "liger":
+        if provider == 'liger':
             return liger_lm_head_ce(_input, target)
-        elif provider == "huggingface":
+        elif provider == 'huggingface':
             return torch_lm_head_ce(_input, target)
 
     def full():

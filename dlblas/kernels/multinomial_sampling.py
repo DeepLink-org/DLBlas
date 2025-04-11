@@ -2,6 +2,7 @@
 import torch
 import triton
 import triton.language as tl
+
 from dlblas.utils.device_utils import is_mlu_592
 
 
@@ -9,9 +10,7 @@ def get_autotune_config():
     if is_mlu_592():
         return [triton.Config({}, num_stages=s, num_warps=w) for s in [1] for w in [4]]
     else:
-        return [
-            triton.Config({}, num_stages=s, num_warps=w) for s in [1, 2, 3] for w in [8]
-        ]
+        return [triton.Config({}, num_stages=s, num_warps=w) for s in [1, 2, 3] for w in [8]]
 
 
 @triton.jit
@@ -50,7 +49,7 @@ def _multinomial_sampling_kernel(
     offset = tl.load(Offsets + off, mask=off_mask, other=0.0).to(tl.int32)
 
     samp = tl.rand(seed, offset)[:, None]
-    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    acc = tl.zeros((BLOCK, ), dtype=tl.float32)
     output = tl.load(Indices + off * stride_ib, mask=off_mask, other=0.0)
 
     for b_idx in range(0, num_tokens, BLOCK_N):

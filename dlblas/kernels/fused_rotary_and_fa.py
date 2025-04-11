@@ -1,17 +1,18 @@
 import math
+
 import torch
 import triton
 import triton.language as tl
-from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
-from dlblas.utils.device_utils import is_muxi, is_cuda
 
-if triton.__version__ >= "3.0.0":
+from dlblas.utils import ChoiceSpace, SymVar, Tensor, register_dlblas_op
+from dlblas.utils.device_utils import is_cuda, is_muxi
+
+if triton.__version__ >= '3.0.0':
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
     from triton.language.extra.cuda.libdevice import fast_logf as tl_log
 else:
     from triton.language.math import fast_expf as tl_exp
     from triton.language.math import fast_logf as tl_log
-
 
 MUXI_CUDA = is_muxi() or is_cuda()
 if MUXI_CUDA:
@@ -19,22 +20,20 @@ if MUXI_CUDA:
 else:
     device_dtype = tl.float16
 
+
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
-        for BM in [128, 256]
-        for BN in [32, 64]
-        for s in [2]
-        for w in [4]
+        triton.Config({
+            'BLOCK_M': BM,
+            'BLOCK_N': BN
+        }, num_stages=s, num_warps=w) for BM in [128, 256] for BN in [32, 64] for s in [2] for w in [4]
     ],
-    key=["seqlen_q", "seqlen_k", "seqlen_q_rounded"],
+    key=['seqlen_q', 'seqlen_k', 'seqlen_q_rounded'],
 )
-@triton.heuristics(
-    {
-        "EVEN_M": lambda args: args["seqlen_q"] % args["BLOCK_M"] == 0,
-        "EVEN_N": lambda args: args["seqlen_k"] % args["BLOCK_N"] == 0,
-    }
-)
+@triton.heuristics({
+    'EVEN_M': lambda args: args['seqlen_q'] % args['BLOCK_M'] == 0,
+    'EVEN_N': lambda args: args['seqlen_k'] % args['BLOCK_N'] == 0,
+})
 @triton.jit
 def _fwd_kernel(
     Q,
@@ -104,19 +103,14 @@ def _fwd_kernel(
     cos_off_k = COS + off_b * stride_cs_b + (offs_n[:, None] * stride_cs_s)
     sin_off_k = SIN + off_b * stride_cs_b + (offs_n[:, None] * stride_cs_s)
 
-    if BIAS_TYPE == "vector":
+    if BIAS_TYPE == 'vector':
         b_ptrs = Bias + off_b * stride_bb + off_h * stride_bh + offs_n
-    elif BIAS_TYPE == "matrix":
-        b_ptrs = (
-            Bias
-            + off_b * stride_bb
-            + off_h * stride_bh
-            + (offs_m[:, None] * stride_bm + offs_n[None, :])
-        )
+    elif BIAS_TYPE == 'matrix':
+        b_ptrs = (Bias + off_b * stride_bb + off_h * stride_bh + (offs_m[:, None] * stride_bm + offs_n[None, :]))
     # initialize pointer to m and l
     t_ptrs = TMP + off_hb * seqlen_q_rounded + offs_m
-    lse_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    lse_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     acc_o0 = tl.zeros([BLOCK_M, half_head_dim], dtype=device_dtype)
     acc_o1 = tl.zeros([BLOCK_M, half_head_dim], dtype=device_dtype)
     # load q: it will stay in SRAM throughout
@@ -193,23 +187,19 @@ def _fwd_kernel(
         if not EVEN_N:
             # Need to mask out otherwise the softmax is wrong;
             # seems ok
-            qk += tl.where((start_n + offs_n)[None, :] < seqlen_k, 0, float("-inf"))
+            qk += tl.where((start_n + offs_n)[None, :] < seqlen_k, 0, float('-inf'))
 
         if IS_CAUSAL:
-            qk += tl.where(
-                offs_m[:, None] >= (start_n + offs_n)[None, :], 0, float("-inf")
-            )
+            qk += tl.where(offs_m[:, None] >= (start_n + offs_n)[None, :], 0, float('-inf'))
 
-        if BIAS_TYPE != "none":
-            if BIAS_TYPE == "vector":
+        if BIAS_TYPE != 'none':
+            if BIAS_TYPE == 'vector':
                 if EVEN_N:
                     bias = tl.load(b_ptrs + start_n).to(tl.float32)
                 else:
-                    bias = tl.load(
-                        b_ptrs + start_n, mask=(start_n + offs_n) < seqlen_k, other=0.0
-                    ).to(tl.float32)
+                    bias = tl.load(b_ptrs + start_n, mask=(start_n + offs_n) < seqlen_k, other=0.0).to(tl.float32)
                 bias = bias[None, :]
-            elif BIAS_TYPE == "matrix":
+            elif BIAS_TYPE == 'matrix':
                 if EVEN_M & EVEN_N:
                     bias = tl.load(b_ptrs + start_n).to(tl.float32)
                 else:
@@ -240,9 +230,7 @@ def _fwd_kernel(
         acc_o1 = acc_o1 * acc_o_scale[:, None]
 
         # update acc_o
-        if (
-            EVEN_N & EVEN_M
-        ):  # If we just do "if EVEN_N", there seems to be some race condition
+        if (EVEN_N & EVEN_M):  # If we just do "if EVEN_N", there seems to be some race condition
             v0 = tl.load(v_off + offs_d0[None, :] + start_n * stride_vn)
         else:
             v0 = tl.load(
@@ -253,9 +241,7 @@ def _fwd_kernel(
         p = p.to(v0.dtype)
         acc_o0 += tl.dot(p, v0, out_dtype=device_dtype)
 
-        if (
-            EVEN_N & EVEN_M
-        ):  # If we just do "if EVEN_N", there seems to be some race condition
+        if (EVEN_N & EVEN_M):  # If we just do "if EVEN_N", there seems to be some race condition
             v1 = tl.load(v_off + offs_d1[None, :] + start_n * stride_vn)
         else:
             v1 = tl.load(
@@ -284,9 +270,7 @@ def _fwd_kernel(
     tl.store(lse_ptrs, lse_i)
     # initialize pointers to output
 
-    out_off = (
-        Out + off_b * stride_ob + off_h * stride_oh + (offs_m[:, None] * stride_om)
-    )
+    out_off = (Out + off_b * stride_ob + off_h * stride_oh + (offs_m[:, None] * stride_om))
     if EVEN_M:
         tl.store(out_off + offs_d0[None, :], acc_o0)
         tl.store(out_off + offs_d1[None, :], acc_o1)
@@ -302,14 +286,14 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
     assert cos.shape == sin.shape
     assert k.shape == (batch, seqlen_k, nheads, d)
     assert v.shape == (batch, seqlen_k, nheads, d)
-    assert d <= 128, "FlashAttention only support head dimensions up to 128"
-    assert q.dtype == k.dtype == v.dtype, "All tensors must have the same type"
-    assert q.dtype in [torch.float16, torch.bfloat16, torch.float32], "Only support fp16, bf16 and fp32"
+    assert d <= 128, 'FlashAttention only support head dimensions up to 128'
+    assert q.dtype == k.dtype == v.dtype, 'All tensors must have the same type'
+    assert q.dtype in [torch.float16, torch.bfloat16, torch.float32], 'Only support fp16, bf16 and fp32'
     assert q.is_cuda and k.is_cuda and v.is_cuda
     softmax_scale = softmax_scale or 1.0 / math.sqrt(d)
 
     has_bias = bias is not None
-    bias_type = "none"
+    bias_type = 'none'
     if has_bias:
         assert bias.dtype in [q.dtype, torch.float]
         assert bias.is_cuda
@@ -317,32 +301,24 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
         if bias.stride(-1) != 1:
             bias = bias.contiguous()
         if bias.shape[2:] == (1, seqlen_k):
-            bias_type = "vector"
+            bias_type = 'vector'
         elif bias.shape[2:] == (seqlen_q, seqlen_k):
-            bias_type = "matrix"
+            bias_type = 'matrix'
         else:
-            raise RuntimeError(
-                "Last 2 dimensions of bias must be (1, seqlen_k)"
-                " or (seqlen_q, seqlen_k)"
-            )
+            raise RuntimeError('Last 2 dimensions of bias must be (1, seqlen_k)'
+                               ' or (seqlen_q, seqlen_k)')
         bias = bias.expand(batch, nheads, seqlen_q, seqlen_k)
-    bias_strides = (
-        (bias.stride(0), bias.stride(1), bias.stride(2)) if has_bias else (0, 0, 0)
-    )
+    bias_strides = ((bias.stride(0), bias.stride(1), bias.stride(2)) if has_bias else (0, 0, 0))
 
     seqlen_q_rounded = math.ceil(seqlen_q / 128) * 128
-    lse = torch.empty(
-        (batch, nheads, seqlen_q_rounded), device=q.device, dtype=torch.float32
-    )
-    tmp = torch.empty(
-        (batch, nheads, seqlen_q_rounded), device=q.device, dtype=torch.float32
-    )
+    lse = torch.empty((batch, nheads, seqlen_q_rounded), device=q.device, dtype=torch.float32)
+    tmp = torch.empty((batch, nheads, seqlen_q_rounded), device=q.device, dtype=torch.float32)
     o = torch.empty_like(q)
 
     BLOCK_HEADDIM = max(triton.next_power_of_2(d), 16)
     BLOCK = 128
     num_warps = 4 if d <= 64 else 8
-    grid = lambda META: (batch * nheads, triton.cdiv(seqlen_q, META["BLOCK_M"]))
+    grid = lambda META: (batch * nheads, triton.cdiv(seqlen_q, META['BLOCK_M']))
 
     _fwd_kernel[grid](
         q,
@@ -389,6 +365,7 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
 
 
 class FusedRotaryAndFA(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, q, k, v, cos, sin):
         o, lse, softmax_scale = _flash_attn_forward(q, k, v, cos, sin)
@@ -406,10 +383,10 @@ def bench_fn(q, k, v, cos, sin):
 
 
 # register
-name = "fused_rotary_and_fa"
+name = 'fused_rotary_and_fa'
 for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-    for device_ in ["cuda"]:
-        b, s, h, d = SymVar("b"), SymVar("s"), SymVar("h"), SymVar("d")
+    for device_ in ['cuda']:
+        b, s, h, d = SymVar('b'), SymVar('s'), SymVar('h'), SymVar('d')
         # we dont' actually allocate tensor
         q = Tensor((b, s, h, d), dtype=dtype, device=device_)
         k = Tensor((b, s, h, d), dtype=dtype, device=device_)

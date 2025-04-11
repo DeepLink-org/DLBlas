@@ -1,22 +1,22 @@
 import time
 from typing import List
+
 import torch
+import torch.nn.functional as F
 import torch_mlu
+import triton
+from functorch.compile import aot_function, aot_module, make_boxed_func
+from torch import nn
+from torch._dynamo.backends.common import aot_autograd
+from torch.profiler import ProfilerActivity, profile, record_function
 from torch_mlu.utils.model_transfer import transfer
 
-from torch import nn
-import torch.nn.functional as F
-from torch.profiler import profile, record_function, ProfilerActivity
-import triton
 import dlblas
 from dlblas.utils.device_utils import get_idle_device
 
-from functorch.compile import aot_module, make_boxed_func, aot_function
-from torch._dynamo.backends.common import aot_autograd
-
 
 def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
-    print(">>> my_compiler() invoked:")
+    print('>>> my_compiler() invoked:')
     # print(">>> FX graph:")
     # gm.graph.print_tabular()
     print(f">>> Code:\n{gm.code}")
@@ -25,9 +25,10 @@ def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
+
 
 def _rotate_half(x: torch.Tensor, rotary_interleaved: bool) -> torch.Tensor:
     """Change sign so the last dimension becomes [-odd, +even]
@@ -47,7 +48,11 @@ def _rotate_half(x: torch.Tensor, rotary_interleaved: bool) -> torch.Tensor:
         x_new = torch.stack((-x2, x1), dim=-1)
         return x_new.view(x_new.shape[0], x_new.shape[1], x_new.shape[2], -1)
 
-def apply_rotary_pos_emb_bshd(t: torch.Tensor, cos_: torch.Tensor,sin_:torch.Tensor, rotary_interleaved: bool = False) -> torch.Tensor:  
+
+def apply_rotary_pos_emb_bshd(t: torch.Tensor,
+                              cos_: torch.Tensor,
+                              sin_: torch.Tensor,
+                              rotary_interleaved: bool = False) -> torch.Tensor:
     rot_dim = cos_.shape[-1]
 
     # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
@@ -56,6 +61,8 @@ def apply_rotary_pos_emb_bshd(t: torch.Tensor, cos_: torch.Tensor,sin_:torch.Ten
     t = (t * cos_) + (_rotate_half(t, rotary_interleaved) * sin_)
     #return torch.cat((t, t_pass), dim=-1)
     return t
+
+
 my_aot_backend = aot_autograd(fw_compiler=my_compiler)
 
 
@@ -137,7 +144,6 @@ def partial_rotary_emb(q, k_pe, k_nope, cos, sin):
     q_out = q_out.transpose(1, 2)
     k_out = k.transpose(1, 2)
 
-
     return q_out, k_out
 
 
@@ -213,14 +219,14 @@ class ApplyRotaryEmb(torch.autograd.Function):
 
 
 def rotary_bwd(q_pe, do_q, cos, sin):
-    do0 = do_q[..., : do_q.shape[-1] // 2]
-    do1 = do_q[..., do_q.shape[-1] // 2 :]
-    x0 = q_pe[..., : q_pe.shape[-1] // 2]
-    x1 = q_pe[..., q_pe.shape[-1] // 2 :]
-    cos0 = cos[:, :, :, : cos.shape[-1] // 2]
-    cos1 = cos[:, :, :, cos.shape[-1] // 2 :]
-    sin0 = sin[:, :, :, : sin.shape[-1] // 2]
-    sin1 = sin[:, :, :, sin.shape[-1] // 2 :]
+    do0 = do_q[..., :do_q.shape[-1] // 2]
+    do1 = do_q[..., do_q.shape[-1] // 2:]
+    x0 = q_pe[..., :q_pe.shape[-1] // 2]
+    x1 = q_pe[..., q_pe.shape[-1] // 2:]
+    cos0 = cos[:, :, :, :cos.shape[-1] // 2]
+    cos1 = cos[:, :, :, cos.shape[-1] // 2:]
+    sin0 = sin[:, :, :, :sin.shape[-1] // 2]
+    sin1 = sin[:, :, :, sin.shape[-1] // 2:]
     dx_q_0 = do1 * sin1 + do0 * cos0
     dx_q_1 = do1 * cos1 - do0 * sin0
     dx_q = torch.concat((dx_q_0, dx_q_1), dim=-1)
@@ -248,12 +254,8 @@ def test():
     rope_head_dim = 64
     q_head_dim = nope_head_dim + rope_head_dim
     bsz, q_len = 1, 4096
-    q = torch.randn(
-        (bsz, q_len, num_heads, q_head_dim), dtype=torch.bfloat16, device=device_
-    )
-    k_pe = torch.randn(
-        (bsz, q_len, 1, rope_head_dim), dtype=torch.bfloat16, device=device_
-    )
+    q = torch.randn((bsz, q_len, num_heads, q_head_dim), dtype=torch.bfloat16, device=device_)
+    k_pe = torch.randn((bsz, q_len, 1, rope_head_dim), dtype=torch.bfloat16, device=device_)
     k_nope = torch.randn(
         (bsz, q_len, num_heads, nope_head_dim),
         dtype=torch.bfloat16,
@@ -295,7 +297,7 @@ def test():
     #     q_test, k_pe_test, k_nope_test, cos_test, sin_test
     # )
     # assert torch.allclose(out_q, out_q_test)
-    # assert torch.allclose(out_k, out_k_test)   
+    # assert torch.allclose(out_k, out_k_test)
     # # loss_test = torch.sum(torch.mean(out_q_test) * torch.mean(out_kv_test))
     # # loss_test.backward(retain_graph=True)
     # assert torch.allclose(q.grad, q_test.grad)
@@ -316,7 +318,6 @@ def test():
     assert torch.allclose(q.grad, q_tri.grad)
     assert torch.allclose(k_pe.grad, k_pe_tri.grad)
     assert torch.allclose(k_nope.grad, k_nope_tri.grad)
-
 
     # if False:
     #     with profile(
@@ -347,42 +348,38 @@ def test():
     configs = []
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd", "bwd"],
-            line_arg="provider",
-            line_vals=["triton", "pytorch"],
-            line_names=["Triton", "PyTorch"],
+            x_names=['op'],
+            x_vals=['fwd', 'bwd'],
+            line_arg='provider',
+            line_vals=['triton', 'pytorch'],
+            line_names=['Triton', 'PyTorch'],
             #line_vals=["pytorch"],
             #line_names=["PyTorch"],
-            ylabel="ms",
-            plot_name=f"fused_partial_mla(batchSize={bsz}, seqlen:{q_len}, num_heads:{num_heads}, nope_head_dim:{nope_head_dim}, rope_head_dim:{rope_head_dim})",
-            args={"SeqLen": q_len},
-        )
-    )
+            ylabel='ms',
+            plot_name=
+            f"fused_partial_mla(batchSize={bsz}, seqlen:{q_len}, num_heads:{num_heads}, nope_head_dim:{nope_head_dim}, rope_head_dim:{rope_head_dim})",
+            args={'SeqLen': q_len},
+        ))
 
     @triton.testing.perf_report(configs)
     def bench_fn(SeqLen, op, provider, device=device_):
         warmup = 100
         rep = 200
 
-        if "triton" in provider:
-            if "fwd" == op:
-                fn = lambda: PartialRotaryEmb.apply(
-                    q_tri, k_pe_tri, k_nope_tri, cos, sin
-                )
-            elif "bwd" == op:
-                out_tri_q, out_tri_k = PartialRotaryEmb.apply(
-                    q_tri, k_pe_tri, k_nope_tri, cos, sin
-                )
+        if 'triton' in provider:
+            if 'fwd' == op:
+                fn = lambda: PartialRotaryEmb.apply(q_tri, k_pe_tri, k_nope_tri, cos, sin)
+            elif 'bwd' == op:
+                out_tri_q, out_tri_k = PartialRotaryEmb.apply(q_tri, k_pe_tri, k_nope_tri, cos, sin)
                 loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_k))
                 fn = lambda: loss_tri.backward(retain_graph=True)
             else:
                 raise Exception()
 
-        if "pytorch" in provider:
-            if "fwd" == op:
+        if 'pytorch' in provider:
+            if 'fwd' == op:
                 fn = lambda: partial_rotary_emb(q, k_pe, k_nope, cos, sin)
-            elif "bwd" == op:
+            elif 'bwd' == op:
                 out_q, out_k = partial_rotary_emb(q, k_pe, k_nope, cos, sin)
                 loss_torch = torch.sum(torch.mean(out_q) * torch.mean(out_k))
                 fn = lambda: loss_torch.backward(retain_graph=True)
@@ -394,6 +391,6 @@ def test():
     bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()
-    print("sucessfully!")
+    print('sucessfully!')

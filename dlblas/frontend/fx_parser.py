@@ -1,18 +1,17 @@
-import sys
-import textwrap
-
 import ast
 import importlib
 import inspect
+import sys
+import textwrap
+from argparse import ArgumentParser
 from collections import defaultdict
 from pathlib import Path
-from argparse import ArgumentParser
 '''
 this is meant to parse a fx_readable dump from torch.compile when TORCH_COMPILE_DEBUG=1
 
 note we also need to change 2 things
 
-1. import torch 
+1. import torch
 2. change the class name to a valid nn_module_name
 
 then this file can parse it
@@ -53,14 +52,9 @@ def parse_fx_readable(source_code):
             for arg_node in node.args.args:
                 if arg_node.annotation:
                     tensor_name = arg_node.arg
-                    dtype, shape = extract_shape_dtype(
-                        ast.get_source_segment(source_code,
-                                               arg_node.annotation))
+                    dtype, shape = extract_shape_dtype(ast.get_source_segment(source_code, arg_node.annotation))
                     if dtype and shape:
-                        tensor_info[tensor_name] = {
-                            'dtype': dtype,
-                            'shape': shape
-                        }
+                        tensor_info[tensor_name] = {'dtype': dtype, 'shape': shape}
 
         elif isinstance(node, ast.AnnAssign):
             # Handle a stmt
@@ -69,10 +63,7 @@ def parse_fx_readable(source_code):
             if isinstance(node.annotation, ast.Constant):
                 dtype, shape = extract_shape_dtype(node.annotation.s)
                 if dtype and shape:
-                    tensor_info[target_tensor_name] = {
-                        'dtype': dtype,
-                        'shape': shape
-                    }
+                    tensor_info[target_tensor_name] = {'dtype': dtype, 'shape': shape}
             else:
                 raise ValueError(f"Unsupported annotation: {node.annotation}")
 
@@ -98,29 +89,26 @@ def parse_fx_readable(source_code):
                 for arg in args:
                     assert isinstance(arg, ast.Name)
                 args_names = [arg.id for arg in args]
-                assert len(
-                    kwargs) == 0, f"Unexpected keyword arguments: {kwargs}"
+                assert len(kwargs) == 0, f"Unexpected keyword arguments: {kwargs}"
 
                 # store
-                op_info[op_names].append(
-                    (target_tensor_name, args_names, kwargs))
+                op_info[op_names].append((target_tensor_name, args_names, kwargs))
             else:
                 raise ValueError(f"Unsupported value: {node.value}")
 
     return tensor_info, op_info
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # command-line arguments
     parser = ArgumentParser()
     parser.add_argument(
-        "-p",
+        '-p',
         type=str,
-        default=
-        '/heguoliang/triton_deeplink/custom_bench/fx_graphs/fx_graph_readable.py',
+        default='/heguoliang/triton_deeplink/custom_bench/fx_graphs/fx_graph_readable.py',
     )
     parser.add_argument(
-        "-m",
+        '-m',
         type=str,
         default='g',
     )
@@ -129,8 +117,8 @@ if __name__ == "__main__":
     forward_src = dynamic_import_and_parse(args.p, args.m)
     tensor_info, op_info = parse_fx_readable(forward_src)
 
-    print("Tensor Information:")
+    print('Tensor Information:')
     print(tensor_info)
 
-    print("\nOperation Inputs:")
+    print('\nOperation Inputs:')
     print(op_info)

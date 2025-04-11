@@ -1,19 +1,14 @@
-import os
-import re
-import tempfile
-from enum import Enum, auto
-from typing import Union
-from dataclasses import dataclass, field, astuple
 from copy import deepcopy
+from dataclasses import astuple, dataclass, field
 
 from triton.runtime.autotuner import Config
 
-from dlblas.op_struct import OpImpl
+from dlblas.autotune.passes import analyse_kernel_call_pass, rewrite_dlblas_registration_pass
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.autotune.passes import rewrite_dlblas_registration_pass, analyse_kernel_call_pass
+from dlblas.op_struct import OpImpl
 '''
 The compiler dynamically parse and execute the kernel file as string,
-    this is because kernels defined under the kerenl/ folder have been `executed` 
+    this is because kernels defined under the kerenl/ folder have been `executed`
     it would have been easier to define kerenl as templates,
     dynamic parsing and execution `templatfy` the kernels
 '''
@@ -36,14 +31,11 @@ class Parser:
         elif isinstance(space, ChoiceSpace):
             first = space[0]
             assert isinstance(first, Config)
-            tunable_params = list(
-                first.kwargs.keys()) + ['num_warps', 'num_stages', 'num_ctas']
+            tunable_params = list(first.kwargs.keys()) + ['num_warps', 'num_stages', 'num_ctas']
         elif isinstance(space, DictSpace):
             tunable_params = list(space.params.keys())
         else:
-            raise TypeError(
-                f"space must be ChoiceSpace or DictSpace, but got {type(space)}"
-            )
+            raise TypeError(f"space must be ChoiceSpace or DictSpace, but got {type(space)}")
 
         self.tunable_params = set(tunable_params)
 

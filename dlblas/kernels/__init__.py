@@ -13,17 +13,13 @@ def import_all_modules_from_folder(folder_path):
 
     # Check if the provided path is a directory and exists
     if not os.path.isdir(folder_path):
-        raise NotADirectoryError(
-            f"The provided path '{folder_path}' is not a valid directory.")
+        raise NotADirectoryError(f"The provided path '{folder_path}' is not a valid directory.")
 
     # List all files in the directory
     files = os.listdir(folder_path)
 
     # Filter out only Python files (.py extension) and ignore __init__.py if present
-    python_files = [
-        file for file in files
-        if file.endswith('.py') and file != '__init__.py'
-    ]
+    python_files = [file for file in files if file.endswith('.py') and file != '__init__.py']
 
     # Import each Python file as a module
     for file in python_files:
@@ -31,8 +27,7 @@ def import_all_modules_from_folder(folder_path):
         module_name = file[:-3]
 
         # Use importlib.util.spec_from_file_location to create a spec for the module
-        spec = importlib.util.spec_from_file_location(
-            module_name, os.path.join(folder_path, file))
+        spec = importlib.util.spec_from_file_location(module_name, os.path.join(folder_path, file))
 
         # Create the module from the spec
         module = importlib.util.module_from_spec(spec)

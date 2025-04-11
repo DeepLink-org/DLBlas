@@ -1,6 +1,7 @@
-import pytest
 import torch
+
 from dlblas.kernels.grouped_gemm import grouped_gemm
+
 
 class TestGroupedGemm:
 
@@ -11,8 +12,6 @@ class TestGroupedGemm:
         group_k = [1024, 512, 256, 128]
         group_A = []
         group_B = []
-        group_As = []
-        group_Bs = []
         assert len(group_m) == len(group_n)
         assert len(group_n) == len(group_k)
         group_size = len(group_m)

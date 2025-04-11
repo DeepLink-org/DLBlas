@@ -9,12 +9,20 @@ def get_autotune_config():
     """get autotune config."""
     return [
         triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 128},
+            {
+                'BLOCK_SIZE_M': 64,
+                'BLOCK_SIZE_N': 256,
+                'BLOCK_SIZE_K': 128
+            },
             num_stages=4,
             num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 128},
+            {
+                'BLOCK_SIZE_M': 16,
+                'BLOCK_SIZE_N': 256,
+                'BLOCK_SIZE_K': 128
+            },
             num_stages=4,
             num_warps=4,
         ),
@@ -23,7 +31,7 @@ def get_autotune_config():
 
 @triton.autotune(
     configs=get_autotune_config(),
-    key=["N", "K"],
+    key=['N', 'K'],
 )
 @triton.jit
 def _fused_lora_kernel(
@@ -143,10 +151,7 @@ def fused_lora(
 
     def grid(META):
         ret = (
-            (
-                triton.cdiv(max_seqlen, META["BLOCK_SIZE_M"])
-                * triton.cdiv(N, META["BLOCK_SIZE_N"])
-            ),
+            (triton.cdiv(max_seqlen, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N'])),
             batch_size,
         )
         return ret

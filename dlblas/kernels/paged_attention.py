@@ -1,17 +1,18 @@
 # modify from: https://github.com/InternLM/lmdeploy/blob/v0.6.1/lmdeploy/pytorch/kernels/cuda/pagedattention.py
 import torch
-from torch import Tensor
 import triton
 import triton.language as tl
 from packaging import version
+from torch import Tensor
+
 from dlblas.utils import logger
 from dlblas.utils.device_utils import is_mlu_592
 
 TRITON_VERSION = version.parse(triton.__version__)
 
-assert TRITON_VERSION >= version.parse("2.1.0")
+assert TRITON_VERSION >= version.parse('2.1.0')
 
-if TRITON_VERSION >= version.parse("3.0.0"):
+if TRITON_VERSION >= version.parse('3.0.0'):
 
     @triton.jit
     def tanh(x):
@@ -30,16 +31,12 @@ def get_autotune_config():
     if is_mlu_592():
         return [triton.Config({}, num_stages=s, num_warps=w) for s in [2] for w in [4]]
     else:
-        return [
-            triton.Config({}, num_stages=s, num_warps=w)
-            for s in [2]
-            for w in [4, 8, 16]
-        ]
+        return [triton.Config({}, num_stages=s, num_warps=w) for s in [2] for w in [4, 8, 16]]
 
 
 @triton.autotune(
     configs=get_autotune_config(),
-    key=["BLOCK_H", "BLOCK_N", "BLOCK_DMODEL", "BLOCK_DV"],
+    key=['BLOCK_H', 'BLOCK_N', 'BLOCK_DMODEL', 'BLOCK_DV'],
 )
 @triton.jit
 def _fwd_grouped_split_kernel(
@@ -106,22 +103,10 @@ def _fwd_grouped_split_kernel(
     offs_dv = tl.arange(0, BLOCK_DV)
     mask_dv = offs_dv < head_size_v
     offs_dv = offs_dv % head_size_v
-    off_k = (
-        cur_kv_head * stride_kh
-        + offs_d[:, None] * stride_kd
-        + offs_n[None, :] * stride_kbs
-    )
-    off_v = (
-        cur_kv_head * stride_vh
-        + offs_dv[None, :] * stride_vd
-        + offs_n[:, None] * stride_vbs
-    )
+    off_k = (cur_kv_head * stride_kh + offs_d[:, None] * stride_kd + offs_n[None, :] * stride_kbs)
+    off_v = (cur_kv_head * stride_vh + offs_dv[None, :] * stride_vd + offs_n[:, None] * stride_vbs)
 
-    off_q = (
-        cur_batch * stride_qbs
-        + cur_head[:, None] * stride_qh
-        + offs_d[None, :] * stride_qd
-    )
+    off_q = (cur_batch * stride_qbs + cur_head[:, None] * stride_qh + offs_d[None, :] * stride_qd)
     q = tl.load(Q + off_q, mask=mask_h[:, None] & mask_d[None, :], other=0)
 
     k_ptrs = K + off_k
@@ -131,23 +116,15 @@ def _fwd_grouped_split_kernel(
         offs_d1 = BLOCK_DMODEL + tl.arange(0, BLOCK_DMODEL1)
         mask_d1 = offs_d1 < head_size
         offs_d1 = offs_d1 % head_size
-        off_q1 = (
-            cur_batch * stride_qbs
-            + cur_head[:, None] * stride_qh
-            + offs_d1[None, :] * stride_qd
-        )
+        off_q1 = (cur_batch * stride_qbs + cur_head[:, None] * stride_qh + offs_d1[None, :] * stride_qd)
         q1 = tl.load(Q + off_q1, mask=mask_h[:, None] & mask_d1[None, :], other=0)
-        off_k1 = (
-            cur_kv_head * stride_kh
-            + offs_d1[:, None] * stride_kd
-            + offs_n[None, :] * stride_kbs
-        )
+        off_k1 = (cur_kv_head * stride_kh + offs_d1[:, None] * stride_kd + offs_n[None, :] * stride_kbs)
         k1_ptrs = K + off_k1
 
     block_offset_ptrs = Block_offsets + cur_batch * stride_boffb
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_H], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_H], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_H], dtype=tl.float32)
     acc = tl.zeros([BLOCK_H, BLOCK_DV], dtype=tl.float32)
 
@@ -195,7 +172,7 @@ def _fwd_grouped_split_kernel(
             qk = tl.where(
                 qk_mask[None, :],
                 qk,
-                -float("inf"),
+                -float('inf'),
             )
 
         # -- compute p, m_i and l_i
@@ -216,20 +193,11 @@ def _fwd_grouped_split_kernel(
         m_i = m_i_new
 
     # initialize pointers to output
-    off_acc = (
-        cur_batch * stride_obs
-        + split_k_id * stride_ok
-        + cur_head[:, None] * stride_oh
-        + offs_dv[None, :] * stride_od
-    )
+    off_acc = (cur_batch * stride_obs + split_k_id * stride_ok + cur_head[:, None] * stride_oh +
+               offs_dv[None, :] * stride_od)
     tl.store(Acc_out + off_acc, acc, mask=mask_h[:, None] & mask_dv[None, :])
 
-    off_meta = (
-        cur_batch * stride_obs
-        + split_k_id * stride_ok
-        + cur_head * stride_oh
-        + head_size_v
-    )
+    off_meta = (cur_batch * stride_obs + split_k_id * stride_ok + cur_head * stride_oh + head_size_v)
     tl.store(Acc_out + off_meta, m_i, mask=mask_h)
     tl.store(Acc_out + off_meta + 1, l_i, mask=mask_h)
 
@@ -258,15 +226,9 @@ def _reduce_split_kernel(
     offs_k = tl.arange(0, SPLIT_K)
     mask_dv = offs_dv < head_size_v
 
-    offs_acc = (
-        cur_batch * stride_abs
-        + cur_head * stride_ah
-        + offs_k[:, None] * stride_ak
-        + offs_dv[None, :] * stride_ad
-    )
-    offs_mi = (
-        cur_batch * stride_abs + cur_head * stride_ah + stride_ak * offs_k + head_size_v
-    )
+    offs_acc = (cur_batch * stride_abs + cur_head * stride_ah + offs_k[:, None] * stride_ak +
+                offs_dv[None, :] * stride_ad)
+    offs_mi = (cur_batch * stride_abs + cur_head * stride_ah + stride_ak * offs_k + head_size_v)
 
     acc_k = tl.load(Acc + offs_acc, mask=mask_dv[None, :], other=0.0)
     m_k = tl.load(Acc + offs_mi)
@@ -378,25 +340,11 @@ def _fwd_kernel(
     mask_dv = offs_dv < head_size_v
     offs_dv = offs_dv % head_size_v
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    off_q = (
-        (q_start_loc + offs_m[:, None]) * stride_qbs
-        + cur_head * stride_qh
-        + offs_d[None, :] * stride_qd
-    )
-    off_k = (
-        cur_kv_head * stride_kh
-        + offs_d[:, None] * stride_kd
-        + offs_n[None, :] * stride_kbs
-    )
-    off_v = (
-        cur_kv_head * stride_vh
-        + offs_dv[None, :] * stride_vd
-        + offs_n[:, None] * stride_vbs
-    )
+    off_q = ((q_start_loc + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd)
+    off_k = (cur_kv_head * stride_kh + offs_d[:, None] * stride_kd + offs_n[None, :] * stride_kbs)
+    off_v = (cur_kv_head * stride_vh + offs_dv[None, :] * stride_vd + offs_n[:, None] * stride_vbs)
 
-    q = tl.load(
-        Q + off_q, mask=(offs_m[:, None] < q_seqlen) & mask_d[None, :], other=0.0
-    )
+    q = tl.load(Q + off_q, mask=(offs_m[:, None] < q_seqlen) & mask_d[None, :], other=0.0)
 
     k_ptrs = K + off_k
     v_ptrs = V + off_v
@@ -405,23 +353,15 @@ def _fwd_kernel(
         offs_d1 = BLOCK_DMODEL + tl.arange(0, BLOCK_DMODEL1)
         mask_d1 = offs_d1 < head_size
         offs_d1 = offs_d1 % head_size
-        off_q1 = (
-            (q_start_loc + offs_m[:, None]) * stride_qbs
-            + cur_head * stride_qh
-            + offs_d1[None, :] * stride_qd
-        )
+        off_q1 = ((q_start_loc + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d1[None, :] * stride_qd)
         q1 = tl.load(Q + off_q1, mask=(offs_m[:, None] < q_seqlen) & mask_d1, other=0.0)
-        off_k1 = (
-            cur_kv_head * stride_kh
-            + offs_d1[:, None] * stride_kd
-            + offs_n[None, :] * stride_kbs
-        )
+        off_k1 = (cur_kv_head * stride_kh + offs_d1[:, None] * stride_kd + offs_n[None, :] * stride_kbs)
         k1_ptrs = K + off_k1
 
     block_offset_ptrs = Block_offsets + cur_batch * stride_boffb
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DV], dtype=tl.float32)
 
@@ -480,11 +420,7 @@ def _fwd_kernel(
 
     acc = fast_dividef(acc, l_i[:, None])
     # initialize pointers to output
-    off_o = (
-        (q_start_loc + offs_m[:, None]) * stride_obs
-        + cur_head * stride_oh
-        + offs_dv[None, :] * stride_od
-    )
+    off_o = ((q_start_loc + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_dv[None, :] * stride_od)
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=(offs_m[:, None] < q_seqlen) & mask_dv[None, :])
 
@@ -550,11 +486,9 @@ def paged_attention_fwd(
     BLOCK = k.size(1)
     assert BLOCK >= 16
     if Lk > 512 and BLOCK > 32:
-        logger.warning(
-            f"`head_dim={Lk}` and `block_size={BLOCK}` "
-            "might leads to bad performance. "
-            "Please reduce `block_size`."
-        )
+        logger.warning(f"`head_dim={Lk}` and `block_size={BLOCK}` "
+                       'might leads to bad performance. '
+                       'Please reduce `block_size`.')
 
     is_decoding = q.shape[-3] == q_seqlens.size(0)
     if not is_decoding:

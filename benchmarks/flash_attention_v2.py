@@ -1,9 +1,10 @@
-import triton
-import dlblas
-from dlblas.utils.device_utils import get_idle_device, is_muxi, is_cuda
-from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 import torch
 import torch.nn.functional as F
+import triton
+
+import dlblas
+from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
+from dlblas.utils.device_utils import get_idle_device, is_cuda, is_muxi
 
 MUXI_CUDA = is_muxi() or is_cuda()
 
@@ -29,34 +30,33 @@ def test():
         value.permute(0, 2, 1, 3).cpu(),
     ).permute(0, 2, 1, 3)
 
-    print("TEST: ")
+    print('TEST: ')
     tt_out = tt_out.cpu()
-    print("max abs diff: ", torch.max(abs(tt_out - ref_out)))
+    print('max abs diff: ', torch.max(abs(tt_out - ref_out)))
     assert torch.allclose(tt_out, ref_out, atol=1e-2, rtol=0)
 
     configs = []
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd"],
-            line_arg="provider",
-            line_vals=["triton", "torch"],
-            line_names=["triton", "torch"],
-            ylabel="ms",
+            x_names=['op'],
+            x_vals=['fwd'],
+            line_arg='provider',
+            line_vals=['triton', 'torch'],
+            line_names=['triton', 'torch'],
+            ylabel='ms',
             plot_name=f"flashAttention(batchSize={1}, seqlen:{seq_len}, num_heads:{heads}, dim:{dim})",
-            args={"SeqLen": seq_len},
-        )
-    )
+            args={'SeqLen': seq_len},
+        ))
 
     @triton.testing.perf_report(configs)
     def bench_fn(SeqLen, op, provider, device=device_):
         warmup = 100
         rep = 200
 
-        if "triton" in provider:
+        if 'triton' in provider:
             fn = lambda: flash_attention_v2(query, key, value)
 
-        if "torch" in provider:
+        if 'torch' in provider:
             fn = lambda: F.scaled_dot_product_attention(
                 query.permute(0, 2, 1, 3).cpu(),
                 key.permute(0, 2, 1, 3).cpu(),
@@ -69,6 +69,6 @@ def test():
     bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()
-    print("sucessfully!")
+    print('sucessfully!')

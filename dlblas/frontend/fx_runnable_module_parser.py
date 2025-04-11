@@ -1,12 +1,11 @@
-import sys
-import textwrap
-
 import ast
 import importlib
 import inspect
+import sys
+import textwrap
+from argparse import ArgumentParser
 from collections import defaultdict
 from pathlib import Path
-from argparse import ArgumentParser
 
 import torch
 
@@ -36,8 +35,7 @@ def eval_expr(expr_node, tensor_dict):
         # Constant value
         return expr_node.value
     else:
-        raise NotImplementedError(
-            f"Expression type {type(expr_node)} not implemented")
+        raise NotImplementedError(f"Expression type {type(expr_node)} not implemented")
 
 
 # Define a function to execute assignments
@@ -47,21 +45,19 @@ def exec_assign(node, tensor_dict):
         if isinstance(target, ast.Name):
             tensor_dict[target.id] = value
         else:
-            raise NotImplementedError(
-                f"Assignment target {type(target)} not implemented")
+            raise NotImplementedError(f"Assignment target {type(target)} not implemented")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # command-line arguments
     parser = ArgumentParser()
     parser.add_argument(
-        "-p",
+        '-p',
         type=str,
-        default=
-        '/heguoliang/triton_deeplink/custom_bench/llama_fx/llama_fx_graph/prefill/module.py',
+        default='/heguoliang/triton_deeplink/custom_bench/llama_fx/llama_fx_graph/prefill/module.py',
     )
     parser.add_argument(
-        "-m",
+        '-m',
         type=str,
         default='cddb4645ik6eir7vfcqcgsfyc3fm2imkftwug55kk2pmqzxkowk6',
     )

@@ -5,8 +5,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _rearange_all_gather_kernel(X, StartLoc, SeqLen, AdapterIds, Ranks, Out,
-                                stride_x, stride_o, world_size,
+def _rearange_all_gather_kernel(X, StartLoc, SeqLen, AdapterIds, Ranks, Out, stride_x, stride_o, world_size,
                                 BLOCK: tl.constexpr, BLOCK_P: tl.constexpr):
     """rearange all gather kernel."""
     batch_id = tl.program_id(0)
@@ -39,10 +38,8 @@ def _rearange_all_gather_kernel(X, StartLoc, SeqLen, AdapterIds, Ranks, Out,
 
 
 @triton.jit
-def _rearange_all_gather_decoding_kernel(X, AdapterIds, Ranks, Out, stride_x,
-                                         stride_o, world_size, seq_len,
-                                         BLOCK: tl.constexpr,
-                                         BLOCK_P: tl.constexpr):
+def _rearange_all_gather_decoding_kernel(X, AdapterIds, Ranks, Out, stride_x, stride_o, world_size, seq_len,
+                                         BLOCK: tl.constexpr, BLOCK_P: tl.constexpr):
     """rearange all gather kernel."""
     block_id = tl.program_id(0)
     block_off = block_id * BLOCK + tl.arange(0, BLOCK)

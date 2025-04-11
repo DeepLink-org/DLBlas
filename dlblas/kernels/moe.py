@@ -363,6 +363,7 @@ def silu_and_mul_triton_kernel(
             silu_mul_output = silu_mul_output.to(OutDtype)
             tl.store(down_input_ptr + offset, silu_mul_output, mask=mask)
 
+
 def renormalize(topk_weights: torch.Tensor, renormalize: bool):
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
@@ -471,4 +472,3 @@ def quant_fp8(A: torch.Tensor, group_size: int, dtype: torch.dtype = torch.float
     out = torch.empty_like(A, dtype=dtype)
     scales = A.new_empty(M, num_groups, dtype=torch.float32)
     return _quant_fp8_launcher(A, group_size, out, scales)
-

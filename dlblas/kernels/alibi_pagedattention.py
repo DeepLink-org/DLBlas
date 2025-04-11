@@ -1,10 +1,11 @@
 # modify from: https://github.com/InternLM/lmdeploy
 import math
+
 import torch
 import triton
 import triton.language as tl
-from dlblas.utils import register_dlblas_op, SymVar, Tensor
 
+from dlblas.utils import SymVar, Tensor, register_dlblas_op
 
 LOG2 = math.log(2)
 
@@ -43,24 +44,16 @@ def get_slope(i, n):
     if i < closest_power_of_2:
         return _get_interleave_power_of_2(i, closest_power_of_2)
     else:
-        return _get_interleave_power_of_2(
-            (i - closest_power_of_2) * 2, 2 * closest_power_of_2
-        )
+        return _get_interleave_power_of_2((i - closest_power_of_2) * 2, 2 * closest_power_of_2)
 
 
 @triton.jit
-def _load_block_offsets(
-    offset_ptr, block_id, num_sub_blocks: tl.constexpr, BLOCK: tl.constexpr
-):
+def _load_block_offsets(offset_ptr, block_id, num_sub_blocks: tl.constexpr, BLOCK: tl.constexpr):
     if num_sub_blocks > 1:
         offs_sub = tl.arange(0, num_sub_blocks)
         offs_n = tl.arange(0, BLOCK // num_sub_blocks)
-        ret = (
-            tl.load(offset_ptr + block_id * num_sub_blocks + offs_sub)[None, :]
-            * BLOCK
-            // num_sub_blocks
-            + offs_n[:, None]
-        )
+        ret = (tl.load(offset_ptr + block_id * num_sub_blocks + offs_sub)[None, :] * BLOCK // num_sub_blocks +
+               offs_n[:, None])
         return tl.ravel(ret)
     else:
         offs_n = tl.arange(0, BLOCK)
@@ -123,12 +116,10 @@ def _fwd_split_kernel(
     v_ptrs = V + off_v
 
     block_offset_ptrs = Block_offsets + cur_batch * stride_boffb
-    head_slope = get_slope(
-        cur_head.to(tl.float32) + head_offset, num_heads.to(tl.float32)
-    )
+    head_slope = get_slope(cur_head.to(tl.float32) + head_offset, num_heads.to(tl.float32))
 
     # initialize pointer to m and l
-    m_i = -float("inf")
+    m_i = -float('inf')
     l_i = float(0)
     acc = tl.zeros([BLOCK_DMODEL], dtype=tl.float32)
 
@@ -138,9 +129,7 @@ def _fwd_split_kernel(
 
     # load block offset
     start_block_id = loop_start // BLOCK_N
-    b_offset = _load_block_offsets(
-        block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N
-    )
+    b_offset = _load_block_offsets(block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N)
 
     for start_n in range(loop_start, loop_end, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
@@ -163,9 +152,7 @@ def _fwd_split_kernel(
         # prefetch b_offset
         if start_n + BLOCK_N < loop_end:
             start_block_id += 1
-            b_offset = _load_block_offsets(
-                block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N
-            )
+            b_offset = _load_block_offsets(block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N)
 
         qk = tl.sum(q[None, :] * k, 1)
         qk *= sm_scale
@@ -178,7 +165,7 @@ def _fwd_split_kernel(
         qk = tl.where(
             history_len >= (start_n + offs_n),
             qk,
-            -float("inf"),
+            -float('inf'),
         )
 
         # -- compute p, m_i and l_i
@@ -199,20 +186,10 @@ def _fwd_split_kernel(
         m_i = m_i_new
 
     # initialize pointers to output
-    off_acc = (
-        cur_batch * stride_obs
-        + split_k_id * stride_ok
-        + cur_head * stride_oh
-        + offs_d * stride_od
-    )
+    off_acc = (cur_batch * stride_obs + split_k_id * stride_ok + cur_head * stride_oh + offs_d * stride_od)
     tl.store(Acc_out + off_acc, acc)
 
-    off_meta = (
-        cur_batch * stride_obs
-        + split_k_id * stride_ok
-        + cur_head * stride_oh
-        + BLOCK_DMODEL
-    )
+    off_meta = (cur_batch * stride_obs + split_k_id * stride_ok + cur_head * stride_oh + BLOCK_DMODEL)
     tl.store(Acc_out + off_meta + tl.arange(0, 1), m_i)
     tl.store(Acc_out + off_meta + 1 + tl.arange(0, 1), l_i)
 
@@ -239,18 +216,9 @@ def _reduce_split_kernel(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_k = tl.arange(0, SPLIT_K)
 
-    offs_acc = (
-        cur_batch * stride_abs
-        + cur_head * stride_ah
-        + offs_k[:, None] * stride_ak
-        + offs_d[None, :] * stride_ad
-    )
-    offs_mi = (
-        cur_batch * stride_abs
-        + cur_head * stride_ah
-        + stride_ak * offs_k
-        + BLOCK_DMODEL
-    )
+    offs_acc = (cur_batch * stride_abs + cur_head * stride_ah + offs_k[:, None] * stride_ak +
+                offs_d[None, :] * stride_ad)
+    offs_mi = (cur_batch * stride_abs + cur_head * stride_ah + stride_ak * offs_k + BLOCK_DMODEL)
 
     acc_k = tl.load(Acc + offs_acc)
     m_k = tl.load(Acc + offs_mi)
@@ -315,19 +283,14 @@ def _fwd_kernel(
     history_len = cur_batch_kv_len - cur_batch_seq_len
 
     block_start_loc = BLOCK_M * start_m
-    head_slope = get_slope(
-        cur_head.to(tl.float32) + head_offset, num_heads.to(tl.float32)
-    )
+    head_slope = get_slope(cur_head.to(tl.float32) + head_offset, num_heads.to(tl.float32))
 
     # initialize offsets
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    off_q = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs
-        + cur_head * stride_qh
-        + offs_d[None, :] * stride_qd
-    )
+    off_q = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh +
+             offs_d[None, :] * stride_qd)
     off_k = cur_kv_head * stride_kh + offs_d[:, None] * stride_kd
     off_v = cur_kv_head * stride_vh + offs_d[None, :] * stride_vd
 
@@ -339,7 +302,7 @@ def _fwd_kernel(
     block_offset_ptrs = Block_offsets + cur_batch * stride_boffb
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -363,9 +326,7 @@ def _fwd_kernel(
         )
         if start_n + BLOCK_N < cur_batch_kv_len:
             start_block_id = start_n // BLOCK_N + 1
-            b_offset = _load_block_offsets(
-                block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N
-            )
+            b_offset = _load_block_offsets(block_offset_ptrs, start_block_id, num_sub_blocks, BLOCK_N)
 
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, k)
@@ -400,11 +361,8 @@ def _fwd_kernel(
 
     acc = acc / l_i[:, None]
     # initialize pointers to output
-    off_o = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
-        + cur_head * stride_oh
-        + offs_d[None, :] * stride_od
-    )
+    off_o = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh +
+             offs_d[None, :] * stride_od)
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
 
@@ -441,7 +399,7 @@ def alibi_paged_attention_fwd(
             tensor parallel inference.
         BLOCK (int): The kernel block size.
     """
-    assert triton.__version__ >= "3.0.0"
+    assert triton.__version__ >= '3.0.0'
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
     assert Lq == Lk and Lk == Lv

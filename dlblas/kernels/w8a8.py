@@ -35,15 +35,11 @@ def per_channel_quant(x, n_bits, dtype):
         triton.Config({
             'BLOCK_N': 64,
             'BLOCK_K': 128,
-        },
-                      num_stages=4,
-                      num_warps=4),
+        }, num_stages=4, num_warps=4),
         triton.Config({
             'BLOCK_N': 128,
             'BLOCK_K': 128,
-        },
-                      num_stages=4,
-                      num_warps=4)
+        }, num_stages=4, num_warps=4)
     ],
     key=['N', 'K'],
 )
@@ -117,15 +113,11 @@ def _linear(
         triton.Config({
             'BLOCK_N': 64,
             'BLOCK_K': 128,
-        },
-                      num_stages=4,
-                      num_warps=4),
+        }, num_stages=4, num_warps=4),
         triton.Config({
             'BLOCK_N': 128,
             'BLOCK_K': 128,
-        },
-                      num_stages=4,
-                      num_warps=4)
+        }, num_stages=4, num_warps=4)
     ],
     key=['N', 'K'],
 )
@@ -191,21 +183,14 @@ def _linear_add(
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    residual_ptrs = (residual_ptr + stride_cm * offs_cm[:, None] +
-                     stride_cn * offs_cn[None, :])
+    residual_ptrs = (residual_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :])
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     residual = tl.load(residual_ptrs, mask=c_mask, other=0.)
     c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     tl.store(c_ptrs, c + residual, mask=c_mask)
 
 
-def matmul_kernel_dynamic_quant(a,
-                                b,
-                                rms_scale,
-                                linear_scale,
-                                residual=None,
-                                bias=None,
-                                output_dtype=torch.float16):
+def matmul_kernel_dynamic_quant(a, b, rms_scale, linear_scale, residual=None, bias=None, output_dtype=torch.float16):
     """This function performs matrix multiplication with dynamic quantization.
 
     It takes two input tensors `a` and `b`, scales them with `rms_scale` and
@@ -316,21 +301,12 @@ def per_token_quant_int8(x, eps):
     x_q = torch.empty_like(x, device=x.device, dtype=torch.int8)
     M = x.numel() // x.shape[-1]
     N = x.shape[-1]
-    x_s = torch.empty(x.shape[:-1] + (1, ),
-                      device=x.device,
-                      dtype=torch.float32)
+    x_s = torch.empty(x.shape[:-1] + (1, ), device=x.device, dtype=torch.float32)
     BLOCK = triton.next_power_of_2(N)
     # heuristics for number of warps
     num_warps = min(max(BLOCK // 256, 1), 8)
     # enqueue kernel
-    _per_token_quant_int8[(M, )](x,
-                                 x_q,
-                                 x_s,
-                                 x.stride(-2),
-                                 N,
-                                 eps,
-                                 BLOCK=BLOCK,
-                                 num_warps=num_warps)
+    _per_token_quant_int8[(M, )](x, x_q, x_s, x.stride(-2), N, eps, BLOCK=BLOCK, num_warps=num_warps)
 
     return x_q, x_s
 
@@ -386,8 +362,7 @@ def rms_norm_dynamic_quant(x, w, eps):
     MAX_FUSED_SIZE = 65536 // x.element_size()
     BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(K))
     if K > BLOCK_SIZE:
-        raise RuntimeError(
-            "This rms norm doesn't support feature dim >= 64KB.")
+        raise RuntimeError("This rms norm doesn't support feature dim >= 64KB.")
     num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
     scale = x.new_empty(x.shape[:-1] + (1, ), dtype=torch.float32)
     _rms_norm_fwd_fused_dynamic_symmetric[(M, )](x_arg,
@@ -400,4 +375,3 @@ def rms_norm_dynamic_quant(x, w, eps):
                                                  BLOCK_SIZE=BLOCK_SIZE,
                                                  num_warps=num_warps)
     return y, scale
-

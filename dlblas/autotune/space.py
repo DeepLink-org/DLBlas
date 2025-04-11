@@ -1,6 +1,6 @@
 import math
 import random
-from dataclasses import dataclass, field, astuple
+from dataclasses import astuple, dataclass, field
 from typing import Any
 
 from triton.runtime.autotuner import Config
@@ -8,16 +8,15 @@ from triton.runtime.autotuner import Config
 
 def next_power_of_2(n):
     """
-    Given a positive integer n, this function returns the smallest power of 2 
+    Given a positive integer n, this function returns the smallest power of 2
     (2^x) that is greater than or equal to n.
-    
+
     :param n: A positive integer.
     :return: The next power of 2 greater than or equal to n.
     """
     if isinstance(n, float):
         n = int(n)
-    assert isinstance(n,
-                      int) and n > 0, f'expect positive integer, but got {n}'
+    assert isinstance(n, int) and n > 0, f'expect positive integer, but got {n}'
 
     # If the number is already a power of 2, return it directly
     if n & (n - 1) == 0:
@@ -121,9 +120,7 @@ class ChoiceSpace:
     def __post_init__(self):
         assert len(self.choices) > 0, f'empty choices: {self.choices}'
         for choice in self.choices:
-            assert isinstance(
-                choice,
-                Config), f"choice must be Config, but got {type(choice)}"
+            assert isinstance(choice, Config), f"choice must be Config, but got {type(choice)}"
 
     def sample(self) -> dict:
         choice = random.choice(self.choices)
@@ -152,7 +149,7 @@ class ChoiceSpace:
         if isinstance(index, int):
             return self.choices[index]
         else:
-            raise TypeError("Index must be an integer")
+            raise TypeError('Index must be an integer')
 
     def to_iter(self):
         iterables = []

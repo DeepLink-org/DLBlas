@@ -1,20 +1,32 @@
 import torch
-
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def ff_llama(
-    a_ptr, w1_ptr, w3_ptr, out_ptr, rms_w_ptr,
-    M, N, K,
-    stride_am, stride_ak,
-    stride_w1k, stride_w1n,
-    stride_w3k, stride_w3n,
-    stride_outm, stride_outn,
+    a_ptr,
+    w1_ptr,
+    w3_ptr,
+    out_ptr,
+    rms_w_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_w1k,
+    stride_w1n,
+    stride_w3k,
+    stride_w3n,
+    stride_outm,
+    stride_outn,
     stride_rms_w,
     USE_FP8: tl.constexpr,
     EPS: tl.constexpr,
-    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
 ):
     """
     w1 and w3 are weights (linear layers)
@@ -92,20 +104,27 @@ def call(x: torch.Tensor, w1: torch.Tensor, w3: torch.Tensor, rms_w: torch.Tenso
     assert w1_t.shape == w3_t.shape
     x_reshape = x.reshape(M, K)
     out = torch.empty((M, N), dtype=x.dtype, device=x.device)
-    grid = lambda META: (triton.cdiv(META["M"], META["BLOCK_SIZE_M"]) * triton.cdiv(META["N"], META["BLOCK_SIZE_N"]),)
-    ff_llama[grid](
-        x_reshape, w1_t, w3_t, out, rms_w,
-        M, N, K,
-        *x_reshape.stride(),
-        *w1_t.stride(),
-        *w3_t.stride(),
-        *out.stride(),
-        *rms_w.stride(),
-        USE_FP8=w1_t.dtype != torch.float16,
-        EPS=1e-6,
-        BLOCK_SIZE_M=16, BLOCK_SIZE_N=16, BLOCK_SIZE_K=64,
-        num_stages=2, num_warps=4
-    )
+    grid = lambda META: (triton.cdiv(META['M'], META['BLOCK_SIZE_M']) * triton.cdiv(META['N'], META['BLOCK_SIZE_N']), )
+    ff_llama[grid](x_reshape,
+                   w1_t,
+                   w3_t,
+                   out,
+                   rms_w,
+                   M,
+                   N,
+                   K,
+                   *x_reshape.stride(),
+                   *w1_t.stride(),
+                   *w3_t.stride(),
+                   *out.stride(),
+                   *rms_w.stride(),
+                   USE_FP8=w1_t.dtype != torch.float16,
+                   EPS=1e-6,
+                   BLOCK_SIZE_M=16,
+                   BLOCK_SIZE_N=16,
+                   BLOCK_SIZE_K=64,
+                   num_stages=2,
+                   num_warps=4)
     out = out.view(batch, seq_len, -1)
     return out
 

@@ -9,45 +9,45 @@ from threading import Thread
 from typing import List, Union
 
 import numpy as np
-from pynvml import (NVMLError, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex,
-                    nvmlDeviceGetMemoryInfo, nvmlDeviceGetName,
-                    nvmlDeviceGetPowerState, nvmlDeviceGetTemperature,
-                    nvmlInit, nvmlShutdown, nvmlSystemGetDriverVersion)
-from tqdm import tqdm
-
 from lmdeploy.cli.utils import ArgumentHelper, DefaultsAndTypesHelpFormatter
-from lmdeploy.messages import (GenerationConfig, PytorchEngineConfig,
-                               TurbomindEngineConfig)
+from lmdeploy.messages import GenerationConfig, PytorchEngineConfig, TurbomindEngineConfig
 from lmdeploy.utils import get_logger
+from pynvml import (NVMLError, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo,
+                    nvmlDeviceGetName, nvmlDeviceGetPowerState, nvmlDeviceGetTemperature, nvmlInit, nvmlShutdown,
+                    nvmlSystemGetDriverVersion)
+from tqdm import tqdm
 
 get_logger('lmdeploy').setLevel('ERROR')
 os.environ['TM_LOG_LEVEL'] = 'ERROR'
 
+import json
+
 import torch
-from dlblas.kernels.fill_kv_cache import fill_kv_cache
-from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
-from dlblas.kernels.paged_attention import paged_attention_fwd
-from dlblas.kernels.rms_norm import rms_norm
-from dlblas.kernels.multinomial_sampling import multinomial_sampling
-from dlblas.kernels.activation import silu_and_mul
 import torch_mlu
 import torch_mlu.utils.gpu_migration
 
-import json
+from dlblas.kernels.activation import silu_and_mul
+from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
+from dlblas.kernels.fill_kv_cache import fill_kv_cache
+from dlblas.kernels.multinomial_sampling import multinomial_sampling
+from dlblas.kernels.paged_attention import paged_attention_fwd
+from dlblas.kernels.rms_norm import rms_norm
+
 
 def _patch_lmdeploy():
     import lmdeploy.pytorch.kernels.cuda as lmdeploy_kernels
 
     DEFAULT_PATCH_LIST = [
-        "fill_kv_cache",
-        "apply_rotary_pos_emb",
-        "paged_attention_fwd",
-        "rms_norm",
-        "multinomial_sampling",
-        "silu_and_mul",
+        'fill_kv_cache',
+        'apply_rotary_pos_emb',
+        'paged_attention_fwd',
+        'rms_norm',
+        'multinomial_sampling',
+        'silu_and_mul',
     ]
 
     def try_patch(op: str):
+
         def patch_fill_kv_cache():
             lmdeploy_kernels.fill_kv_cache = fill_kv_cache
 
@@ -70,14 +70,14 @@ def _patch_lmdeploy():
 
         try:
             locals()[f"patch_{op}"]()
-            print(f"patched dlblas implementation of {op}\n", end="")
+            print(f"patched dlblas implementation of {op}\n", end='')
         except KeyError:
             print(
                 f"unknow op: {op}, supported ops: {DEFAULT_PATCH_LIST}\n",
-                end="",
+                end='',
             )
         except AttributeError:
-            print(f"op {op} is not implemented in dlblas\n", end="")
+            print(f"op {op} is not implemented in dlblas\n", end='')
 
     for op in DEFAULT_PATCH_LIST:
         try_patch(op)
@@ -85,8 +85,8 @@ def _patch_lmdeploy():
 
 _patch_lmdeploy()
 
-def infer(model, session_id: int, input_ids: List,
-          gen_config: GenerationConfig, test_round: int, que: Queue):
+
+def infer(model, session_id: int, input_ids: List, gen_config: GenerationConfig, test_round: int, que: Queue):
     if session_id == 1:
         pbar = tqdm(total=test_round)
     chatbot = model.create_instance()
@@ -133,8 +133,7 @@ def infer(model, session_id: int, input_ids: List,
     que.put((session_id, stats))
 
 
-def warmup(model, concurrency: int, input_ids: List[int], warmup_round: int,
-           gen_config: GenerationConfig):
+def warmup(model, concurrency: int, input_ids: List[int], warmup_round: int, gen_config: GenerationConfig):
     if not warmup_round:
         return
 
@@ -169,10 +168,8 @@ def warmup(model, concurrency: int, input_ids: List[int], warmup_round: int,
 
 
 def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
-                       engine_config: Union[PytorchEngineConfig,
-                                            TurbomindEngineConfig],
-                       gen_config: GenerationConfig, test_round: int,
-                       warmup_round: int):
+                       engine_config: Union[PytorchEngineConfig, TurbomindEngineConfig], gen_config: GenerationConfig,
+                       test_round: int, warmup_round: int):
     output_seqlen = gen_config.max_new_tokens
     print(f'profiling ... concurrency: {concurrency}, '
           f'n_prompt_token: {input_seqlen}, '
@@ -180,13 +177,12 @@ def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
           f'test_round: {test_round}, warmup_round: {warmup_round}')
     if isinstance(engine_config, TurbomindEngineConfig):
         from lmdeploy.turbomind import TurboMind
-        tm_model = TurboMind.from_pretrained(model_path,
-                                             engine_config=engine_config)
-        print("wtf")
+        tm_model = TurboMind.from_pretrained(model_path, engine_config=engine_config)
+        print('wtf')
 
     elif isinstance(engine_config, PytorchEngineConfig):
         from lmdeploy.pytorch.engine import Engine
-        print("YES for sure engine")
+        print('YES for sure engine')
         tm_model = Engine(model_path, engine_config)
 
     # make up a dummy `input_ids` with the length of `input_seqlen` exactly
@@ -199,9 +195,7 @@ def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
     _start = time.perf_counter()
 
     for i in range(concurrency):
-        proc = Thread(target=infer,
-                      args=(tm_model, i + 1, input_ids, gen_config, test_round,
-                            que))
+        proc = Thread(target=infer, args=(tm_model, i + 1, input_ids, gen_config, test_round, que))
         procs.append(proc)
         proc.start()
 
@@ -219,25 +213,18 @@ def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
     # The shape is [concurrency*test_round, output_seqlen]
     token_latency_stats = np.stack(token_latency_stats, axis=0)
 
-    first_token_latency_min = np.round(
-        np.min(token_latency_stats[:, 0], axis=0), 3)
-    first_token_latency_max = np.round(
-        np.max(token_latency_stats[:, 0], axis=0), 3)
-    first_token_latency_ave = np.round(
-        np.mean(token_latency_stats[:, 0], axis=0), 3)
-    token_latency_max = np.round(np.max(np.sum(token_latency_stats, axis=1)),
-                                 3)
-    token_latency_min = np.round(np.min(np.sum(token_latency_stats, axis=1)),
-                                 3)
-    token_latency_ave = np.round(np.mean(np.sum(token_latency_stats, axis=1)),
-                                 3)
+    first_token_latency_min = np.round(np.min(token_latency_stats[:, 0], axis=0), 3)
+    first_token_latency_max = np.round(np.max(token_latency_stats[:, 0], axis=0), 3)
+    first_token_latency_ave = np.round(np.mean(token_latency_stats[:, 0], axis=0), 3)
+    token_latency_max = np.round(np.max(np.sum(token_latency_stats, axis=1)), 3)
+    token_latency_min = np.round(np.min(np.sum(token_latency_stats, axis=1)), 3)
+    token_latency_ave = np.round(np.mean(np.sum(token_latency_stats, axis=1)), 3)
     if output_seqlen > 1:
         # sort token_latency without the first token's latency
         sorted_token_latency = np.sort(token_latency_stats[:, 1:].flatten())
         percentiles = [
-            np.round(
-                sorted_token_latency[int(percent * len(sorted_token_latency))],
-                3) for percent in [0.5, 0.75, 0.95, 0.99]
+            np.round(sorted_token_latency[int(percent * len(sorted_token_latency))], 3)
+            for percent in [0.5, 0.75, 0.95, 0.99]
         ]
     else:
         percentiles = [
@@ -245,10 +232,8 @@ def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
         ] * 4
 
     out_token_throughput = np.round(token_latency_stats.size / elapsed_time, 2)
-    total_token_throughput = np.round(
-        concurrency * test_round * (input_seqlen + output_seqlen) /
-        elapsed_time, 2)
-    print(f'\n{"-" * 50}\ntotal time: {elapsed_time:.2f}s\n'
+    total_token_throughput = np.round(concurrency * test_round * (input_seqlen + output_seqlen) / elapsed_time, 2)
+    print(f'\n{' - ' * 50}\ntotal time: {elapsed_time:.2f}s\n'
           f'concurrency: {concurrency}, test_round: {test_round}\n'
           f'input_tokens: {input_seqlen}, output_tokens: {output_seqlen}\n'
           f'first_token latency(min, max, ave): '
@@ -256,9 +241,9 @@ def profile_throughput(model_path: str, concurrency: int, input_seqlen: int,
           f'{first_token_latency_ave}s\ntotal_token latency(min, max, ave): '
           f'{token_latency_min}s, {token_latency_max}s, '
           f'{token_latency_ave}s\n'
-          f'token_latency percentiles(50%,75%,95%,99%)(s): {percentiles}\n'
+          f'token_latency percentiles(50%, 75%, 95%, 99%)(s): {percentiles}\n'
           f'throughput(output): {out_token_throughput} token/s\n'
-          f'throughput(total): {total_token_throughput} token/s\n{"-" * 50}')
+          f'throughput(total): {total_token_throughput} token/s\n{' - ' * 50}')
     return model_path, \
         [first_token_latency_min, first_token_latency_max,
          first_token_latency_ave], \
@@ -277,12 +262,7 @@ class MemoryMonitor:
     @staticmethod
     def nvidia_info():
         # pip install nvidia-ml-py
-        nvidia_dict = {
-            'state': True,
-            'nvidia_version': '',
-            'nvidia_count': 0,
-            'gpus': []
-        }
+        nvidia_dict = {'state': True, 'nvidia_version': '', 'nvidia_count': 0, 'gpus': []}
         try:
             nvmlInit()
             nvidia_dict['nvidia_version'] = nvmlSystemGetDriverVersion()
@@ -355,18 +335,15 @@ class ProfileResult:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Profile the token generation performance with'
-        ' pytorch or turbomind engine',
-        formatter_class=DefaultsAndTypesHelpFormatter)
+    parser = argparse.ArgumentParser(description='Profile the token generation performance with'
+                                     ' pytorch or turbomind engine',
+                                     formatter_class=DefaultsAndTypesHelpFormatter)
     parser.add_argument('model_name',
                         type=str,
                         help='the path of the model in localhost or '
                         'the repo_id of the model in huggingface.co')
 
-    parser.add_argument('common_prefix',
-                        type=str,
-                        help='the common prefix where the model located')
+    parser.add_argument('common_prefix', type=str, help='the common prefix where the model located')
 
     parser.add_argument('-c',
                         '--concurrency',
@@ -388,16 +365,8 @@ def parse_args():
                         help='how many tokens to be generated. One-to-one '
                         'correspondence with prompt-tokens',
                         default=[128, 128, 2048, 128, 2048])
-    parser.add_argument('-tr',
-                        '--test-round',
-                        type=int,
-                        help='number of test rounds',
-                        default=3)
-    parser.add_argument('-w',
-                        '--warmup-round',
-                        type=int,
-                        help='number of warmup rounds',
-                        default=1)
+    parser.add_argument('-tr', '--test-round', type=int, help='number of test rounds', default=3)
+    parser.add_argument('-w', '--warmup-round', type=int, help='number of warmup rounds', default=1)
 
     # other args
     ArgumentHelper.top_p(parser)
@@ -439,9 +408,7 @@ def _process_map(target, iterable):
 
     pipe = Pipe(False)
     spawn_context = get_context('spawn')
-    proc = spawn_context.Process(target=__proc_cb,
-                                 args=iterable,
-                                 kwargs=dict(ret_pipe=pipe, target=target))
+    proc = spawn_context.Process(target=__proc_cb, args=iterable, kwargs=dict(ret_pipe=pipe, target=target))
     proc.start()
     proc.join(timeout=200)
     if proc.is_alive():
@@ -454,16 +421,18 @@ def _process_map(target, iterable):
 
     return ret
 
+
 def load_checkpoint(checkpoint_file):
     if os.path.exists(checkpoint_file):
-        with open(checkpoint_file, "r") as f:
+        with open(checkpoint_file, 'r') as f:
             return json.load(f)
     return {}
 
 
 def save_checkpoint(checkpoint_file, tested_models):
-    with open(checkpoint_file, "w") as f:
+    with open(checkpoint_file, 'w') as f:
         json.dump(tested_models, f, indent=4)
+
 
 def main():
     args = parse_args()
@@ -477,15 +446,13 @@ def main():
 
     MemoryMonitor.init()
     for batch in args.concurrency:
-        print("batch", batch)
-        for prompt_tokens, completion_tokens in zip(args.prompt_tokens,
-                                                    args.completion_tokens):
+        print('batch', batch)
+        for prompt_tokens, completion_tokens in zip(args.prompt_tokens, args.completion_tokens):
             MemoryMonitor.start()
             from functools import partial
 
             # make sure session_len >= prompt_tokens + completion_tokens
-            session_len = max(args.session_len,
-                              prompt_tokens + completion_tokens)
+            session_len = max(args.session_len, prompt_tokens + completion_tokens)
             if args.backend == 'turbomind':
                 engine_config = TurbomindEngineConfig(
                     cache_max_entry_count=args.cache_max_entry_count,
@@ -497,15 +464,13 @@ def main():
                     enable_prefix_caching=args.enable_prefix_caching,
                 )
             elif args.backend == 'pytorch':
-                engine_config = PytorchEngineConfig(
-                    cache_max_entry_count=args.cache_max_entry_count,
-                    block_size=args.cache_block_seq_len,
-                    session_len=session_len,
-                    tp=args.tp,
-                    thread_safe=True,
-                    enable_prefix_caching=args.enable_prefix_caching,
-                    download_dir=args.common_prefix
-                )
+                engine_config = PytorchEngineConfig(cache_max_entry_count=args.cache_max_entry_count,
+                                                    block_size=args.cache_block_seq_len,
+                                                    session_len=session_len,
+                                                    tp=args.tp,
+                                                    thread_safe=True,
+                                                    enable_prefix_caching=args.enable_prefix_caching,
+                                                    download_dir=args.common_prefix)
 
                 # download model first
                 from lmdeploy.pytorch.engine import Engine
@@ -546,9 +511,14 @@ def main():
 
     model_path = os.path.join(args.common_prefix, args.model_name)
 
-    tested_result[args.model_name] = {"model_path": model_path, "status": "completed", "throughput": f'{results[0].output_throughput:.2f}'}
+    tested_result[args.model_name] = {
+        'model_path': model_path,
+        'status': 'completed',
+        'throughput': f'{results[0].output_throughput:.2f}'
+    }
 
     save_checkpoint(checkpoint_file, tested_result)
+
 
 if __name__ == '__main__':
     main()

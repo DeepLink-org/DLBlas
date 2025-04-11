@@ -1,13 +1,12 @@
 import torch
-
 from torch._guards import detect_fake_mode
 from torch._subclasses import FakeTensor, FakeTensorMode
-from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 from torch.fx.experimental.symbolic_shapes import ShapeEnv
+from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 '''
 play around how to convert torch.Tensor -> FakeTensor
 
-e.g. 
+e.g.
 https://github.com/pytorch/pytorch/blob/90d5a6f001ef3ea40ef91ae20e050e39a6d550de/torch/_functorch/aot_autograd.py#L496
 '''
 
@@ -53,10 +52,7 @@ def process_inputs(flat_args):
                 if aot_config.is_export:
                     return x
                 source = ConstantSource(f"sym_{idx}")
-                return shape_env.create_symintnode(shape_env.create_symbol(
-                    x, source),
-                                                   hint=x,
-                                                   source=source)
+                return shape_env.create_symintnode(shape_env.create_symbol(x, source), hint=x, source=source)
         if not isinstance(x, torch.Tensor):
             return x
         if isinstance(x, FakeTensor):
@@ -65,8 +61,7 @@ def process_inputs(flat_args):
         if is_traceable_wrapper_subclass(x):
             attrs, _ = x.__tensor_flatten__()
             if all(isinstance(getattr(x, attr), FakeTensor) for attr in attrs):
-                assert all(
-                    getattr(x, attr).fake_mode is fake_mode for attr in attrs)
+                assert all(getattr(x, attr).fake_mode is fake_mode for attr in attrs)
                 return x
 
         # see note [Tensor Fakification and Symbol Caching]
@@ -76,17 +71,13 @@ def process_inputs(flat_args):
             if x in tracing_context.tensor_to_context:
                 symbolic_context = tracing_context.tensor_to_context[x]
                 source = symbolic_context.tensor_source
-        if (idx < aot_config.num_params_buffers and config.static_weight_shapes
-                and not symbolic_context):
+        if (idx < aot_config.num_params_buffers and config.static_weight_shapes and not symbolic_context):
             # TODO: Ensure that this codepath is never exercised from
             # Dynamo
             return fake_mode.from_tensor(x, static_shapes=True)
 
         # hgl: symbolic_context is None, and source is None
-        return fake_mode.from_tensor(x,
-                                     static_shapes=False,
-                                     symbolic_context=symbolic_context,
-                                     source=source)
+        return fake_mode.from_tensor(x, static_shapes=False, symbolic_context=symbolic_context, source=source)
 
     return [convert(idx, x) for idx, x in enumerate(flat_args)]
 

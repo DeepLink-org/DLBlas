@@ -2,6 +2,7 @@
 import pytest
 import torch
 from torch import nn
+
 from dlblas.kernels.fused_rotary_emb import fused_rotary_emb
 
 
@@ -12,19 +13,11 @@ class DummyRotaryEmbedding(nn.Module):
         self.dim = dim
         self.max_position_embeddings = max_position_embeddings
         self.base = base
-        inv_freq = 1.0 / (
-            self.base
-            ** (
-                torch.arange(0, self.dim, 2, dtype=torch.int64).float().to(device)
-                / self.dim
-            )
-        )
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        inv_freq = 1.0 / (self.base**(torch.arange(0, self.dim, 2, dtype=torch.int64).float().to(device) / self.dim))
+        self.register_buffer('inv_freq', inv_freq, persistent=False)
 
     def forward(self, x, position_ids, seq_len=None):
-        inv_freq_expanded = (
-            self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
-        )
+        inv_freq_expanded = (self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1))
         position_ids_expanded = position_ids[:, None, :].float()
         freqs = (inv_freq_expanded @ position_ids_expanded).transpose(1, 2)
         emb = torch.cat((freqs, freqs), dim=-1)
@@ -55,8 +48,8 @@ class DummyLinearScalingRotaryEmbedding(DummyRotaryEmbedding):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
 
@@ -97,15 +90,11 @@ class TestFusedRotaryEmb:
 
     @pytest.fixture
     def q(self, batch_size, seq_len, q_num_heads, head_dim, dtype):
-        yield torch.rand(batch_size, seq_len, q_num_heads, head_dim, dtype=dtype).to(
-            "cuda"
-        )
+        yield torch.rand(batch_size, seq_len, q_num_heads, head_dim, dtype=dtype).to('cuda')
 
     @pytest.fixture
     def k(self, batch_size, seq_len, k_num_heads, head_dim, dtype):
-        yield torch.rand(batch_size, seq_len, k_num_heads, head_dim, dtype=dtype).to(
-            "cuda"
-        )
+        yield torch.rand(batch_size, seq_len, k_num_heads, head_dim, dtype=dtype).to('cuda')
 
     @pytest.fixture
     def position_ids(self, batch_size, seq_len):
@@ -113,7 +102,7 @@ class TestFusedRotaryEmb:
 
     @pytest.fixture
     def rotary_emb(self, head_dim):
-        yield DummyLinearScalingRotaryEmbedding(head_dim, scaling_factor=1.0).to("cuda")
+        yield DummyLinearScalingRotaryEmbedding(head_dim, scaling_factor=1.0).to('cuda')
 
     @pytest.fixture
     def gt(self, q, k, position_ids, rotary_emb):
@@ -126,9 +115,7 @@ class TestFusedRotaryEmb:
         scaling_factor = rotary_emb.scaling_factor
 
         with torch.inference_mode():
-            outq, outk = fused_rotary_emb(
-                q, k, position_ids, inv_freq, scaling_factor=scaling_factor
-            )
+            outq, outk = fused_rotary_emb(q, k, position_ids, inv_freq, scaling_factor=scaling_factor)
 
         gtq, gtk = gt
         torch.testing.assert_close(outq, gtq, atol=1e-3, rtol=1e-5)

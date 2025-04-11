@@ -96,7 +96,7 @@ def rms_norm(
     if out is None:
         out = torch.empty_like(hidden_states)
 
-    grid = (seq_len,)
+    grid = (seq_len, )
 
     if residual is None:
         rms_norm_kernel[grid](
@@ -131,4 +131,3 @@ def rms_norm(
             num_stages=2,
         )
         return out, out_residual
-

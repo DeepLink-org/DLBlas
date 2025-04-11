@@ -1,14 +1,11 @@
+import pytest
 import torch
 
-import pytest
-
-from dlblas import get_op, get_list_op_names
-from dlblas.op_registry import op_registry
+from dlblas import get_op
 from dlblas.cache import Cache
 
-
-@pytest.mark.parametrize("dtype", [torch.float16])
-@pytest.mark.parametrize("device", ['cuda'])
+@pytest.mark.parametrize('dtype', [torch.float16])
+@pytest.mark.parametrize('device', ['cuda'])
 def test_gen_key(dtype, device):
     cache = Cache()
 
@@ -29,8 +26,8 @@ def test_gen_key(dtype, device):
     assert key == f'{op}-0:f16_1x2-1:f16_2x1-2:leaky_relu-{device}'
 
 
-@pytest.mark.parametrize("dtype", [torch.float16])
-@pytest.mark.parametrize("device", ['cuda'])
+@pytest.mark.parametrize('dtype', [torch.float16])
+@pytest.mark.parametrize('device', ['cuda'])
 def test_cache_hit(dtype, device):
     a = torch.randn(
         (3, 5),

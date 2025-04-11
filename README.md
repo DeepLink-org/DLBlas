@@ -11,7 +11,7 @@ it improves over Triton's autotuner in the following ways:
 - **caching** the best operator implementation and kernel configurations are cached for the input tensors. It is shape, dtype, device specific.
 
 
-## Install 
+## Install
 
 ```
 cd dlBLAS

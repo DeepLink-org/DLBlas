@@ -18,15 +18,15 @@ def find_variable_assignments(text):
 
 
 # Example usage:
-input_text = "   var1 = value1,\nvar2 = value2,   var3=   value3,\nend"
+input_text = '   var1 = value1,\nvar2 = value2,   var3=   value3,\nend'
 assignments_found = find_variable_assignments(input_text)
 print(assignments_found)
-input_text2 = "   var1 ~ value1,"
+input_text2 = '   var1 ~ value1,'
 assignments_found = find_variable_assignments(input_text2)
 print(assignments_found)
 
 
-def replace_variable_assignments(text, replacement="REPLACED"):
+def replace_variable_assignments(text, replacement='REPLACED'):
     """
     This function uses regular expressions to find patterns of variable assignments
     and replaces each match with a predefined string.
@@ -41,12 +41,12 @@ def replace_variable_assignments(text, replacement="REPLACED"):
 
 
 # Example usage:
-input_text = "   var1 = value1,\nvar2 = value2,\n   var3=   value3,\nend"
+input_text = '   var1 = value1,\nvar2 = value2,\n   var3=   value3,\nend'
 modified_text = replace_variable_assignments(input_text)
 print(modified_text)
 
 
-def replace_variable_assignments_keep_whitespace(text, replacement="REPLACED"):
+def replace_variable_assignments_keep_whitespace(text, replacement='REPLACED'):
     """
     This function uses regular expressions to find patterns of variable assignments,
     preserving the leading whitespace, and replaces the rest of the matched pattern
@@ -63,7 +63,7 @@ def replace_variable_assignments_keep_whitespace(text, replacement="REPLACED"):
 
 
 # Example usage:
-input_text = "   var1 = value1,\nvar2 = value2,\n   var3=   value3,\nend"
+input_text = '   var1 = value1,\nvar2 = value2,\n   var3=   value3,\nend'
 modified_text = replace_variable_assignments_keep_whitespace(input_text)
 print('3: ')
 print(modified_text)

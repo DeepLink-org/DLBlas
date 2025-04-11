@@ -1,11 +1,12 @@
 from typing import List
 
+import deep_gemm
 import torch
 import torch.distributed as dist
-from dlblas.kernels.moe import (grouped_gemm_triton, quant_fp8, silu_and_mul_masked_post_quant_fwd,
-                                                  silu_and_mul_triton_kernel, renormalize, quant_fp8)
+
+from dlblas.kernels.moe import (grouped_gemm_triton, quant_fp8, renormalize, silu_and_mul_masked_post_quant_fwd,
+                                silu_and_mul_triton_kernel)
 from dlblas.layers.moe.token_dispatcher import DeepEPTokenDispatcherLowLatency, TokenDispatcherBuilder
-import deep_gemm
 from dlblas.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,6 +110,7 @@ class DeepEPExpertsGroupedGEMM:
 
 
 class DeepEPExpertsDeepGEMM:
+
     def __init__(self, num_experts: int, ep_size: int, block_size: int, out_dtype: torch.dtype = torch.bfloat16):
         self.num_experts = num_experts
         self.ep_size = ep_size
@@ -135,8 +137,8 @@ class DeepEPExpertsDeepGEMM:
         n = gate_up_weight.size(1)
         expected_m = min(expected_m, m)
         gateup_output = torch.empty((num_groups, m, n), device=hidden_states_fp8[0].device, dtype=self.out_dtype)
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(hidden_states_fp8, gate_up_weight_fp8,
-                                                                              gateup_output, masked_m, expected_m)
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(hidden_states_fp8, gate_up_weight_fp8, gateup_output, masked_m,
+                                                        expected_m)
         down_input = torch.empty((
             gateup_output.shape[0],
             gateup_output.shape[1],
@@ -167,8 +169,8 @@ class DeepEPExpertsDeepGEMM:
             deep_gemm.get_col_major_tma_aligned_tensor(down_input_scale),
         )
         down_output = torch.empty((num_groups, m, n), device=down_input.device, dtype=self.out_dtype)
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(down_input_fp8, gate_down_weight_fp8,
-                                                                              down_output, masked_m, expected_m)
+        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(down_input_fp8, gate_down_weight_fp8, down_output, masked_m,
+                                                        expected_m)
         return down_output
 
 

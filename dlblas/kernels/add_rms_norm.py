@@ -2,7 +2,8 @@ import torch
 import triton
 import triton.language as tl
 from torch import Tensor
-from dlblas.utils import register_dlblas_op, SymVar, Tensor
+
+from dlblas.utils import SymVar, Tensor, register_dlblas_op
 
 
 @triton.jit
@@ -57,7 +58,7 @@ def call(
     if residual is not None:
         residual_out = torch.empty_like(residual)
 
-    grid = (seq_len,)
+    grid = (seq_len, )
     add_rms_norm_kernel[grid](
         hidden_states,
         weight,
@@ -91,15 +92,15 @@ def bench_fn(
 
 # register
 for dtype in [torch.float16, torch.bfloat16, torch.float32]:
-    for device in ["cuda"]:
-        H, C = SymVar("H"), SymVar("C")
+    for device in ['cuda']:
+        H, C = SymVar('H'), SymVar('C')
         # we dont' actually allocate tensor
         hidden_states = Tensor((H, C), dtype=dtype, device=device)
         residual = Tensor((H, C), dtype=dtype, device=device)
-        weight = Tensor((C,), dtype=dtype, device=device)
+        weight = Tensor((C, ), dtype=dtype, device=device)
         # space = ChoiceSpace([])
         register_dlblas_op(
-            "add_rms_norm",
+            'add_rms_norm',
             None,
             (hidden_states, weight, torch.SymFloat, residual),
             call,
@@ -107,7 +108,7 @@ for dtype in [torch.float16, torch.bfloat16, torch.float32]:
             call,
         )
         register_dlblas_op(
-            "rms_norm",
+            'rms_norm',
             None,
             (hidden_states, weight, torch.SymFloat),
             call,

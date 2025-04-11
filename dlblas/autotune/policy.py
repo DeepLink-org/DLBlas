@@ -1,11 +1,11 @@
+import itertools
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Union, Optional
-import itertools
+from typing import Optional, Union
 
-from dlblas.autotune.space import ChoiceSpace, DictSpace, RangeSapce, DiscreteSpace, PowerOfTwoSpace, FixedSpace
 from dlblas.autotune.configs import AutotuneConfig
+from dlblas.autotune.space import ChoiceSpace, DictSpace, DiscreteSpace, FixedSpace, PowerOfTwoSpace, RangeSapce
 
 
 @dataclass
@@ -18,9 +18,7 @@ class Policy:
         elif isinstance(self.space, DictSpace):
             pass
         else:
-            raise TypeError(
-                f"space must be ChoiceSpace or DictSpace, but got {type(self.space)}"
-            )
+            raise TypeError(f"space must be ChoiceSpace or DictSpace, but got {type(self.space)}")
 
     def generate(self) -> Optional[dict]:
         raise NotImplementedError()
@@ -52,8 +50,7 @@ class EnumerationPolicy(Policy):
             for name, subspace in self.space.params.items():
                 args_names.append(name)
                 if isinstance(subspace, RangeSapce):
-                    raise RuntimeError(
-                        "EnumerationPolicy doesn't support RangeSpace")
+                    raise RuntimeError("EnumerationPolicy doesn't support RangeSpace")
                 elif isinstance(subspace, FixedSpace):
                     iters.append(subspace.to_iter())
                 elif isinstance(subspace, DiscreteSpace):

@@ -1,28 +1,20 @@
-import torch
+from typing import List
 
+import torch
 import triton
 import triton.language as tl
-
-from typing import List
 from triton import Config
 
 # register
-from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import ChoiceSpace, SymVar, Tensor, register_dlblas_op
 
-
-fp8_gemm_configs = [
-    Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128}, num_stages=1, num_warps=8)
-]
+fp8_gemm_configs = [Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128}, num_stages=1, num_warps=8)]
 
 
 @triton.autotune(configs=fp8_gemm_configs, key=['N', 'K'])
 @triton.jit
-def fp8_gemm_kernel(a_ptr, b_ptr, c_ptr,
-                    a_s_ptr, b_s_ptr,
-                    M, N: tl.constexpr, K: tl.constexpr,
-                    BLOCK_SIZE_M: tl.constexpr,
-                    BLOCK_SIZE_N: tl.constexpr,
-                    BLOCK_SIZE_K: tl.constexpr):
+def fp8_gemm_kernel(a_ptr, b_ptr, c_ptr, a_s_ptr, b_s_ptr, M, N: tl.constexpr, K: tl.constexpr,
+                    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr):
     """
     Performs a matrix multiplication operation on FP8 matrices with scaling factors.
 

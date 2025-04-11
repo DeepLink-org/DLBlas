@@ -1,15 +1,15 @@
 import torch
-
 import triton
 import triton.language as tl
+
 from dlblas.utils.device_utils import is_muxi
 
-if triton.__version__ >= "3.0.0":
+if triton.__version__ >= '3.0.0':
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
 else:
     from triton.language.math import fast_expf as tl_exp
 
-TESLA = "Tesla" in torch.cuda.get_device_name(0)
+TESLA = 'Tesla' in torch.cuda.get_device_name(0)
 TESLA = TESLA or is_muxi()
 
 
@@ -68,22 +68,16 @@ def _fwd_kernel(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    off_q = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_bs
-        + cur_head * stride_q_h
-        + offs_d[None, :] * stride_q_d
-    )
-    off_q_rope = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_rope_bs
-        + cur_head * stride_q_rope_h
-        + offs_rope_d[None, :] * stride_q_rope_d
-    )
+    off_q = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_bs + cur_head * stride_q_h +
+             offs_d[None, :] * stride_q_d)
+    off_q_rope = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_rope_bs + cur_head * stride_q_rope_h +
+                  offs_rope_d[None, :] * stride_q_rope_d)
 
     q = tl.load(Q_nope + off_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
     q_rope = tl.load(Q_rope + off_q_rope, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -99,11 +93,8 @@ def _fwd_kernel(
             other=0,
         )
         off_kv = kv_loc[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_d[:, None] * stride_kv_d
-        off_kv_rope = (
-            kv_loc[None, :] * stride_kv_rope_bs
-            + cur_kv_head * stride_kv_rope_h
-            + offs_rope_d[:, None] * stride_kv_rope_d
-        )
+        off_kv_rope = (kv_loc[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h +
+                       offs_rope_d[:, None] * stride_kv_rope_d)
         kv = tl.load(KV_nope + off_kv, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
         kv_rope = tl.load(KV_rope + off_kv_rope, mask=(start_n + offs_n[None, :]) < block_end_loc, other=0.0)
 
@@ -112,7 +103,7 @@ def _fwd_kernel(
         qk += tl.dot(q_rope, kv_rope)
 
         qk *= sm_scale
-        qk = tl.where(offs_m[:, None] + prompt_cache_len >= start_n + offs_n[None, :], qk, float("-100000000.0"))
+        qk = tl.where(offs_m[:, None] + prompt_cache_len >= start_n + offs_n[None, :], qk, float('-100000000.0'))
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
@@ -139,11 +130,8 @@ def _fwd_kernel(
         l_i = l_i_new
         m_i = m_i_new
     # initialize pointers to output
-    off_o = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
-        + cur_head * stride_oh
-        + offs_d[None, :] * stride_od
-    )
+    off_o = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh +
+             offs_d[None, :] * stride_od)
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
     return
@@ -280,20 +268,13 @@ def _fwd_kernel_no_prompt_cache(
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_rope_d = tl.arange(0, BLOCK_ROPE_DMODEL)
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    off_q = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_bs
-        + cur_head * stride_q_h
-        + offs_d[None, :] * stride_q_d
-    )
-    off_rope_q = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_rope_bs
-        + cur_head * stride_q_rope_h
-        + offs_rope_d[None, :] * stride_q_rope_d
-    )
+    off_q = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_bs + cur_head * stride_q_h +
+             offs_d[None, :] * stride_q_d)
+    off_rope_q = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_q_rope_bs + cur_head * stride_q_rope_h +
+                  offs_rope_d[None, :] * stride_q_rope_d)
     off_kv = offs_n[None, :] * stride_kv_bs + cur_kv_head * stride_kv_h + offs_d[:, None] * stride_kv_d
-    off_rope_kv = (
-        offs_n[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h + offs_rope_d[:, None] * stride_kv_rope_d
-    )
+    off_rope_kv = (offs_n[None, :] * stride_kv_rope_bs + cur_kv_head * stride_kv_rope_h +
+                   offs_rope_d[:, None] * stride_kv_rope_d)
 
     q = tl.load(Q_nope + off_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
     q_rope = tl.load(Q_rope + off_rope_q, mask=offs_m[:, None] < cur_batch_seq_len, other=0.0)
@@ -302,7 +283,7 @@ def _fwd_kernel_no_prompt_cache(
     kv_rope_ptrs = KV_rope + off_rope_kv
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -373,7 +354,7 @@ def _fwd_kernel_no_prompt_cache(
         qk += tl.dot(q, kv)
         qk += tl.dot(q_rope, kv_rope)
         qk *= sm_scale
-        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float('-inf'))
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
@@ -408,7 +389,7 @@ def _fwd_kernel_no_prompt_cache(
             mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
             other=0.0,
         )
-        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - float("inf")
+        qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32) - float('inf')
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
@@ -434,20 +415,16 @@ def _fwd_kernel_no_prompt_cache(
         l_i = l_i_new
         m_i = m_i_new
     # initialize pointers to output
-    off_o = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
-        + cur_head * stride_oh
-        + offs_d[None, :] * stride_od
-    )
+    off_o = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh +
+             offs_d[None, :] * stride_od)
     out_ptrs = Out + off_o
     tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
     return
 
 
 @torch.no_grad()
-def context_attention_fwd_no_prompt_cache(
-    q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len, softmax_scale
-):
+def context_attention_fwd_no_prompt_cache(q_nope, q_rope, kv_nope, kv_rope, o, b_start_loc, b_seq_len, max_input_len,
+                                          softmax_scale):
     q_nope_dim = q_nope.shape[-1]
     q_rope_dim = q_rope.shape[-1]
     assert q_nope_dim == kv_nope.shape[-1]

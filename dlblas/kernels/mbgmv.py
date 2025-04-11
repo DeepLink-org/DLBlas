@@ -57,9 +57,7 @@ def _x_a_mv_kernel(
         # load lora a
         lah_off = cur_dm_off
         la_mask = rank_mask[:, None] and h_mask[None, :]
-        la = tl.load(LoRA_A + la_page_off[:, None] + lah_off[None, :],
-                     mask=la_mask,
-                     other=0.0)
+        la = tl.load(LoRA_A + la_page_off[:, None] + lah_off[None, :], mask=la_mask, other=0.0)
 
         # compute
         acc += tl.sum(x[None, :] * la, 1)
@@ -116,9 +114,7 @@ def _acc_b_mv_kernel(
         # load lora b
         lbh_off = cur_dm_off
         lb_mask = rank_mask[:, None] and h_mask[None, :]
-        lb = tl.load(LoRA_B + lb_page_off[:, None] + lbh_off[None, :],
-                     mask=lb_mask,
-                     other=0)
+        lb = tl.load(LoRA_B + lb_page_off[:, None] + lbh_off[None, :], mask=lb_mask, other=0)
 
         # compute
         out = tl.sum(acc[:, None] * lb, 0)

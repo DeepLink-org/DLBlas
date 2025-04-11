@@ -1,16 +1,18 @@
 import torch
 import triton
 import triton.language as tl
-from dlblas.utils import register_dlblas_op, SymVar, Tensor
 
+from dlblas.utils import SymVar, Tensor, register_dlblas_op
 
 inv_ln2 = 1.44269504
 
 # credit: https://github.com/proger/accelerated-scan/blob/b9edbad65c673f9a1915efe51dc6bbf50fd7f8c4/accelerated_scan/triton.py
 
-@torch.jit.script 
+
+@torch.jit.script
 def reduce(H, C):
     return (H * C.unsqueeze(-2)).sum(-1)
+
 
 @triton.jit
 def fwd_recurrence(
@@ -38,15 +40,13 @@ def fwd_recurrence(
 
     b_ptr = B + i_bh * T * K + tl.arange(0, K)
 
-    A = A + ((i_v * BV) + tl.arange(0, BV)
-             [:, None])*K + tl.arange(0, K)[None, :]
+    A = A + ((i_v * BV) + tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :]
     _A = tl.load(A)
 
     H_ptr = H + i_bh * T * D * K + \
         (i_v * BV + tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :]
 
-    h += tl.load(initial_state + i_bh * D * K + (i_v * BV +
-                 tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :])
+    h += tl.load(initial_state + i_bh * D * K + (i_v * BV + tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :])
 
     for i in range(T):
         b = tl.load(b_ptr).to(tl.float32)
@@ -104,8 +104,7 @@ def bwd_recurrence(
     dc_ptr = DC + (i_bh + batch * i_v) * T * K + tl.arange(0, K) + (T - 1) * K
     db_ptr = DB + (i_bh + batch * i_v) * T * K + tl.arange(0, K) + (T - 1) * K
 
-    A = A + ((i_v * BV) + tl.arange(0, BV)
-             [:, None])*K + tl.arange(0, K)[None, :]
+    A = A + ((i_v * BV) + tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :]
     _A = tl.load(A)
     H_ptr = H + i_bh * T * D * K + \
         (i_v * BV + tl.arange(0, BV)[:, None]) * K + \
@@ -116,7 +115,8 @@ def bwd_recurrence(
         if i < T - 1:
             next_h = tl.load(H_ptr - D * K)
         else:
-            next_h = tl.load(initial_state + i_bh * D * K + (i_v * BV + tl.arange(0, BV)[:, None]) * K + tl.arange(0, K)[None, :])
+            next_h = tl.load(initial_state + i_bh * D * K + (i_v * BV + tl.arange(0, BV)[:, None]) * K +
+                             tl.arange(0, K)[None, :])
         b = tl.load(b_ptr).to(tl.float32)
         c = tl.load(c_ptr).to(tl.float32)
         do = tl.load(do_ptr).to(tl.float32)
@@ -146,7 +146,6 @@ def bwd_recurrence(
         ddt += tl.sum(d_decay * _A, axis=1)
         tl.store(ddt_ptr, ddt)
 
-
         # update ptr
         b_ptr -= K
         c_ptr -= K
@@ -168,7 +167,7 @@ class SelectiveScan(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, u, delta, A, B, C, initial_state=None):
-        b_size,  T, d = u.shape
+        b_size, T, d = u.shape
         K = B.shape[-1]
 
         ctx.b_size = b_size
@@ -179,24 +178,35 @@ class SelectiveScan(torch.autograd.Function):
         num_warps = 4
 
         if b_size <= 16:
-            BV = 32 
+            BV = 32
             num_warps = 2
-        
+
         NV = triton.cdiv(d, BV)
 
         o = torch.empty_like(u)
         H = torch.empty(b_size, T, d, K, device=u.device, dtype=torch.float32)
 
         if initial_state is None:
-            initial_state = torch.zeros(
-                b_size, d, K, device=u.device, dtype=torch.float32)
+            initial_state = torch.zeros(b_size, d, K, device=u.device, dtype=torch.float32)
 
-        fwd_recurrence[(b_size, NV)](A, B, C, delta, u, o, H,
-                                     initial_state,  T, d, K, BV,  num_warps=num_warps, num_stages=1)
+        fwd_recurrence[(b_size, NV)](A,
+                                     B,
+                                     C,
+                                     delta,
+                                     u,
+                                     o,
+                                     H,
+                                     initial_state,
+                                     T,
+                                     d,
+                                     K,
+                                     BV,
+                                     num_warps=num_warps,
+                                     num_stages=1)
         o = reduce(H, C)
         ctx.save_for_backward(A, B, C, delta, H, u)
         ctx.initial_state = initial_state
-        return o, H[:,-1]
+        return o, H[:, -1]
 
     @staticmethod
     def backward(ctx, grad_output, d_final_state):
@@ -221,8 +231,25 @@ class SelectiveScan(torch.autograd.Function):
         db = B.new_empty(NV, b_size, T, K)
         dc = C.new_empty(NV, b_size, T, K)
 
-        bwd_recurrence[(b_size, NV)](A, B, C, u, delta, do, H, dA, db, dc,
-                                     d_delta, du, b_size, ctx.initial_state, T, d, K, BV, num_warps=num_warps)
+        bwd_recurrence[(b_size, NV)](A,
+                                     B,
+                                     C,
+                                     u,
+                                     delta,
+                                     do,
+                                     H,
+                                     dA,
+                                     db,
+                                     dc,
+                                     d_delta,
+                                     du,
+                                     b_size,
+                                     ctx.initial_state,
+                                     T,
+                                     d,
+                                     K,
+                                     BV,
+                                     num_warps=num_warps)
         db = db.sum(0)
         dc = dc.sum(0)
 
@@ -258,8 +285,7 @@ for dtype in [torch.float32]:
         delta = Tensor((B, T, D), dtype=dtype, device=device)
         BB = Tensor((B, T, K), dtype=dtype, device=device)
         CC = Tensor((B, T, K), dtype=dtype, device=device)
-        DD = Tensor((D,), dtype=dtype, device=device)
+        DD = Tensor((D, ), dtype=dtype, device=device)
         initial_state = Tensor((B, D, K), dtype=dtype, device=device)
         # space = ChoiceSpace([])
         register_dlblas_op(name, None, (xx, delta, AA, BB, CC, DD, initial_state), call, bench_fn, call)
-

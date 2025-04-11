@@ -5,7 +5,7 @@ import triton.language as tl
 from torch import Tensor
 
 
-@triton.jit(do_not_specialize=("seq_len",))
+@triton.jit(do_not_specialize=('seq_len', ))
 def apply_rotary_pos_emb_qk_kernel(
     Q,
     K,

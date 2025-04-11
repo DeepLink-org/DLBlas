@@ -22,44 +22,37 @@
 import torch
 import torch_mlu
 import triton
-import triton.language as tl        
+import triton.language as tl
+
 
 @triton.autotune(
     configs=[
-        triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
-                "NUM_SM": 84,
-            }
-        ),
-        triton.Config(
-            {
-                "BLOCK_SIZE_M": 128,
-                "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
-                "NUM_SM": 128,
-            }
-        ),
-        triton.Config(
-            {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
-                "NUM_SM": 84,
-            }
-        ),
-        triton.Config(
-            {
-                "BLOCK_SIZE_M": 64,
-                "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
-                "NUM_SM": 128,
-            }
-        ),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 84,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 128,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 84,
+        }),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+            'NUM_SM': 128,
+        }),
     ],
-    key=["group_size"],  #??
+    key=['group_size'],  #??
 )
 @triton.jit
 def grouped_matmul_kernel(
@@ -140,12 +133,13 @@ def grouped_matmul_kernel(
         # get ready to go to the next gemm problem
         last_problem_end = last_problem_end + num_tiles
 
+
 # group gemm for A [M, k]   B [z, k, n]   M = sum(group_sizes)  z = len(group_sizes)
 # C[M, n]
-def group_gemm_batch(group_A, group_B, batch_sizes, trans_a = False, trans_b = False):
+def group_gemm_batch(group_A, group_B, batch_sizes, trans_a=False, trans_b=False):
     group_B = group_B.view(-1, group_B.shape[-1])
-    device = torch.device("mlu")
-    
+    device = torch.device('mlu')
+
     group_size = len(batch_sizes)
 
     A_addrs = []
@@ -154,18 +148,24 @@ def group_gemm_batch(group_A, group_B, batch_sizes, trans_a = False, trans_b = F
     g_sizes = []
     g_lds = []
     group_C = []
-    
+
     group_A_tmp = []
     start = 0
     K = group_A.shape[-1]
     loop_b = int(group_B.shape[0] / group_size)
     for i, size in enumerate(batch_sizes):
         size = int(size)
-        A = group_A[start:start + size, :].clone().t().contiguous() if trans_a else group_A[start:start + size, :].clone().contiguous()
+        A = group_A[start:start +
+                    size, :].clone().t().contiguous() if trans_a else group_A[start:start +
+                                                                              size, :].clone().contiguous()
         if trans_a:
-            B = group_B[start:start + size, :].clone().t().contiguous() if trans_b else group_B[start:start + size, :].clone().contiguous()
+            B = group_B[start:start +
+                        size, :].clone().t().contiguous() if trans_b else group_B[start:start +
+                                                                                  size, :].clone().contiguous()
         else:
-            B = group_B[i * loop_b:i * loop_b + loop_b, :].clone().t().contiguous() if trans_b else group_B[i * loop_b:i * loop_b + loop_b, :].clone().contiguous()
+            B = group_B[i * loop_b:i * loop_b +
+                        loop_b, :].clone().t().contiguous() if trans_b else group_B[i * loop_b:i * loop_b +
+                                                                                    loop_b, :].clone().contiguous()
         group_A_tmp.append(A)
         group_A_tmp.append(B)
         start += size
@@ -179,10 +179,10 @@ def group_gemm_batch(group_A, group_B, batch_sizes, trans_a = False, trans_b = F
         C_addrs.append(C.data_ptr())
         g_sizes += [M, N, K]
         g_lds += [A.stride(0), B.stride(0), C.stride(0)]
-        
+
         group_C.append(C)
         # print(i, ":", C.data_ptr())
-        
+
     # note these are device tensors
     d_a_ptrs = torch.tensor(A_addrs, device=device)
     d_b_ptrs = torch.tensor(B_addrs, device=device)
@@ -191,7 +191,7 @@ def group_gemm_batch(group_A, group_B, batch_sizes, trans_a = False, trans_b = F
     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=device)
 
     # we use a fixed number of CTA, and it's auto-tunable
-    grid = lambda META: (META["NUM_SM"],)#??
+    grid = lambda META: (META['NUM_SM'], )  #??
     grouped_matmul_kernel[grid](
         d_a_ptrs,
         d_b_ptrs,
@@ -203,11 +203,11 @@ def group_gemm_batch(group_A, group_B, batch_sizes, trans_a = False, trans_b = F
     if trans_a:
         return torch.stack(group_C, dim=0)
     else:
-        return torch.cat(group_C, dim=0)      
+        return torch.cat(group_C, dim=0)
 
 
 def group_gemm_fn(group_A, group_B):
-    device = torch.device("mlu")
+    device = torch.device('mlu')
     assert len(group_A) == len(group_B)
     group_size = len(group_A)
 
@@ -238,7 +238,7 @@ def group_gemm_fn(group_A, group_B):
     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=device)
     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=device)
     # we use a fixed number of CTA, and it's auto-tunable
-    grid = lambda META: (META["NUM_SM"],)#??
+    grid = lambda META: (META['NUM_SM'], )  #??
     grouped_matmul_kernel[grid](
         d_a_ptrs,
         d_b_ptrs,
@@ -252,7 +252,7 @@ def group_gemm_fn(group_A, group_B):
 
 
 def test():
-    device = "mlu"
+    device = 'mlu'
     group_m = [1024, 512, 256, 128]
     group_n = [1024, 512, 256, 128]
     group_k = [1024, 512, 256, 128]
@@ -275,13 +275,13 @@ def test():
     for i in range(group_size):
         K_inner = group_k[i]
         assert torch.allclose(ref_out[i], tri_out[i], atol=1e-2, rtol=0.001)
-        assert torch.allclose(ref_out[i], tri_out[i], atol=1e-4 * K_inner,  rtol=5e-3)
+        assert torch.allclose(ref_out[i], tri_out[i], atol=1e-4 * K_inner, rtol=5e-3)
         print(i)
         # assert torch.allclose(ref_out[i], tri_out[i])
 
     # only launch the kernel, no tensor preparation here to remove all overhead
     def triton_perf_fn(a_ptrs, b_ptrs, c_ptrs, sizes, lds, group_size):
-        grid = lambda META: (META["NUM_SM"],)
+        grid = lambda META: (META['NUM_SM'], )
         grouped_matmul_kernel[grid](
             a_ptrs,
             b_ptrs,
@@ -298,24 +298,21 @@ def test():
     @triton.testing.perf_report(
         triton.testing.Benchmark(
             # argument names to use as an x-axis for the plot
-            x_names=["N"],
-            x_vals=[
-                2**i for i in range(7, 13)
-            ],  # different possible values for `x_name`
-            line_arg="provider",
+            x_names=['N'],
+            x_vals=[2**i for i in range(7, 13)],  # different possible values for `x_name`
+            line_arg='provider',
             # argument name whose value corresponds to a different line in the plot
             # possible values for `line_arg``
-            line_vals=["cublas", "triton"],
+            line_vals=['cublas', 'triton'],
             # label name for the lines
-            line_names=["cuBLAS", "Triton"],
+            line_names=['cuBLAS', 'Triton'],
             # line styles
-            styles=[("green", "-"), ("blue", "-")],
-            ylabel="runtime(ms)",  # label name for the y-axis
-            plot_name="group-gemm-performance",
+            styles=[('green', '-'), ('blue', '-')],
+            ylabel='runtime(ms)',  # label name for the y-axis
+            plot_name='group-gemm-performance',
             # name for the plot. Used also as a file name for saving the plot.
             args={},
-        )
-    )
+        ))
     def benchmark(N, provider):
         group_size = 4
         group_A = []
@@ -346,15 +343,11 @@ def test():
         d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=device)
 
         quantiles = [0.5, 0.2, 0.8]
-        if provider == "cublas":
+        if provider == 'cublas':
+            ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles)
+        if provider == 'triton':
             ms, min_ms, max_ms = triton.testing.do_bench(
-                lambda: torch_perf_fn(group_A, group_B), quantiles=quantiles
-            )
-        if provider == "triton":
-            ms, min_ms, max_ms = triton.testing.do_bench(
-                lambda: triton_perf_fn(
-                    d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size
-                ),
+                lambda: triton_perf_fn(d_a_ptrs, d_b_ptrs, d_c_ptrs, d_g_sizes, d_g_lds, group_size),
                 quantiles=quantiles,
             )
         return ms, max_ms, min_ms

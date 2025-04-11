@@ -1,12 +1,10 @@
 import math
 import unittest
-import torch.nn.functional as F
 
 import torch
-from dlblas.kernels.context_flashattention_nopad import (
-    context_attention_fwd,
-    context_attention_fwd_no_prompt_cache,
-)
+import torch.nn.functional as F
+
+from dlblas.kernels.context_flashattention_nopad import context_attention_fwd, context_attention_fwd_no_prompt_cache
 
 
 class TestContentFlashAttention(unittest.TestCase):
@@ -30,44 +28,43 @@ class TestContentFlashAttention(unittest.TestCase):
         output = torch.matmul(scores, values).transpose(1, 2).contiguous().reshape(-1, num_head, q_head_dim)
         return output
 
-
     def test(self):
-        import torch
         import numpy as np
+        import torch
 
         Z, H, N_CTX, D_HEAD, ROPE_HEAD = 1, 6, 500, 128, 64
         dtype = torch.float16
         Z = 1
-        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-        q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
+        q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
 
-        kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
-        kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device="cuda").normal_(mean=0.3, std=0.2)
+        kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
+        kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
 
-        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
-        o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.7, std=0.2)
+        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.7, std=0.2)
+        o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.7, std=0.2)
 
-        req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device="cuda")
+        req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device='cuda')
         max_input_len = N_CTX
         Z = 1
-        b_start_loc = torch.zeros((Z,), dtype=torch.int32, device="cuda")
-        b_seq_len = torch.ones((Z,), dtype=torch.int32, device="cuda")
-        b_req_idx = torch.ones((Z,), dtype=torch.int32, device="cuda")
-        b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device="cuda")
+        b_start_loc = torch.zeros((Z, ), dtype=torch.int32, device='cuda')
+        b_seq_len = torch.ones((Z, ), dtype=torch.int32, device='cuda')
+        b_req_idx = torch.ones((Z, ), dtype=torch.int32, device='cuda')
+        b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device='cuda')
         b_prompt_cache_len[0] = 0
         prompt_cache_len = 0
 
         b_seq_len[0] = N_CTX
         b_req_idx[0] = 0
-        req_to_token_indexs[0][: prompt_cache_len + N_CTX] = torch.tensor(
-            np.arange(prompt_cache_len + N_CTX), dtype=torch.int32
-        ).cuda()
+        req_to_token_indexs[0][:prompt_cache_len + N_CTX] = torch.tensor(np.arange(prompt_cache_len + N_CTX),
+                                                                         dtype=torch.int32).cuda()
 
         softmax_scale = 1 / math.sqrt(D_HEAD + ROPE_HEAD)
 
         torch_out = self.torch_att(q, q_rope, kv, kv_rope, Z, N_CTX, H, D_HEAD, ROPE_HEAD)
 
-        context_attention_fwd_no_prompt_cache(q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len, softmax_scale)
+        context_attention_fwd_no_prompt_cache(q, q_rope, kv, kv_rope, o, b_start_loc, b_seq_len, max_input_len,
+                                              softmax_scale)
 
         context_attention_fwd(
             q,
@@ -84,18 +81,18 @@ class TestContentFlashAttention(unittest.TestCase):
             softmax_scale,
         )
 
-        print("max ", torch.max(torch.abs(torch_out - o)))
-        print("mean ", torch.mean(torch.abs(torch_out - o)))
+        print('max ', torch.max(torch.abs(torch_out - o)))
+        print('mean ', torch.mean(torch.abs(torch_out - o)))
         assert torch.allclose(torch_out, o, atol=1e-2, rtol=0)
 
-        print("max ", torch.max(torch.abs(torch_out - o1)))
-        print("mean ", torch.mean(torch.abs(torch_out - o1)))
+        print('max ', torch.max(torch.abs(torch_out - o1)))
+        print('mean ', torch.mean(torch.abs(torch_out - o1)))
         assert torch.allclose(torch_out, o1, atol=1e-2, rtol=0)
 
-        print("max ", torch.max(torch.abs(o - o1)))
-        print("mean ", torch.mean(torch.abs(o - o1)))
+        print('max ', torch.max(torch.abs(o - o1)))
+        print('mean ', torch.mean(torch.abs(o - o1)))
         assert torch.allclose(o, o1, atol=1e-2, rtol=0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

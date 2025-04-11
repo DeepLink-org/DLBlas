@@ -1,7 +1,3 @@
-import torch
-
-import pytest
-
 from dlblas.autotune.space import next_power_of_2
 
 

@@ -4,11 +4,11 @@ from typing import Optional
 
 from triton.runtime.jit import JITFunction
 
-from dlblas.op_struct import OpImpl, OpParams, parse_args, match
-from dlblas.cache import Cache
-from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.autotune.autotuner import compile_op, tunning
 from dlblas.autotune.configs import AutotuneConfig
+from dlblas.autotune.space import ChoiceSpace, DictSpace
+from dlblas.cache import Cache
+from dlblas.op_struct import OpImpl, OpParams, match, parse_args
 from dlblas.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,7 +41,7 @@ class OpRegistry:
         this_file_dir = os.path.dirname(os.path.realpath(__file__))
         # kernel_file_name = call.__globals__['__name__']
         kernel_module_name = call.__module__
-        kernel_file = os.path.join(this_file_dir, "kernels", kernel_module_name + ".py")
+        kernel_file = os.path.join(this_file_dir, 'kernels', kernel_module_name + '.py')
         impl = OpImpl(
             params,
             kernel_file,
@@ -54,9 +54,8 @@ class OpRegistry:
 
         # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
         if name in self.ops:
-            assert (
-                self.ops[name][0].params == params
-            ), f"Multiple implementations of a kernel:{name} must have the same parameters."
+            assert (self.ops[name][0].params == params
+                    ), f"Multiple implementations of a kernel:{name} must have the same parameters."
             self.ops[name].append(impl)
         else:
             self.ops[name] = [impl]

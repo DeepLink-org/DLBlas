@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
 """
 Memory-efficient attention for prefill.
 It supporst page size = 1.
@@ -27,13 +26,12 @@ import triton.language as tl
 
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
-        for BM in [32]
-        for BN in [32]
-        for s in [1, 2, 3]
-        for w in [4, 8]
+        triton.Config({
+            'BLOCK_M': BM,
+            'BLOCK_N': BN
+        }, num_stages=s, num_warps=w) for BM in [32] for BN in [32] for s in [1, 2, 3] for w in [4, 8]
     ],
-    key=["B_Seqlen", "Lk"],
+    key=['B_Seqlen', 'Lk'],
 )
 @triton.jit
 def _fwd_kernel(
@@ -73,25 +71,19 @@ def _fwd_kernel(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    off_q = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs
-        + cur_head * stride_qh
-        + offs_d[None, :]
-    )
+    off_q = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :])
     off_k = offs_n[None, :] * stride_kbs + cur_kv_head * stride_kh + offs_d[:, None]
     off_v = offs_n[:, None] * stride_vbs + cur_kv_head * stride_vh + offs_d[None, :]
 
     mask_d = offs_d < Lk
 
-    q = tl.load(
-        Q + off_q, mask=(offs_m[:, None] < cur_batch_seq_len) & (mask_d), other=0.0
-    )
+    q = tl.load(Q + off_q, mask=(offs_m[:, None] < cur_batch_seq_len) & (mask_d), other=0.0)
 
     k_ptrs = K + off_k
     v_ptrs = V + off_v
 
     # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float('inf')
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
@@ -110,7 +102,7 @@ def _fwd_kernel(
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, k)
         qk *= sm_scale
-        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float('-inf'))
 
         # -- compute m_ij, p, l_ij
         m_ij = tl.max(qk, 1)
@@ -141,15 +133,9 @@ def _fwd_kernel(
         l_i = l_i_new
         m_i = m_i_new
     # initialize pointers to output
-    off_o = (
-        (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
-        + cur_head * stride_oh
-        + offs_d[None, :]
-    )
+    off_o = ((cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :])
     out_ptrs = Out + off_o
-    tl.store(
-        out_ptrs, acc, mask=(offs_m[:, None] < cur_batch_seq_len) & (mask_d[None, :])
-    )
+    tl.store(out_ptrs, acc, mask=(offs_m[:, None] < cur_batch_seq_len) & (mask_d[None, :]))
 
 
 def context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
@@ -158,7 +144,7 @@ def context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
     batch, head = b_seq_len.shape[0], q.shape[1]
     kv_group_num = q.shape[1] // k.shape[1]
 
-    grid = lambda META: (batch, head, triton.cdiv(max_input_len, META["BLOCK_M"]))
+    grid = lambda META: (batch, head, triton.cdiv(max_input_len, META['BLOCK_M']))
     _fwd_kernel[grid](
         q,
         k,

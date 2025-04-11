@@ -1,9 +1,11 @@
 import math
+
 import torch
 import triton
 import triton.language as tl
+
 # register
-from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import ChoiceSpace, SymVar, Tensor, register_dlblas_op
 
 
 def get_fa_autotune_config():
@@ -15,29 +17,53 @@ def get_fa_autotune_config():
         for w in [2, 4, 8] \
     ]
 
-@triton.heuristics(
-    {
-        "DIVISIBLE_M": lambda args: args["M"] % args["BLOCK_M"] == 0,
-        "DIVISIBLE_N": lambda args: args["N"] % args["BLOCK_N"] == 0,
-    }
-)
+
+@triton.heuristics({
+    'DIVISIBLE_M': lambda args: args['M'] % args['BLOCK_M'] == 0,
+    'DIVISIBLE_N': lambda args: args['N'] % args['BLOCK_N'] == 0,
+})
 @triton.jit
 def _fa_fwd_kernel(
-    Q, K, V, sm_scale,
+    Q,
+    K,
+    V,
+    sm_scale,
     dropout_p,
     seed,
     offset,
-    L, O,
-    stride_qz, stride_qh, stride_qm, stride_qk,
-    stride_kz, stride_kh, stride_kn, stride_kk,
-    stride_vz, stride_vh, stride_vn, stride_vk,
-    stride_oz, stride_oh, stride_om, stride_ok,
-    Z, H, M, N, P_SEQ,
+    L,
+    O,
+    stride_qz,
+    stride_qh,
+    stride_qm,
+    stride_qk,
+    stride_kz,
+    stride_kh,
+    stride_kn,
+    stride_kk,
+    stride_vz,
+    stride_vh,
+    stride_vn,
+    stride_vk,
+    stride_oz,
+    stride_oh,
+    stride_om,
+    stride_ok,
+    Z,
+    H,
+    M,
+    N,
+    P_SEQ,
     num_groups,
     head_dim,
-    BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr, BLOCK_N: tl.constexpr,
-    IS_CAUSAL: tl.constexpr, IS_DROPOUT: tl.constexpr, LARGER_M: tl.constexpr,
-    DIVISIBLE_M: tl.constexpr, DIVISIBLE_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    IS_DROPOUT: tl.constexpr,
+    LARGER_M: tl.constexpr,
+    DIVISIBLE_M: tl.constexpr,
+    DIVISIBLE_N: tl.constexpr,
 ):
     input_dtype = Q.dtype.element_ty
     # -- grid id --
@@ -57,7 +83,7 @@ def _fa_fwd_kernel(
     K += off_z * stride_kz + off_hk * stride_kh
     V += off_z * stride_vz + off_hk * stride_vh
     O += off_z * stride_oz + off_h * stride_oh
-    L += (off_z * H + off_h) * M # l's shape is (B, H, M)
+    L += (off_z * H + off_h) * M  # l's shape is (B, H, M)
 
     offs_m_base = tl.arange(0, BLOCK_M)
     offs_m = start_m * BLOCK_M + offs_m_base
@@ -71,21 +97,21 @@ def _fa_fwd_kernel(
         offs_rng_base += tl.arange(0, BLOCK_N)[None, :]
 
     # initialize pointers to value-like data
-    q_ptrs = Q + (offs_m[:, None] * stride_qm + offs_k[None, :] * stride_qk) # (BLOCK_M, BLOCK_DMODEL)
-    o_ptrs = O + (offs_m[:, None] * stride_om + offs_k[None, :] * stride_ok) # (BLOCK_M, BLOCK_DMODEL)
+    q_ptrs = Q + (offs_m[:, None] * stride_qm + offs_k[None, :] * stride_qk)  # (BLOCK_M, BLOCK_DMODEL)
+    o_ptrs = O + (offs_m[:, None] * stride_om + offs_k[None, :] * stride_ok)  # (BLOCK_M, BLOCK_DMODEL)
     l_ptrs = L + offs_m
 
     # initialize pointer to m and l, fp32 for accumulators
-    m_i = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
+    m_i = tl.full([BLOCK_M], value=-float('inf'), dtype=tl.float32)
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
     # load q
     if DIVISIBLE_M:
-        q = tl.load(q_ptrs, mask=offs_k[None, :] < head_dim, cache_modifier=".cg")
+        q = tl.load(q_ptrs, mask=offs_k[None, :] < head_dim, cache_modifier='.cg')
     else:
         mask_m = offs_m < M
-        q = tl.load(q_ptrs, mask=(mask_m[:, None]) & (offs_k[None, :] < head_dim), cache_modifier=".cg")
+        q = tl.load(q_ptrs, mask=(mask_m[:, None]) & (offs_k[None, :] < head_dim), cache_modifier='.cg')
 
     if IS_CAUSAL:
         hi = tl.minimum(N, P_SEQ + (start_m + 1) * BLOCK_M)
@@ -104,21 +130,21 @@ def _fa_fwd_kernel(
 
         # -- load k, v --
         if DIVISIBLE_N:
-            k = tl.load(k_ptrs, mask=offs_k[:, None] < head_dim, cache_modifier=".cg")
-            v = tl.load(v_ptrs, mask=offs_k[None, :] < head_dim, cache_modifier=".cg")
+            k = tl.load(k_ptrs, mask=offs_k[:, None] < head_dim, cache_modifier='.cg')
+            v = tl.load(v_ptrs, mask=offs_k[None, :] < head_dim, cache_modifier='.cg')
         else:
             mask_n = offs_n < N
-            k = tl.load(k_ptrs, mask=mask_n[None, :] & (offs_k[:, None] < head_dim), cache_modifier=".cg")
-            v = tl.load(v_ptrs, mask=mask_n[:, None] & (offs_k[None, :] < head_dim), cache_modifier=".cg")
+            k = tl.load(k_ptrs, mask=mask_n[None, :] & (offs_k[:, None] < head_dim), cache_modifier='.cg')
+            v = tl.load(v_ptrs, mask=mask_n[:, None] & (offs_k[None, :] < head_dim), cache_modifier='.cg')
 
         # -- compute qk ---
         s = tl.dot(q, k)
 
         if not DIVISIBLE_N:
-            s = tl.where(mask_n[None, :], s, float("-inf"))
+            s = tl.where(mask_n[None, :], s, float('-inf'))
         if IS_CAUSAL:
             causal_mask = (P_SEQ + offs_m[:, None]) >= offs_n[None, :]
-            s = tl.where(causal_mask, s, float("-inf"))
+            s = tl.where(causal_mask, s, float('-inf'))
 
         # -- compute scaling constant ---
         m_i_new = tl.maximum(m_i, tl.max(s, 1))
@@ -149,10 +175,10 @@ def _fa_fwd_kernel(
     if IS_CAUSAL and LARGER_M:
         is_empty_line = (offs_m + P_SEQ) < 0
         acc = tl.where(is_empty_line[:, None], 0.0, acc * (1.0 / l_i[:, None]))
-        l = tl.where(is_empty_line, float("-inf"), m_i * sm_scale + tl.log(l_i))
+        l = tl.where(is_empty_line, float('-inf'), m_i * sm_scale + tl.log(l_i))
     else:
         acc = acc * (1.0 / l_i[:, None])
-        l = m_i * sm_scale + tl.log(l_i) # log(normalizer)
+        l = m_i * sm_scale + tl.log(l_i)  # log(normalizer)
 
     # -- scale o due to dropout
     if IS_DROPOUT:
@@ -160,23 +186,23 @@ def _fa_fwd_kernel(
         acc *= scale
 
     if DIVISIBLE_M:
-        tl.store(l_ptrs, l, cache_modifier=".cg")
-        tl.store(o_ptrs, acc.to(input_dtype), mask=offs_k[None, :] < head_dim, cache_modifier=".cg")
+        tl.store(l_ptrs, l, cache_modifier='.cg')
+        tl.store(o_ptrs, acc.to(input_dtype), mask=offs_k[None, :] < head_dim, cache_modifier='.cg')
     else:
-        tl.store(l_ptrs, l, mask=mask_m, cache_modifier=".cg")
-        tl.store(o_ptrs, acc.to(input_dtype), mask=mask_m[:, None] & (offs_k[None, :] < head_dim), cache_modifier=".cg")
+        tl.store(l_ptrs, l, mask=mask_m, cache_modifier='.cg')
+        tl.store(o_ptrs, acc.to(input_dtype), mask=mask_m[:, None] & (offs_k[None, :] < head_dim), cache_modifier='.cg')
 
 
 def call(q, k, v, causal, sm_scale, dropout_p):
     Dq, Dk, Dv = q.shape[-1], k.shape[-1], v.shape[-1]
-    assert Dq == Dk == Dv, "feature size of q, k, v should be equal"
+    assert Dq == Dk == Dv, 'feature size of q, k, v should be equal'
     assert Dk in {16, 32, 64, 128}
 
     B, H, M, D = q.shape
     N = k.shape[2]
     Hk, Hv = k.shape[1], v.shape[1]
-    assert Hk == Hv, "num of heads in k and v should be equal"
-    assert H % Hk == 0, "number of heads in q must be a multiple of that in k & v"
+    assert Hk == Hv, 'num of heads in k and v should be equal'
+    assert H % Hk == 0, 'number of heads in q must be a multiple of that in k & v'
     num_groups = H // Hk
 
     P_SEQ = N - M
@@ -192,22 +218,48 @@ def call(q, k, v, causal, sm_scale, dropout_p):
     else:
         seed, offset = 0, 0
 
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]), H, B)
+    grid = lambda META: (triton.cdiv(M, META['BLOCK_M']), H, B)
     o = torch.empty_like(q)
     L = torch.empty((B, H, M), device=q.device, dtype=torch.float32)
 
     _fa_fwd_kernel[grid](
-                    q, k, v, sm_scale,
-                    dropout_p, seed, offset,
-                    L, o,
-                    q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-                    k.stride(0), k.stride(1), k.stride(2), k.stride(3),
-                    v.stride(0), v.stride(1), v.stride(2), v.stride(3),
-                    o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-                    B, H, M, N, P_SEQ, num_groups, D,
-                    BLOCK_DMODEL=triton.next_power_of_2(D),
-                    IS_CAUSAL=causal, IS_DROPOUT=is_dropout, LARGER_M=larger_m,
-                )
+        q,
+        k,
+        v,
+        sm_scale,
+        dropout_p,
+        seed,
+        offset,
+        L,
+        o,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        k.stride(0),
+        k.stride(1),
+        k.stride(2),
+        k.stride(3),
+        v.stride(0),
+        v.stride(1),
+        v.stride(2),
+        v.stride(3),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        o.stride(3),
+        B,
+        H,
+        M,
+        N,
+        P_SEQ,
+        num_groups,
+        D,
+        BLOCK_DMODEL=triton.next_power_of_2(D),
+        IS_CAUSAL=causal,
+        IS_DROPOUT=is_dropout,
+        LARGER_M=larger_m,
+    )
     return o
 
 
@@ -238,4 +290,3 @@ for dtype in [torch.float16, torch.float32]:
         #
         space = ChoiceSpace(get_fa_autotune_config())
         register_dlblas_op(name, space, (q, k, v), call, bench_fn, _fa_fwd_kernel)
-

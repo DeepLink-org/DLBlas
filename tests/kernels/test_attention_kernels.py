@@ -2,14 +2,10 @@ import random
 import unittest
 
 import torch
+
 from dlblas.kernels.decode_attention import decode_attention_fwd
-from dlblas.kernels.extend_attention import (
-    extend_attention_fwd,
-    redundant_attention,
-)
-from dlblas.kernels.prefill_attention import (
-    context_attention_fwd,
-)
+from dlblas.kernels.extend_attention import extend_attention_fwd, redundant_attention
+from dlblas.kernels.prefill_attention import context_attention_fwd
 
 
 class TestExtendAttention(unittest.TestCase):
@@ -30,59 +26,40 @@ class TestExtendAttention(unittest.TestCase):
     def _test_extend_attention_once(self, B, N_CTX, H_Q, H_KV, D):
         dtype = torch.bfloat16
 
-        b_seq_len_prefix = torch.randint(
-            1, N_CTX // 2, (B,), dtype=torch.int32, device="cuda"
-        )
-        b_seq_len_extend = torch.randint(
-            1, N_CTX // 2, (B,), dtype=torch.int32, device="cuda"
-        )
+        b_seq_len_prefix = torch.randint(1, N_CTX // 2, (B, ), dtype=torch.int32, device='cuda')
+        b_seq_len_extend = torch.randint(1, N_CTX // 2, (B, ), dtype=torch.int32, device='cuda')
         b_seq_len = b_seq_len_prefix + b_seq_len_extend
         max_len_in_batch = torch.max(b_seq_len, 0)[0].item()
 
-        b_req_idx = torch.arange(B, dtype=torch.int32, device="cuda")
-        req_to_tokens = torch.empty(
-            (B, max_len_in_batch), dtype=torch.int32, device="cuda"
-        )
-        b_start_loc = torch.zeros((B,), dtype=torch.int32, device="cuda")
+        b_req_idx = torch.arange(B, dtype=torch.int32, device='cuda')
+        req_to_tokens = torch.empty((B, max_len_in_batch), dtype=torch.int32, device='cuda')
+        b_start_loc = torch.zeros((B, ), dtype=torch.int32, device='cuda')
         b_start_loc[1:] = torch.cumsum(b_seq_len[:-1], 0)
-        b_start_loc_extend = torch.zeros((B,), dtype=torch.int32, device="cuda")
+        b_start_loc_extend = torch.zeros((B, ), dtype=torch.int32, device='cuda')
         b_start_loc_extend[1:] = torch.cumsum(b_seq_len_extend[:-1], 0)
         for i in range(B):
-            req_to_tokens[i, : b_seq_len[i]] = torch.arange(
-                b_start_loc[i], b_start_loc[i] + b_seq_len[i]
-            )
+            req_to_tokens[i, :b_seq_len[i]] = torch.arange(b_start_loc[i], b_start_loc[i] + b_seq_len[i])
 
         total_token_num = torch.sum(b_seq_len).item()
         extend_token_num = torch.sum(b_seq_len_extend).item()
-        k_buffer = torch.empty(
-            (total_token_num, H_KV, D), dtype=dtype, device="cuda"
-        ).normal_(mean=0.1, std=0.2)
-        v_buffer = torch.empty(
-            (total_token_num, H_KV, D), dtype=dtype, device="cuda"
-        ).normal_(mean=0.1, std=0.2)
+        k_buffer = torch.empty((total_token_num, H_KV, D), dtype=dtype, device='cuda').normal_(mean=0.1, std=0.2)
+        v_buffer = torch.empty((total_token_num, H_KV, D), dtype=dtype, device='cuda').normal_(mean=0.1, std=0.2)
 
-        k_extend = torch.empty((extend_token_num, H_KV, D), dtype=dtype, device="cuda")
-        v_extend = torch.empty((extend_token_num, H_KV, D), dtype=dtype, device="cuda")
-        q_extend = torch.empty((extend_token_num, H_Q, D), dtype=dtype, device="cuda")
+        k_extend = torch.empty((extend_token_num, H_KV, D), dtype=dtype, device='cuda')
+        v_extend = torch.empty((extend_token_num, H_KV, D), dtype=dtype, device='cuda')
+        q_extend = torch.empty((extend_token_num, H_Q, D), dtype=dtype, device='cuda')
         for i in range(B):
             extend_start_in_buffer = b_start_loc[i] + b_seq_len_prefix[i]
             extend_end_in_buffer = b_start_loc[i] + b_seq_len[i]
             extend_start = b_start_loc_extend[i]
             extend_end = b_start_loc_extend[i] + b_seq_len_extend[i]
-            k_extend[extend_start:extend_end] = k_buffer[
-                extend_start_in_buffer:extend_end_in_buffer
-            ]
-            v_extend[extend_start:extend_end] = v_buffer[
-                extend_start_in_buffer:extend_end_in_buffer
-            ]
-            q_extend[extend_start:extend_end] = torch.empty(
-                (b_seq_len_extend[i], H_Q, D), dtype=dtype, device="cuda"
-            ).normal_(mean=0.1, std=0.2)
+            k_extend[extend_start:extend_end] = k_buffer[extend_start_in_buffer:extend_end_in_buffer]
+            v_extend[extend_start:extend_end] = v_buffer[extend_start_in_buffer:extend_end_in_buffer]
+            q_extend[extend_start:extend_end] = torch.empty((b_seq_len_extend[i], H_Q, D), dtype=dtype,
+                                                            device='cuda').normal_(mean=0.1, std=0.2)
 
-        o_extend = torch.empty((extend_token_num, H_Q, D), dtype=dtype, device="cuda")
-        o_redundant = torch.empty(
-            (extend_token_num, H_Q, D), dtype=dtype, device="cuda"
-        )
+        o_extend = torch.empty((extend_token_num, H_Q, D), dtype=dtype, device='cuda')
+        o_redundant = torch.empty((extend_token_num, H_Q, D), dtype=dtype, device='cuda')
 
         b_seq_len_extend = b_seq_len - b_seq_len_prefix
         b_start_loc_extend = torch.zeros_like(b_seq_len)
@@ -115,11 +92,11 @@ class TestExtendAttention(unittest.TestCase):
             max_len_in_batch,
         )
         print(
-            "test_extend_attention:max diff",
+            'test_extend_attention:max diff',
             torch.max(torch.abs(o_extend - o_redundant)),
         )
         print(
-            "test_extend_attention:mean diff",
+            'test_extend_attention:mean diff',
             torch.mean(torch.abs(o_extend - o_redundant)),
         )
         self.assertTrue(torch.allclose(o_extend, o_redundant, rtol=1e-2))
@@ -140,14 +117,14 @@ class TestExtendAttention(unittest.TestCase):
         max_seq_len = max(seq_lens)
 
         # Create random input tensors
-        q = torch.randn(sum(seq_lens), num_heads, head_dim, device="cuda")
-        k = torch.randn(sum(seq_lens), num_heads, head_dim, device="cuda")
-        v = torch.randn(sum(seq_lens), num_heads, head_dim, device="cuda")
-        o = torch.zeros(sum(seq_lens), num_heads, head_dim, device="cuda")
+        q = torch.randn(sum(seq_lens), num_heads, head_dim, device='cuda')
+        k = torch.randn(sum(seq_lens), num_heads, head_dim, device='cuda')
+        v = torch.randn(sum(seq_lens), num_heads, head_dim, device='cuda')
+        o = torch.zeros(sum(seq_lens), num_heads, head_dim, device='cuda')
 
         # Create b_start_loc and b_seq_len tensors
-        b_start_loc = torch.tensor([0, seq_lens[0]], device="cuda")
-        b_seq_len = torch.tensor(seq_lens, device="cuda")
+        b_start_loc = torch.tensor([0, seq_lens[0]], device='cuda')
+        b_seq_len = torch.tensor(seq_lens, device='cuda')
 
         context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_seq_len)
 
@@ -166,20 +143,20 @@ class TestExtendAttention(unittest.TestCase):
         sm_scale = 1.0 / (D**0.5)
 
         # q represents the new token being generated, one per batch
-        q = torch.randn(B, H_Q, D, dtype=dtype, device="cuda")
+        q = torch.randn(B, H_Q, D, dtype=dtype, device='cuda')
 
         # k_buffer and v_buffer represent all previous tokens
-        k_buffer = torch.randn(total_tokens, H_KV, D, dtype=dtype, device="cuda")
-        v_buffer = torch.randn(total_tokens, H_KV, D, dtype=dtype, device="cuda")
+        k_buffer = torch.randn(total_tokens, H_KV, D, dtype=dtype, device='cuda')
+        v_buffer = torch.randn(total_tokens, H_KV, D, dtype=dtype, device='cuda')
 
         # o will have the same shape as q
-        o = torch.zeros(B, H_Q, D, dtype=dtype, device="cuda")
+        o = torch.zeros(B, H_Q, D, dtype=dtype, device='cuda')
 
-        req_to_token = torch.arange(total_tokens, device="cuda").reshape(B, seq_len)
-        b_req_idx = torch.arange(B, device="cuda")
-        b_start_loc = torch.arange(0, total_tokens, seq_len, device="cuda")
-        b_seq_len = torch.full((B,), seq_len, device="cuda")
-        attn_logits = torch.empty((H_Q, total_tokens), dtype=dtype, device="cuda")
+        req_to_token = torch.arange(total_tokens, device='cuda').reshape(B, seq_len)
+        b_req_idx = torch.arange(B, device='cuda')
+        b_start_loc = torch.arange(0, total_tokens, seq_len, device='cuda')
+        b_seq_len = torch.full((B, ), seq_len, device='cuda')
+        attn_logits = torch.empty((H_Q, total_tokens), dtype=dtype, device='cuda')
         decode_attention_fwd(
             q,
             k_buffer,
@@ -210,5 +187,5 @@ class TestExtendAttention(unittest.TestCase):
             self._test_decode_attention_once(B, H_Q, H_KV, D)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

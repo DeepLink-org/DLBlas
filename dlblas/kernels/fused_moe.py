@@ -7,70 +7,46 @@ import triton.language as tl
 
 def get_cuda_autotune_config():
     return [
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 128,
-                'BLOCK_SIZE_N': 256,
-                'BLOCK_SIZE_K': 64,
-            },
-            num_stages=3,
-            num_warps=8),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 64,
-                'BLOCK_SIZE_N': 256,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=4,
-            num_warps=4),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 128,
-                'BLOCK_SIZE_N': 128,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=4,
-            num_warps=4),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 128,
-                'BLOCK_SIZE_N': 64,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=4,
-            num_warps=4),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 64,
-                'BLOCK_SIZE_N': 128,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=4,
-            num_warps=4),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 128,
-                'BLOCK_SIZE_N': 32,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=4,
-            num_warps=4),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 64,
-                'BLOCK_SIZE_N': 32,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=5,
-            num_warps=2),
-        triton.Config(
-            {
-                'BLOCK_SIZE_M': 32,
-                'BLOCK_SIZE_N': 64,
-                'BLOCK_SIZE_K': 32,
-            },
-            num_stages=5,
-            num_warps=2),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 64,
+        }, num_stages=3, num_warps=8),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 128,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 32,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=4, num_warps=4),
+        triton.Config({
+            'BLOCK_SIZE_M': 64,
+            'BLOCK_SIZE_N': 32,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=5, num_warps=2),
+        triton.Config({
+            'BLOCK_SIZE_M': 32,
+            'BLOCK_SIZE_N': 64,
+            'BLOCK_SIZE_K': 32,
+        }, num_stages=5, num_warps=2),
     ]
 
 
@@ -142,19 +118,13 @@ def fused_moe_kernel(
 
     # deepseek has 160 experts, exp index would overflow int32
     exp_off = tl.full((1, ), stride_be, dtype=tl.int64) * exp_id
-    b_ptrs = B + exp_off + (offs_k[:, None] * stride_bk +
-                            offs_bn[None, :] * stride_bn)
+    b_ptrs = B + exp_off + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(a_ptrs,
-                    mask=mask_sid[:, None] &
-                    (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-                    other=0.0)
-        b = tl.load(b_ptrs,
-                    mask=offs_k[:, None] < K - k * BLOCK_SIZE_K,
-                    other=0.0)
+        a = tl.load(a_ptrs, mask=mask_sid[:, None] & (offs_k[None, :] < K - k * BLOCK_SIZE_K), other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
         accumulator += tl.dot(a, b)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -199,8 +169,7 @@ def fused_moe_kernel_launcher(
     def _grid_fn(META):
         grid = (
             E,
-            triton.cdiv(num_tokens, META['BLOCK_SIZE_M']) *
-            triton.cdiv(N, META['BLOCK_SIZE_N']),
+            triton.cdiv(num_tokens, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
         )
         return grid
 
@@ -236,8 +205,7 @@ def fused_moe_kernel_launcher(
 
 
 @triton.jit
-def _start_end_kernel(TopkIdx, SortedIdx, ExpStart, ExpEnd,
-                      len_sorted_idx: int, num_experts: tl.constexpr,
+def _start_end_kernel(TopkIdx, SortedIdx, ExpStart, ExpEnd, len_sorted_idx: int, num_experts: tl.constexpr,
                       BLOCK: tl.constexpr):
     """start end kernel."""
     exp_id = tl.program_id(0)
@@ -264,8 +232,7 @@ def _start_end_kernel(TopkIdx, SortedIdx, ExpStart, ExpEnd,
     tl.store(ExpEnd + exp_id, exp_end)
 
 
-def get_start_end(topk_idx: torch.Tensor, sorted_idx: torch.Tensor,
-                  num_experts: int):
+def get_start_end(topk_idx: torch.Tensor, sorted_idx: torch.Tensor, num_experts: int):
     """get start and end.
 
     same process as:
@@ -315,8 +282,7 @@ def fused_moe(hidden_states: torch.Tensor,
         flatten_topk_ids = topk_ids.flatten()
         sorted_idx = flatten_topk_ids.argsort()
 
-        exp_start, exp_end = get_start_end(flatten_topk_ids, sorted_idx,
-                                           num_experts)
+        exp_start, exp_end = get_start_end(flatten_topk_ids, sorted_idx, num_experts)
         return sorted_idx, exp_start, exp_end
 
     if renormalize:

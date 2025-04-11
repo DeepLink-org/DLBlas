@@ -6,7 +6,7 @@ from packaging import version
 
 TRITON_VERSION = version.parse(triton.__version__)
 
-if TRITON_VERSION >= version.parse("3.0.0"):
+if TRITON_VERSION >= version.parse('3.0.0'):
 
     fast_expf = tl.math.exp
 else:
@@ -99,7 +99,7 @@ def silu_and_mul(gate_up: torch.Tensor, out: torch.Tensor = None):
     BLOCK_SIZE_N = min(BLOCK_SIZE_N, 1024)
     num_warps = 4
     num_stages = 2
-    grid = (M,)
+    grid = (M, )
     if N % BLOCK_SIZE_N == 0:
         _silu_and_mul_kernel[grid](
             gate_up,

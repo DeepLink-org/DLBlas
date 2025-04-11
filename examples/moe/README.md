@@ -51,7 +51,7 @@ bash srun_moe.sh
 
 
 ## Problems to Be Solved
-add 
+add
 ```
 locations_s[locations_s>=capacity] = capacity - 1
 locations_s[locations_s<0] = 0

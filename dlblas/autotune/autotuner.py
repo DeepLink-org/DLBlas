@@ -1,15 +1,16 @@
 import os
 
 import numpy as np
-
+from torch import Tensor
 from torch._inductor.codecache import PyCodeCache
 from triton.runtime.autotuner import OutOfResources
-from torch import Tensor
-from dlblas.op_struct import OpImpl
-from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.autotune.policy import get_policy, Policy
-from dlblas.autotune.dynamic_compiler import Parser
+
 from dlblas.autotune.configs import AutotuneConfig
+from dlblas.autotune.dynamic_compiler import Parser
+from dlblas.autotune.policy import Policy, get_policy
+from dlblas.autotune.space import ChoiceSpace, DictSpace
+from dlblas.op_struct import OpImpl
+
 
 def perf_op(op: OpImpl, args: tuple):
     bench_ok = True

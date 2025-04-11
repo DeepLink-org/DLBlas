@@ -1,9 +1,10 @@
 import torch
-from einops import einsum, rearrange, repeat
 import triton
+from einops import einsum, rearrange, repeat
+
 import dlblas
-from dlblas.utils.device_utils import get_idle_device
 from dlblas.kernels.selective_scan import SelectiveScan
+from dlblas.utils.device_utils import get_idle_device
 
 
 # credit: https://github.com/johnma2006/mamba-minimal/blob/master/model.py#L275
@@ -43,8 +44,8 @@ def ref_selective_scan(u, delta, A, B, C, initial_state):
     # - A is discretized using zero-order hold (ZOH) discretization (see Section 2 Equation 4 in the Mamba paper [1])
     # - B is discretized using a simplified Euler discretization instead of ZOH. From a discussion with authors:
     #   "A is the more important term and the performance doesn't change much with the simplification on B"
-    deltaA = torch.exp(einsum(delta, A, "b l d_in, d_in n -> b l d_in n"))
-    deltaB_u = einsum(delta, B, u, "b l d_in, b l n, b l d_in -> b l d_in n")
+    deltaA = torch.exp(einsum(delta, A, 'b l d_in, d_in n -> b l d_in n'))
+    deltaB_u = einsum(delta, B, u, 'b l d_in, b l n, b l d_in -> b l d_in n')
 
     # Perform selective scan (see scan_SSM() in The Annotated S4 [2])
     # Note that the below is sequential, while the official implementation does a much faster parallel scan that
@@ -54,7 +55,7 @@ def ref_selective_scan(u, delta, A, B, C, initial_state):
     ys = []
     for i in range(l):
         x = deltaA[:, i] * x + deltaB_u[:, i]
-        y = einsum(x, C[:, i, :], "b d_in n, b n -> b d_in")
+        y = einsum(x, C[:, i, :], 'b d_in n, b n -> b d_in')
         ys.append(y)
     y = torch.stack(ys, dim=1)  # shape (b, l, d_in)
 
@@ -122,46 +123,39 @@ def test():
 
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd", "bwd"],
-            line_arg="provider",
-            line_vals=["triton", "pytorch"],
-            line_names=["Triton", "PyTorch"],
-            styles=[("red", "-"), ("blue", "-"), ("green", "-"), ("orange", "-")],
-            ylabel="ms",
+            x_names=['op'],
+            x_vals=['fwd', 'bwd'],
+            line_arg='provider',
+            line_vals=['triton', 'pytorch'],
+            line_names=['Triton', 'PyTorch'],
+            styles=[('red', '-'), ('blue', '-'), ('green', '-'), ('orange', '-')],
+            ylabel='ms',
             plot_name=f"selective_scan-B:{B}-T:{T}-D:{D}-K:{K}",
             args={},
-        )
-    )
+        ))
 
     @triton.testing.perf_report(configs)
     def bench(op, provider):
         warmup = 100
         rep = 200
-        if "triton" in provider:
-            if "fwd" == op:
-                fn = lambda: SelectiveScan.apply(
-                    x, delta, A, B2, C, initial_state
-                )
+        if 'triton' in provider:
+            if 'fwd' == op:
+                fn = lambda: SelectiveScan.apply(x, delta, A, B2, C, initial_state)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-            elif "bwd" == op:
-                tri, tri_final = SelectiveScan.apply(
-                    x, delta, A, B2, C, initial_state
-                )
+            elif 'bwd' == op:
+                tri, tri_final = SelectiveScan.apply(x, delta, A, B2, C, initial_state)
                 do = torch.randn_like(tri)
                 bwd_fn = lambda: tri.backward(do, retain_graph=True)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
             else:
                 raise Exception()
 
-        if "pytorch" in provider:
-            if "fwd" == op:
+        if 'pytorch' in provider:
+            if 'fwd' == op:
                 fn = lambda: ref_selective_scan(x, delta, A, B2, C, initial_state)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-            elif "bwd" == op:
-                tri, tri_final = ref_selective_scan(
-                    x, delta, A, B2, C, initial_state
-                )
+            elif 'bwd' == op:
+                tri, tri_final = ref_selective_scan(x, delta, A, B2, C, initial_state)
                 do = torch.randn_like(tri)
                 bwd_fn = lambda: tri.backward(do, retain_graph=True)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
@@ -172,6 +166,6 @@ def test():
     bench.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()
-    print("sucessfully!")
+    print('sucessfully!')

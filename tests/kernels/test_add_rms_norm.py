@@ -1,9 +1,11 @@
 import torch
-import dlblas
 from torch.nn.parameter import Parameter
+
+import dlblas
 
 
 class FuseRMSNorm(torch.nn.Module):
+
     def __init__(self, weights, eps=1e-6):
         super().__init__()
 
@@ -44,37 +46,35 @@ def compare_tensor(a, b, prec):
 def test_add_rms_norm0():
     H, C = 4096, 4096
     eps = 1e-6
-    input = torch.randn(H, C, device="cuda", dtype=torch.half)
+    input = torch.randn(H, C, device='cuda', dtype=torch.half)
     ref_input = input.clone()
-    residual = torch.randn(H, C, device="cuda", dtype=torch.half)
+    residual = torch.randn(H, C, device='cuda', dtype=torch.half)
     ref_residual = residual.clone()
-    weight = Parameter(torch.randn(C, device="cuda", dtype=torch.half))
-    ref_normed_out, ref_added_out = dlblas.add_rms_norm(
-        ref_input, weight, ref_residual, eps
-    )
+    weight = Parameter(torch.randn(C, device='cuda', dtype=torch.half))
+    ref_normed_out, ref_added_out = dlblas.add_rms_norm(ref_input, weight, ref_residual, eps)
     rms_norm = FuseRMSNorm(weight, eps=eps)
     normed_out, added_out = rms_norm(input, residual)
-    print("max abs diff: ", torch.max(abs(ref_normed_out - normed_out)))
-    print("max abs diff: ", torch.max(abs(ref_added_out - added_out)))
+    print('max abs diff: ', torch.max(abs(ref_normed_out - normed_out)))
+    print('max abs diff: ', torch.max(abs(ref_added_out - added_out)))
     assert compare_tensor(normed_out, ref_normed_out, 0.003)
     assert compare_tensor(added_out, ref_added_out, 0.003)
-    print("test_add_rms_norm: pass")
+    print('test_add_rms_norm: pass')
 
 
 def test_rms_norm0():
     H, C = 4096, 4096
     eps = 1e-6
-    input = torch.randn(H, C, device="cuda", dtype=torch.half)
+    input = torch.randn(H, C, device='cuda', dtype=torch.half)
     ref_input = input.clone()
-    weight = Parameter(torch.randn(C, device="cuda", dtype=torch.half))
+    weight = Parameter(torch.randn(C, device='cuda', dtype=torch.half))
     ref_normed_out = dlblas.rms_norm(ref_input, weight, eps)
     rms_norm = FuseRMSNorm(weight, eps=eps)
     normed_out, added_out = rms_norm(input)
-    print("max abs diff: ", torch.max(abs(ref_normed_out - normed_out)))
+    print('max abs diff: ', torch.max(abs(ref_normed_out - normed_out)))
     assert compare_tensor(normed_out, ref_normed_out, 0.003)
-    print("test_rms_norm: pass")
+    print('test_rms_norm: pass')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test_rms_norm0()
     test_add_rms_norm0()

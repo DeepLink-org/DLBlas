@@ -1,13 +1,9 @@
 import re
-
+import pytest
 import torch
-import triton
 import triton.language as tl
 
-import pytest
-
-import dlblas
-from dlblas import get_op, get_list_op_names, get_args_from_op_name
+from dlblas import get_list_op_names
 
 
 def test_op_registry():
@@ -18,13 +14,13 @@ def test_op_registry():
     assert 'matmul' in op_list
 
 
-@pytest.mark.skip(reason="no need")
+@pytest.mark.skip(reason='no need')
 def test_regex():
     src = """
 @triton.jit
 def whatever(a, b, c):
     hahahah
-    
+
 # register
 name = 'matmul'
 for dtype in [torch.float16, torch.float32]:
@@ -47,12 +43,9 @@ for dtype in [torch.float16, torch.float32]:
             else:
                 register_dlblas_op(name, (a, b, activation), call, bench_fn, matmul_kernel)
 """
-    replaced_data = re.sub(r'register_dlblas_op.*?(?=\n|$)',
-                           'pass',
-                           src,
-                           flags=re.MULTILINE)
+    replaced_data = re.sub(r'register_dlblas_op.*?(?=\n|$)', 'pass', src, flags=re.MULTILINE)
 
-    assert "register_dlblas_op" not in replaced_data
+    assert 'register_dlblas_op' not in replaced_data
 
     src2 = """
 name = 'matmul'
@@ -64,13 +57,10 @@ for dtype in [torch.float16, torch.float32]:
             a = Tensor((m, k), dtype=dtype, device=device)
             b = Tensor((k, n), dtype=dtype, device=device)
             if activation == '':
-                register_dlblas_op(name, (a, b), call, bench_fn, matmul_kernel) # what about now 
+                register_dlblas_op(name, (a, b), call, bench_fn, matmul_kernel) # what about now
             else:
                 register_dlblas_op(name, (a, b, activation), call, bench_fn, matmul_kernel)
 """
-    replace2 = re.sub(r'register_dlblas_op.*?(?=\n|$)',
-                      'pass',
-                      src2,
-                      flags=re.MULTILINE)
+    replace2 = re.sub(r'register_dlblas_op.*?(?=\n|$)', 'pass', src2, flags=re.MULTILINE)
 
-    assert "register_dlblas_op" not in replace2
+    assert 'register_dlblas_op' not in replace2

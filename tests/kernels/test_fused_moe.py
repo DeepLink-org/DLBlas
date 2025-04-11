@@ -22,7 +22,7 @@ class TestFusedMoEKernelLauncher:
 
     @pytest.fixture
     def device(self):
-        yield torch.device("cuda")
+        yield torch.device('cuda')
 
     @pytest.fixture
     def N(self):
@@ -159,7 +159,7 @@ class TestFusedMoe:
 
     @pytest.fixture
     def device(self):
-        yield torch.device("cuda")
+        yield torch.device('cuda')
 
     @pytest.fixture
     def in_size(self):
@@ -201,9 +201,7 @@ class TestFusedMoe:
 
     @pytest.fixture
     def w2(self, num_experts, out_size, hidden_size, dtype, device):
-        ret = torch.rand(
-            num_experts, out_size, hidden_size // 2, dtype=dtype, device=device
-        )
+        ret = torch.rand(num_experts, out_size, hidden_size // 2, dtype=dtype, device=device)
         yield (ret - 0.5) / 2
 
     @pytest.fixture
@@ -236,17 +234,13 @@ class TestFusedMoe:
             token_idx, k_idx = torch.where(topk_idx == eid)
             gate_proj, up_proj = w1[eid].chunk(2, dim=0)
             down_proj = w2[eid]
-            tmp_out = _mlp_forward(
-                hidden_states[token_idx], gate_proj, up_proj, down_proj
-            )
+            tmp_out = _mlp_forward(hidden_states[token_idx], gate_proj, up_proj, down_proj)
             tmp_out = tmp_out * topk_weights[token_idx, k_idx, None]
             output.index_add_(0, token_idx, tmp_out.to(output.dtype))
         yield output
 
     @torch.inference_mode()
-    def test_fused_moe(
-        self, hidden_states, w1, w2, topk_weights, topk_idx, top_k, renormalize, gt
-    ):
+    def test_fused_moe(self, hidden_states, w1, w2, topk_weights, topk_idx, top_k, renormalize, gt):
         output = fused_moe(
             hidden_states,
             w1,

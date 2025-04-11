@@ -1,26 +1,28 @@
 # For https://github.com/InternLM/lmdeploy/tree/v0.6.1
 import torch
-from dlblas.kernels.fill_kv_cache import fill_kv_cache
+
+from dlblas.kernels.activation import silu_and_mul
 from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
+from dlblas.kernels.fill_kv_cache import fill_kv_cache
+from dlblas.kernels.multinomial_sampling import multinomial_sampling
 from dlblas.kernels.paged_attention import paged_attention_fwd
 from dlblas.kernels.rms_norm import rms_norm
-from dlblas.kernels.multinomial_sampling import multinomial_sampling
-from dlblas.kernels.activation import silu_and_mul
 
 
 def _patch_lmdeploy():
     import lmdeploy.pytorch.kernels.cuda as lmdeploy_kernels
 
     DEFAULT_PATCH_LIST = [
-        "fill_kv_cache",
-        "apply_rotary_pos_emb",
-        "paged_attention_fwd",
-        "rms_norm",
-        "multinomial_sampling",
-        "silu_and_mul",
+        'fill_kv_cache',
+        'apply_rotary_pos_emb',
+        'paged_attention_fwd',
+        'rms_norm',
+        'multinomial_sampling',
+        'silu_and_mul',
     ]
 
     def try_patch(op: str):
+
         def patch_fill_kv_cache():
             lmdeploy_kernels.fill_kv_cache = fill_kv_cache
 
@@ -43,14 +45,14 @@ def _patch_lmdeploy():
 
         try:
             locals()[f"patch_{op}"]()
-            print(f"patched dlblas implementation of {op}\n", end="")
+            print(f"patched dlblas implementation of {op}\n", end='')
         except KeyError:
             print(
                 f"unknow op: {op}, supported ops: {DEFAULT_PATCH_LIST}\n",
-                end="",
+                end='',
             )
         except AttributeError:
-            print(f"op {op} is not implemented in dlblas\n", end="")
+            print(f"op {op} is not implemented in dlblas\n", end='')
 
     for op in DEFAULT_PATCH_LIST:
         try_patch(op)
@@ -58,15 +60,10 @@ def _patch_lmdeploy():
 
 _patch_lmdeploy()
 
-from lmdeploy import PytorchEngineConfig, pipeline
-from lmdeploy.messages import GenerationConfig
 
-
-def run_pipeline_chat_test(
-    device_type,
-):
+def run_pipeline_chat_test(device_type, ):
     tp = 1
-    hf_path = "/home/work/models_all/ZhipuAI/glm-4v-9b/"
+    hf_path = '/home/work/models_all/ZhipuAI/glm-4v-9b/'
     # hf_path = "/home/work/models_all/ZhipuAI/glm-4-9b/"
     # hf_path = "/home/work/models_all/ZhipuAI/cogvlm2-llama3-chat-19B/"
     # hf_path = "/home/work/models_all/ZhipuAI/cogvlm-chat/"
@@ -85,15 +82,15 @@ def run_pipeline_chat_test(
     # hf_path = '/workspace/volume/shangda/share/llm_models/Shanghai_AI_Laboratory/internlm2_5-7b/'
     # hf_path = "/workspace/volume/shangda/share/llm_models/Qwen/Qwen2-7B/"  # done
     # hf_path = '/workspace/volume/shangda/share/llm_models/shakechen/Llama-2-7b-hf/'
-    backend_config = PytorchEngineConfig(
-        tp=tp, device_type=device_type, eager_mode=True
-    )
-    print("backend_config: ", backend_config)
+    from lmdeploy import PytorchEngineConfig, pipeline
+    from lmdeploy.messages import GenerationConfig
+    backend_config = PytorchEngineConfig(tp=tp, device_type=device_type, eager_mode=True)
+    print('backend_config: ', backend_config)
     pipe = pipeline(hf_path, backend_config=backend_config)
     gen_config = GenerationConfig(do_sample=False, top_k=1)
     response = pipe(
         [
-            "Please introduce Shanghai."
+            'Please introduce Shanghai.'
             # "给我一首中文诗，需要添加标点符号，请用中文回答Give me a Chinese poem in Chinese"
         ],
         do_preprocess=False,
@@ -105,7 +102,7 @@ def run_pipeline_chat_test(
     torch.cuda.empty_cache()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     seed = 1024
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -119,9 +116,9 @@ if __name__ == "__main__":
     # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_paged_attention.py'])
     # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_multinomial_sampling.py'])
     # device_type = 'mlu'
-    device_type = "cuda"
-    if "mlu" == device_type:
+    device_type = 'cuda'
+    if 'mlu' == device_type:
         import torch_mlu
         import torch_mlu.utils.gpu_migration
-    run_pipeline_chat_test("cuda")
-    print("sucessfully!")
+    run_pipeline_chat_test('cuda')
+    print('sucessfully!')

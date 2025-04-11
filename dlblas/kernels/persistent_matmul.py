@@ -12,30 +12,37 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas.utils import register_dlblas_op, SymVar, Tensor, DictSpace, FixedSpace
+from dlblas.utils import DictSpace, FixedSpace, SymVar, Tensor, register_dlblas_op
 
 
 def _matmul_launch_metadata(grid, kernel, args):
     ret = {}
-    M, N, K = args["M"], args["N"], args["K"]
-    ret["name"] = f"{kernel.name} [M={M}, N={N}, K={K}]"
-    ret["flops8"] = 2. * M * N * K
-    if "c_ptr" in args:
-        bytes_per_elem = args["c_ptr"].element_size()
+    M, N, K = args['M'], args['N'], args['K']
+    ret['name'] = f"{kernel.name} [M={M}, N={N}, K={K}]"
+    ret['flops8'] = 2. * M * N * K
+    if 'c_ptr' in args:
+        bytes_per_elem = args['c_ptr'].element_size()
     else:
-        bytes_per_elem = 1 if args["FP8_OUTPUT"] else 2
-    ret["bytes"] = bytes_per_elem * (M * K + N * K)
+        bytes_per_elem = 1 if args['FP8_OUTPUT'] else 2
+    ret['bytes'] = bytes_per_elem * (M * K + N * K)
     return ret
 
 
 # @triton.jit(launch_metadata=_matmul_launch_metadata)
 @triton.jit
 def matmul_kernel_persistent(
-        a_ptr, b_ptr, c_ptr,  #
-        M, N, K,  #
-        stride_am, stride_ak,  #
-        stride_bk, stride_bn,  #
-        stride_cm, stride_cn,  #
+        a_ptr,
+        b_ptr,
+        c_ptr,  #
+        M,
+        N,
+        K,  #
+        stride_am,
+        stride_ak,  #
+        stride_bk,
+        stride_bn,  #
+        stride_cm,
+        stride_cn,  #
         BLOCK_SIZE_M: tl.constexpr,  #
         BLOCK_SIZE_N: tl.constexpr,  #
         BLOCK_SIZE_K: tl.constexpr,  #
@@ -82,135 +89,133 @@ def matmul_kernel_persistent(
             offs_bn = tl.arange(0, BLOCK_SIZE_N)
             offs_am = tl.where(offs_am < M - start_m, offs_am, 0)
             offs_bn = tl.where(offs_bn < N - start_n, offs_bn, 0)
-            offs_am = tl.max_contiguous(tl.multiple_of(offs_am, BLOCK_SIZE_M),
-                                        BLOCK_SIZE_M)
-            offs_bn = tl.max_contiguous(tl.multiple_of(offs_bn, BLOCK_SIZE_N),
-                                        BLOCK_SIZE_N)
+            offs_am = tl.max_contiguous(tl.multiple_of(offs_am, BLOCK_SIZE_M), BLOCK_SIZE_M)
+            offs_bn = tl.max_contiguous(tl.multiple_of(offs_bn, BLOCK_SIZE_N), BLOCK_SIZE_N)
         offs_k = ki * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
-        a_ptrs = a_ptr + (offs_am[:, None] * stride_am +
-                          offs_k[None, :] * stride_ak)
-        b_ptrs = b_ptr + (offs_k[:, None] * stride_bk +
-                          offs_bn[None, :] * stride_bn)
+        a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+        b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-        a = tl.load(a_ptrs,
-                    mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K,
-                    other=0.0)
-        b = tl.load(b_ptrs,
-                    mask=offs_k_for_mask[:, None] < K - ki * BLOCK_SIZE_K,
-                    other=0.0)
+        a = tl.load(a_ptrs, mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k_for_mask[:, None] < K - ki * BLOCK_SIZE_K, other=0.0)
         accumulator = tl.dot(a, b, accumulator)
 
         if ki == k_tiles - 1:
             offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            c_ptrs = c_ptr + stride_cm * offs_cm[:,
-                                                 None] + stride_cn * offs_cn[
-                                                     None, :]
+            c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
             c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
             if (c_ptr.dtype == tl.float8e4nv):
                 c = accumulator.to(tl.float8e4nv)
             else:
                 c = accumulator.to(tl.float16)
             tl.store(c_ptrs, c, mask=c_mask)
-            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N),
-                                   dtype=tl.float32)
+            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
 
 def call(a, b):
     configs = {
         torch.float8_e4m3fn: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 4,
-            "num_warps": 8
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 128,
+            'GROUP_SIZE_M': 8,
+            'num_stages': 4,
+            'num_warps': 8
         },
         torch.float16: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 3,
-            "num_warps": 8
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 64,
+            'GROUP_SIZE_M': 8,
+            'num_stages': 3,
+            'num_warps': 8
         }
     }
     # Check constraints.
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-    assert a.dtype == b.dtype, "Incompatible dtypes"
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    assert a.shape[1] == b.shape[0], 'Incompatible dimensions'
+    assert a.dtype == b.dtype, 'Incompatible dtypes'
+    NUM_SMS = torch.cuda.get_device_properties('cuda').multi_processor_count
     M, K = a.shape
     K, N = b.shape
     dtype = a.dtype
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (min(
-        NUM_SMS,
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(
-            N, META["BLOCK_SIZE_N"])), )
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N'])), )
     matmul_kernel_persistent[grid](
-        a, b, c,  #
-        M, N, K,  #
-        a.stride(0), a.stride(1),  #
-        b.stride(0), b.stride(1),  #
-        c.stride(0), c.stride(1),  #
-        BLOCK_SIZE_M=configs[dtype]["BLOCK_SIZE_M"],  #
-        BLOCK_SIZE_N=configs[dtype]["BLOCK_SIZE_N"],  #
-        BLOCK_SIZE_K=configs[dtype]["BLOCK_SIZE_K"],  #
-        GROUP_SIZE_M=configs[dtype]["GROUP_SIZE_M"],  #
+        a,
+        b,
+        c,  #
+        M,
+        N,
+        K,  #
+        a.stride(0),
+        a.stride(1),  #
+        b.stride(0),
+        b.stride(1),  #
+        c.stride(0),
+        c.stride(1),  #
+        BLOCK_SIZE_M=configs[dtype]['BLOCK_SIZE_M'],  #
+        BLOCK_SIZE_N=configs[dtype]['BLOCK_SIZE_N'],  #
+        BLOCK_SIZE_K=configs[dtype]['BLOCK_SIZE_K'],  #
+        GROUP_SIZE_M=configs[dtype]['GROUP_SIZE_M'],  #
         NUM_SMS=NUM_SMS,  #
-        num_stages=configs[dtype]["num_stages"],  #
-        num_warps=configs[dtype]["num_warps"],  #
+        num_stages=configs[dtype]['num_stages'],  #
+        num_warps=configs[dtype]['num_warps'],  #
     )
     return c
+
 
 def bench_fn(a, b):
     configs = {
         torch.float8_e4m3fn: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 128,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 4,
-            "num_warps": 8
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 128,
+            'GROUP_SIZE_M': 8,
+            'num_stages': 4,
+            'num_warps': 8
         },
         torch.float16: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 256,
-            "BLOCK_SIZE_K": 64,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 3,
-            "num_warps": 8
+            'BLOCK_SIZE_M': 128,
+            'BLOCK_SIZE_N': 256,
+            'BLOCK_SIZE_K': 64,
+            'GROUP_SIZE_M': 8,
+            'num_stages': 3,
+            'num_warps': 8
         }
     }
     # Check constraints.
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-    assert a.dtype == b.dtype, "Incompatible dtypes"
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    assert a.shape[1] == b.shape[0], 'Incompatible dimensions'
+    assert a.dtype == b.dtype, 'Incompatible dtypes'
+    NUM_SMS = torch.cuda.get_device_properties('cuda').multi_processor_count
     M, K = a.shape
     K, N = b.shape
     dtype = a.dtype
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (min(
-        NUM_SMS,
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(
-            N, META["BLOCK_SIZE_N"])), )
+    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N'])), )
     fn = lambda: matmul_kernel_persistent[grid](
-        a, b, c,  #
-        M, N, K,  #
-        a.stride(0), a.stride(1),  #
-        b.stride(0), b.stride(1),  #
-        c.stride(0), c.stride(1),  #
-        BLOCK_SIZE_M=configs[dtype]["BLOCK_SIZE_M"],  #
-        BLOCK_SIZE_N=configs[dtype]["BLOCK_SIZE_N"],  #
-        BLOCK_SIZE_K=configs[dtype]["BLOCK_SIZE_K"],  #
-        GROUP_SIZE_M=configs[dtype]["GROUP_SIZE_M"],  #
+        a,
+        b,
+        c,  #
+        M,
+        N,
+        K,  #
+        a.stride(0),
+        a.stride(1),  #
+        b.stride(0),
+        b.stride(1),  #
+        c.stride(0),
+        c.stride(1),  #
+        BLOCK_SIZE_M=configs[dtype]['BLOCK_SIZE_M'],  #
+        BLOCK_SIZE_N=configs[dtype]['BLOCK_SIZE_N'],  #
+        BLOCK_SIZE_K=configs[dtype]['BLOCK_SIZE_K'],  #
+        GROUP_SIZE_M=configs[dtype]['GROUP_SIZE_M'],  #
         NUM_SMS=NUM_SMS,  #
-        num_stages=configs[dtype]["num_stages"],  #
-        num_warps=configs[dtype]["num_warps"],  #
+        num_stages=configs[dtype]['num_stages'],  #
+        num_warps=configs[dtype]['num_warps'],  #
     )
     ms = triton.testing.do_bench(fn, warmup=100, rep=100)
     return ms
@@ -227,12 +232,12 @@ for dtype in [torch.float16, torch.float32]:
 
         # name, args, call, bench_fn
         spaces = DictSpace({
-            "BLOCK_SIZE_M": FixedSpace(128),
-            "BLOCK_SIZE_N": FixedSpace(256),
-            "BLOCK_SIZE_K": FixedSpace(64),
-            "GROUP_SIZE_M": FixedSpace(8),
-            "num_stages": FixedSpace(3),
-            "num_warps": FixedSpace(8)
+            'BLOCK_SIZE_M': FixedSpace(128),
+            'BLOCK_SIZE_N': FixedSpace(256),
+            'BLOCK_SIZE_K': FixedSpace(64),
+            'GROUP_SIZE_M': FixedSpace(8),
+            'num_stages': FixedSpace(3),
+            'num_warps': FixedSpace(8)
         })
         register_dlblas_op(
             name,

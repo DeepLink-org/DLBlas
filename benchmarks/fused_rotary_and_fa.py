@@ -1,19 +1,20 @@
-import triton
-import dlblas
-from dlblas.utils.device_utils import get_idle_device, is_muxi, is_cuda
-from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
-from dlblas.kernels.fused_rotary_and_fa import _flash_attn_forward as fused_rotary_and_fa
-from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
 import torch
 import torch.nn.functional as F
+import triton
 
+import dlblas
+from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
+from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
+from dlblas.kernels.fused_rotary_and_fa import _flash_attn_forward as fused_rotary_and_fa
+from dlblas.utils.device_utils import get_idle_device, is_cuda, is_muxi
 
 MUXI_CUDA = is_muxi() or is_cuda()
 
+
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x1 = x[..., :x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
 
@@ -54,9 +55,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
     return q_embed, k_embed
 
 
-def none_fused_rotary_and_fa(
-    seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
-):
+def none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d):
     query_emb, key_emb = apply_rotary_pos_emb(
         query.view(1, seq_len, heads, dim),
         key.view(1, seq_len, heads, dim),
@@ -86,47 +85,42 @@ def test():
     sin = torch.rand([1, seq_len, dim], dtype=dtype, device=device_)
     position_ids_1d = torch.arange(0, seq_len, device=device_)
     # query_emb, key_emb = apply_rotary_pos_emb(query, key, cos, sin, unsqueeze_dim=2)
-    ref_out, _, _ = none_fused_rotary_and_fa(
-        seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
-    )
+    ref_out, _, _ = none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d)
 
     tt_out, _, _ = fused_rotary_and_fa(query, key, value, cos, sin)
 
     for i, j in zip(ref_out.shape, tt_out.shape):
         assert i == j
 
-    print("TEST: ")
+    print('TEST: ')
     # print(tt_out)
-    print("max abs diff: ", torch.max(abs(tt_out - ref_out)))
+    print('max abs diff: ', torch.max(abs(tt_out - ref_out)))
     assert torch.allclose(tt_out, ref_out, atol=1e-2, rtol=0)
 
     configs = []
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd"],
-            line_arg="provider",
-            line_vals=["fused", "none-fused", "rotary"],
-            line_names=["fused", "none-fused", "rotary"],
-            ylabel="ms",
+            x_names=['op'],
+            x_vals=['fwd'],
+            line_arg='provider',
+            line_vals=['fused', 'none-fused', 'rotary'],
+            line_names=['fused', 'none-fused', 'rotary'],
+            ylabel='ms',
             plot_name=f"fused_rotary_emb_and_fa(batchSize={1}, seqlen:{seq_len}, num_heads:{heads}, dim:{dim})",
-            args={"SeqLen": seq_len},
-        )
-    )
+            args={'SeqLen': seq_len},
+        ))
 
     @triton.testing.perf_report(configs)
     def bench_fn(SeqLen, op, provider, device=device_):
         warmup = 200
         rep = 200
 
-        if "fused" in provider:
+        if 'fused' in provider:
             fn = lambda: fused_rotary_and_fa(query, key, value, cos, sin)
 
-        if "none-fused" in provider:
-            fn = lambda: none_fused_rotary_and_fa(
-                seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d
-            )
-        if "rotary" in provider:
+        if 'none-fused' in provider:
+            fn = lambda: none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d)
+        if 'rotary' in provider:
             fn = lambda: apply_rotary_pos_emb(
                 query.view(1, seq_len, heads, dim),
                 key.view(1, seq_len, heads, dim),
@@ -140,6 +134,6 @@ def test():
     bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()
-    print("sucessfully!")
+    print('sucessfully!')

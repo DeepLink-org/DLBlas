@@ -3,15 +3,15 @@ from functools import wraps
 from typing import Any
 
 import torch
-from torch.fx import Interpreter, GraphModule, Node
+from torch._subclasses.fake_tensor import FakeTensorMode
+from torch.fx import GraphModule, Interpreter, Node
 from torch.fx.node import _get_qualified_name
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
-from torch._subclasses.fake_tensor import FakeTensorMode
 
 
 class OpCollector(Interpreter):
-    def __init__(self, module: GraphModule,
-                 garbage_collect_values: bool = True):
+
+    def __init__(self, module: GraphModule, garbage_collect_values: bool = True):
         super().__init__(module, garbage_collect_values)
         self.op_set = set()
 
@@ -48,18 +48,23 @@ class OpCollector(Interpreter):
 #     loss = opt_model(inputs)
 #     loss.backward()
 class InnerCompilerOpCollectorContext:
-    def __init__(self, inner_commpiler_func="torch._inductor.compile_fx.compile_fx_inner",
-                 compile_fx_func="torch._inductor.compile_fx.compile_fx",
-                 collector_name="module", inner_compiler_param_key="inner_compile",
-                 write_file=False, bypass_graph_module=True, cache_graph_module=False):
+
+    def __init__(self,
+                 inner_commpiler_func='torch._inductor.compile_fx.compile_fx_inner',
+                 compile_fx_func='torch._inductor.compile_fx.compile_fx',
+                 collector_name='module',
+                 inner_compiler_param_key='inner_compile',
+                 write_file=False,
+                 bypass_graph_module=True,
+                 cache_graph_module=False):
         if isinstance(inner_commpiler_func, str):
-            module_str, func_str = inner_commpiler_func.rsplit(".", 1)
+            module_str, func_str = inner_commpiler_func.rsplit('.', 1)
             inner_commpiler_module = importlib.import_module(module_str)
             self.inner_commpiler_func = getattr(inner_commpiler_module, func_str)
         else:
             self.inner_commpiler_func = inner_commpiler_func
         if isinstance(compile_fx_func, str):
-            module_str, func_str = compile_fx_func.rsplit(".", 1)
+            module_str, func_str = compile_fx_func.rsplit('.', 1)
             compile_fx_module = importlib.import_module(module_str)
             self.compile_fx_func = getattr(compile_fx_module, func_str)
         else:
@@ -88,8 +93,7 @@ class InnerCompilerOpCollectorContext:
             kwargs[self.inner_compiler_param_key] = wrapped_inner_commpiler_func
             return self.compile_fx_func(*args, **kwargs)
 
-        setattr(importlib.import_module(self.compile_fx_func.__module__),
-                self.compile_fx_func.__name__,
+        setattr(importlib.import_module(self.compile_fx_func.__module__), self.compile_fx_func.__name__,
                 wrapped_compile_fx_func)
         return self
 
@@ -99,7 +103,7 @@ class InnerCompilerOpCollectorContext:
             gm, inputs = v
             if self.cache_graph_module:
                 gm_file_name = f"{self.collector_name}_graph_{key}.txt"
-                with open(gm_file_name, "w") as gm_file:
+                with open(gm_file_name, 'w') as gm_file:
                     gm_file.write(gm.print_readable(print_output=False))
                 print(f"graph {key} is cached to {gm_file_name}")
             collector = OpCollector(gm)
@@ -114,11 +118,10 @@ class InnerCompilerOpCollectorContext:
             print(op)
         if self.write_file:
             output_file_name = f"{self.collector_name}_op.txt"
-            with open(output_file_name, "w") as output_file:
+            with open(output_file_name, 'w') as output_file:
                 for op in final_op_list_sorted:
-                    output_file.write(op + "\n")
+                    output_file.write(op + '\n')
             print(f"op collected in {output_file_name}")
 
-        setattr(importlib.import_module(self.compile_fx_func.__module__),
-                self.compile_fx_func.__name__,
+        setattr(importlib.import_module(self.compile_fx_func.__module__), self.compile_fx_func.__name__,
                 self.compile_fx_func)

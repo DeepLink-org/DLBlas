@@ -31,5 +31,5 @@ print(s.model())
 model = s.model()
 for d in model:
     print(type(d), type(model[d]))
-    print("%s -> %s" % (d, model[d]))
+    print('%s -> %s' % (d, model[d]))
     print(model[d].is_int(), model[d].as_long(), type(model[d].as_long()))

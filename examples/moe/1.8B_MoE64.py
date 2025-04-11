@@ -1,4 +1,4 @@
-JOB_NAME = "1.8b_moe_train"
+JOB_NAME = '1.8b_moe_train'
 DO_ALERT = False
 
 SEQ_LEN = 2048
@@ -9,11 +9,11 @@ NUM_LAYER = 24
 VOCAB_SIZE = 92544
 MULTIPLE_OF = 128
 
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
+MODEL_ONLY_FOLDER = 'local:llm_ckpts/xxxx'
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
-LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
+SAVE_CKPT_FOLDER = 'local:llm_ckpts'
+LOAD_CKPT_FOLDER = 'local:llm_ckpts/49'
 
 # boto3 Ckpt folder format:
 # import os
@@ -25,12 +25,12 @@ ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
     # load_ckpt_folder= dict(path=MODEL_ONLY_FOLDER, content=["model"], ckpt_type="normal"),
-    load_ckpt_folder="local:llm_ckpts/",
+    load_ckpt_folder='local:llm_ckpts/',
     # 'load_ckpt_info' setting guide:
     # 1. the 'path' indicate ckpt path,
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "llama", "hf_llama".
-    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="internevo"),
+    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=('model', ), ckpt_type='internevo'),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
@@ -41,7 +41,7 @@ ckpt = dict(
     auto_resume=True,
     checkpoint_every=CHECKPOINT_EVERY,
     async_upload=True,  # async ckpt upload. (only work for boto3 ckpt)
-    async_upload_tmp_folder="/dev/shm/internlm_tmp_ckpt/",  # path for temporarily files during asynchronous upload.
+    async_upload_tmp_folder='/dev/shm/internlm_tmp_ckpt/',  # path for temporarily files during asynchronous upload.
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
@@ -59,13 +59,13 @@ data = dict(
     valid_every=5000,
     pack_sample_into_one=False,
     total_steps=5000,
-    skip_batches="",
+    skip_batches='',
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between
     #       each increment. For example, "192 24 8" means that the batch size (micro_num)
     #       starts at 192 and increases by 24 every 8 steps. Defaults to None.
     #       (IMPORTANT): The interval step size is 'micro_bsz'.
-    rampup_batch_size="",
+    rampup_batch_size='',
     # Datasets with less than 50 rows will be discarded
     min_length=50,
     train_folder=TRAIN_FOLDER,
@@ -118,7 +118,7 @@ adam = dict(
 )
 
 lr_scheduler = dict(
-    total_steps=data["total_steps"],
+    total_steps=data['total_steps'],
     init_steps=0,  # optimizer_warmup_step
     warmup_ratio=0.01,
     eta_min=1e-5,
@@ -126,8 +126,8 @@ lr_scheduler = dict(
 )
 
 beta2_scheduler = dict(
-    init_beta2=adam["adam_beta2"],
-    c=adam["adam_beta2_c"],
+    init_beta2=adam['adam_beta2'],
+    c=adam['adam_beta2_c'],
     cur_iter=-1,
 )
 
@@ -143,8 +143,8 @@ model = dict(
     num_layers=NUM_LAYER,
     mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
-    dtype="torch.bfloat16",  # Support: "torch.float16", "torch.half", "torch.bfloat16", "torch.float32", "torch.tf32"
-    norm_type="rmsnorm",
+    dtype='torch.bfloat16',  # Support: "torch.float16", "torch.half", "torch.bfloat16", "torch.float32", "torch.tf32"
+    norm_type='rmsnorm',
     layer_norm_epsilon=1e-5,
     use_flash_attn=True,
     multiple_of=MULTIPLE_OF,
@@ -159,7 +159,7 @@ model = dict(
     num_chunks=1,  # if num_chunks > 1, interleaved pipeline scheduler is used.
     num_experts=64,
     moe_use_residual=False,
-    moe_type="GShard",  # Support: "GShard", "MegaBlock", "MegaBlock-D"
+    moe_type='GShard',  # Support: "GShard", "MegaBlock", "MegaBlock-D"
 )
 """
 zero1 parallel (dict):
@@ -188,7 +188,7 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1, fsdp=False),
-    tensor=dict(size=1, mode="mtp"),
+    tensor=dict(size=1, mode='mtp'),
     pipeline=dict(size=1, interleaved_overlap=True),
     weight=dict(size=1, overlap=True, memory_pool=True),
 )
@@ -204,9 +204,7 @@ monitor = dict(
         light_monitor_address=None,  # light_monitor address to send heartbeat
         alert_file_path=f"llm_alter/{JOB_NAME}_alert.log",
     ),
-    tensorboard=dict(
-        queue_max_length=10,
-    ),
+    tensorboard=dict(queue_max_length=10, ),
 )
 
 # custom moe impl configs
@@ -230,7 +228,7 @@ moe = dict(
     # parallel_mode="tensor", # only used in MegaBlock-D(dmoe), parallel_mode can be tensor or weight
 )
 
-model_type = "INTERNLM_MoE"
+model_type = 'INTERNLM_MoE'
 
 # metric_dtype can be "fp32" or other string
 # only when set to "fp32" will use fp32 to calc in metrics

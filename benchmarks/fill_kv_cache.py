@@ -1,12 +1,11 @@
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_fill_kv_cache.py
 import pytest
 import torch
+import triton
 
 # import torch_mlu
 # import torch_mlu.utils.gpu_migration
 from dlblas.kernels.fill_kv_cache import fill_kv_cache
-
-import triton
 
 
 def _div_up(a, b):
@@ -105,9 +104,7 @@ def test():
     kv_seq_length = torch.tensor(kv_lens).cuda()
     k_states = torch.rand(num_tokens, num_heads, head_dim).cuda()
     v_states = torch.rand_like(k_states)
-    k_caches = torch.full(
-        (batch_size * max_num_blocks, block_size, num_heads, head_dim), 0.0
-    ).cuda()
+    k_caches = torch.full((batch_size * max_num_blocks, block_size, num_heads, head_dim), 0.0).cuda()
     v_caches = torch.rand_like(k_caches)
     block_offsets = _block_offsets(num_blocks_per_input)
 
@@ -133,29 +130,28 @@ def test():
         block_offsets,
     )
 
-    print("k_cache max diff", (gt[0] - k_caches).abs().max())
-    print("v_cache max diff", (gt[1] - v_caches).abs().max())
+    print('k_cache max diff', (gt[0] - k_caches).abs().max())
+    print('v_cache max diff', (gt[1] - v_caches).abs().max())
 
     configs = []
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd"],
-            line_arg="provider",
-            line_vals=["triton", "pytorch"],
-            line_names=["Triton", "PyTorch"],
-            ylabel="ms",
-            plot_name="",
+            x_names=['op'],
+            x_vals=['fwd'],
+            line_arg='provider',
+            line_vals=['triton', 'pytorch'],
+            line_names=['Triton', 'PyTorch'],
+            ylabel='ms',
+            plot_name='',
             args={},
-        )
-    )
+        ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device="cuda"):
+    def bench_fn(op, provider, device='cuda'):
         warmup = 100
         rep = 200
 
-        if "triton" in provider:
+        if 'triton' in provider:
             # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
             fn = lambda: fill_kv_cache(
                 k_states,
@@ -168,7 +164,7 @@ def test():
                 max_q_seq_length,
                 block_offsets,
             )
-        if "pytorch" in provider:
+        if 'pytorch' in provider:
             fn = lambda: _gt(
                 k_states,
                 v_states,
@@ -186,5 +182,5 @@ def test():
     bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()

@@ -2,8 +2,7 @@ import os
 import re
 
 
-def find_call_pattern_index_from_text(text: str,
-                                      pattern: str) -> [[int]]:
+def find_call_pattern_index_from_text(text: str, pattern: str) -> [[int]]:
     '''call pattern:
         xxx(whatever)
         |           |
@@ -76,8 +75,8 @@ def rewrite_dlblas_registration_pass(text: str) -> str:
 # analysis pass
 # ======================
 def analyse_kernel_call_pass(text: str, kernel_name: str) -> [[int]]:
-    '''find invoke kernel idx in the src text file; 
-    
+    '''find invoke kernel idx in the src text file;
+
     Triton kernel call have this pattern: {kernel_name}[{grid_name}]
     '''
     kernel_call_pattern = fr'{kernel_name}\[[a-zA-Z0-9_]+\]'

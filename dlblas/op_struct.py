@@ -1,11 +1,11 @@
-from dataclasses import dataclass, field, astuple
+from dataclasses import astuple, dataclass, field
 from typing import Any, Union
 
 import torch
 
+from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.symbolic_var import Tensor
 from dlblas.utils.logger import get_logger
-from dlblas.autotune.space import ChoiceSpace, DictSpace
 
 logger = get_logger(__name__)
 
@@ -15,7 +15,7 @@ class OpParams:
     n_args: int
     args_types: [str]
     args: tuple
-    
+
     def __eq__(self, __value: object) -> bool:
         assert isinstance(__value, OpParams)
         if len(self.args_types) != len(__value.args_types) or self.n_args != __value.n_args:
@@ -72,11 +72,9 @@ def parse_args(args: tuple):
 
 def match(user_args, op_params: OpParams):
     if not isinstance(user_args, tuple):
-        raise TypeError(
-            f"user_args must be a tuple, but got {type(user_args)}")
+        raise TypeError(f"user_args must be a tuple, but got {type(user_args)}")
     if not isinstance(op_params, OpParams):
-        raise TypeError(
-            f"op_params must be an OpParams, but got {type(op_params)}")
+        raise TypeError(f"op_params must be an OpParams, but got {type(op_params)}")
 
     if len(user_args) != op_params.n_args:
         return False
@@ -87,8 +85,7 @@ def match(user_args, op_params: OpParams):
         if arg is None:
             continue
         # type check
-        if op_params.args_types[i] == 'tensor' and not isinstance(
-                arg, torch.Tensor):
+        if op_params.args_types[i] == 'tensor' and not isinstance(arg, torch.Tensor):
             # user would want to pass with torch.Tensor
             return False
         if op_params.args_types[i] == 'str' and not isinstance(arg, str):

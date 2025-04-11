@@ -1,6 +1,6 @@
 import torch
-
 from sympy import symbols
+from torch import SymInt
 
 x, y = symbols('x y')
 expr = x + 2 * y
@@ -30,8 +30,6 @@ print()
 # a = torch.randn((x, y))
 # print(a)
 
-from torch import SymInt, sym_int
-
 a = SymInt(1)
 b = SymInt(2)
 print(type(a), '; ', a)
@@ -52,22 +50,9 @@ print('======================')
 print('======================')
 print()
 
-from torch.fx.experimental.sym_node import to_node, SymNode, method_to_operator
 from torch._C import _disabled_torch_function_impl
-from torch.fx.experimental.symbolic_shapes import (
-    DimConstraints,
-    DimDynamic,
-    expect_true,
-    guard_bool,
-    guard_float,
-    guard_int,
-    GuardOnDataDependentSymNode,
-    ShapeEnv,
-    is_symbolic,
-    StatelessSymbolicContext,
-    statically_known_true,
-    _constrain_range_for_size,
-)
+from torch.fx.experimental.sym_node import SymNode
+from torch.fx.experimental.symbolic_shapes import (DimDynamic, ShapeEnv, StatelessSymbolicContext)
 
 meta_funcs = {}
 
@@ -82,14 +67,7 @@ def create_contiguous(shape):
 class FakeSymbolicTensor(torch.Tensor):
 
     @staticmethod
-    def __new__(cls,
-                sym_shape,
-                sym_strides,
-                dtype,
-                layout,
-                requires_grad,
-                device,
-                storage_offset=0):
+    def __new__(cls, sym_shape, sym_strides, dtype, layout, requires_grad, device, storage_offset=0):
         # TODO: this is wrong in general
         sym_stride = create_contiguous(sym_shape)
         r = torch.Tensor._make_wrapper_subclass(
@@ -107,8 +85,7 @@ class FakeSymbolicTensor(torch.Tensor):
     __torch_function__ = _disabled_torch_function_impl
 
     def new_empty(self, shape):
-        return FakeSymbolicTensor(shape, None, self.dtype, self.layout,
-                                  self.requires_grad, self.device)
+        return FakeSymbolicTensor(shape, None, self.dtype, self.layout, self.requires_grad, self.device)
 
     @classmethod
     def __torch_dispatch__(cls, func_overload, types, args=(), kwargs=None):
@@ -118,18 +95,12 @@ class FakeSymbolicTensor(torch.Tensor):
         if func_overload == torch.ops.aten.new_empty.default:
             self = args[0]
             shape = args[1]
-            return FakeSymbolicTensor(shape, self.stride(), self.dtype,
-                                      self.layout, self.requires_grad,
-                                      self.device)
+            return FakeSymbolicTensor(shape, self.stride(), self.dtype, self.layout, self.requires_grad, self.device)
 
         raise RuntimeError(f"operator {func_overload} not supported")
 
 
-def create_symbolic_tensor(name,
-                           arg,
-                           shape_env,
-                           source=None,
-                           dynamic_dims=None):
+def create_symbolic_tensor(name, arg, shape_env, source=None, dynamic_dims=None):
     from torch._dynamo.source import ConstantSource
 
     if source is None:
@@ -146,14 +117,13 @@ def create_symbolic_tensor(name,
                 constraint_sizes=constraint_dims
             ),
         )
-    return FakeSymbolicTensor(sym_shapes, sym_strides, arg.dtype, arg.layout,
-                              arg.requires_grad, arg.device,
+    return FakeSymbolicTensor(sym_shapes, sym_strides, arg.dtype, arg.layout, arg.requires_grad, arg.device,
                               sym_storage_offset)
 
 
 shape_env = ShapeEnv()
-x = create_symbolic_tensor("x", torch.randn(5, 4, 3), shape_env)
-y = create_symbolic_tensor("y", torch.randn(5, 4, 3), shape_env)
+x = create_symbolic_tensor('x', torch.randn(5, 4, 3), shape_env)
+y = create_symbolic_tensor('y', torch.randn(5, 4, 3), shape_env)
 
 assert (not isinstance(x.shape[0], SymNode))
 assert (isinstance(x.shape[0], SymInt))
@@ -163,7 +133,7 @@ print(x.shape[0] == y.shape[0])
 print(x.size())
 print(x.size() == y.size())
 
-z = create_symbolic_tensor("x", torch.randn(5, 4, 3), shape_env)
+z = create_symbolic_tensor('x', torch.randn(5, 4, 3), shape_env)
 print(id(z), id(x))
 
 print()

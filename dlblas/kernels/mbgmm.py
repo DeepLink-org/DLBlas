@@ -64,16 +64,12 @@ def _x_a_mm_kernel(
         # load x
         xh_off = cur_dm_off * stride_xh
         x_mask = xs_mask[:, None] and h_mask[None, :]
-        x = tl.load(X + x_off[:, None] + xh_off[None, :],
-                    mask=x_mask,
-                    other=0.0)
+        x = tl.load(X + x_off[:, None] + xh_off[None, :], mask=x_mask, other=0.0)
 
         # load lora a
         lah_off = cur_dm_off
         la_mask = rank_mask[None, :] and h_mask[:, None]
-        la = tl.load(LoRA_A + la_page_off[None, :] + lah_off[:, None],
-                     mask=la_mask,
-                     other=0.0)
+        la = tl.load(LoRA_A + la_page_off[None, :] + lah_off[:, None], mask=la_mask, other=0.0)
 
         # compute
         acc += tl.dot(x, la)
@@ -82,9 +78,7 @@ def _x_a_mm_kernel(
     xa_off = (start_loc + m_off) * stride_xas
     xas_mask = xs_mask
     xa_mask = xas_mask[:, None] and rank_mask[None, :]
-    tl.store(XA + xa_off[:, None] + r_off[None, :] * stride_xar,
-             acc,
-             mask=xa_mask)
+    tl.store(XA + xa_off[:, None] + r_off[None, :] * stride_xar, acc, mask=xa_mask)
 
 
 @triton.jit
@@ -137,9 +131,7 @@ def _acc_b_mm_kernel(
 
     xa_off = (start_loc + m_off) * stride_xas
     xa_mask = xs_mask[:, None] and rank_mask[None, :]
-    acc = tl.load(XA + xa_off[:, None] + r_off[None, :] * stride_xar,
-                  mask=xa_mask,
-                  other=0.0)
+    acc = tl.load(XA + xa_off[:, None] + r_off[None, :] * stride_xar, mask=xa_mask, other=0.0)
     acc = acc.to(LoRA_B.dtype.element_ty)
 
     # compute output
@@ -150,9 +142,7 @@ def _acc_b_mm_kernel(
         # load lora b
         lbh_off = cur_dm_off
         lb_mask = rank_mask[:, None] and h_mask[None, :]
-        lb = tl.load(LoRA_B + lb_page_off[:, None] + lbh_off[None, :],
-                     mask=lb_mask,
-                     other=0)
+        lb = tl.load(LoRA_B + lb_page_off[:, None] + lbh_off[None, :], mask=lb_mask, other=0)
 
         # compute
         out = tl.dot(acc, lb)

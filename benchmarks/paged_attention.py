@@ -1,13 +1,12 @@
 import math
 
 import pytest
-
 # import torch_mlu
 # import torch_mlu.utils.gpu_migration
 import torch
-from dlblas.kernels.paged_attention import paged_attention_fwd
-
 import triton
+
+from dlblas.kernels.paged_attention import paged_attention_fwd
 
 
 def _conti_input(data, seq_lens):
@@ -44,9 +43,7 @@ def _make_blocked_cache(
     max_blocks_nums = block_offsets.max() + 1
     full_seq_lens = seq_lens + history_lens
     blocked_k = batched_k.new_zeros(max_blocks_nums, block_size, num_heads_k, feat_dim)
-    blocked_v = batched_v.new_zeros(
-        max_blocks_nums, block_size, num_heads_k, feat_dim_v
-    )
+    blocked_v = batched_v.new_zeros(max_blocks_nums, block_size, num_heads_k, feat_dim_v)
 
     for batch_id, offset in enumerate(block_offsets):
         ori_k = batched_k[batch_id]
@@ -54,8 +51,8 @@ def _make_blocked_cache(
         seq_len = full_seq_lens[batch_id]
         for block_id, block_start in enumerate(range(0, seq_len, block_size)):
             block_off = offset[block_id]
-            tmp_k = ori_k[block_start : block_start + block_size]
-            tmp_v = ori_v[block_start : block_start + block_size]
+            tmp_k = ori_k[block_start:block_start + block_size]
+            tmp_v = ori_v[block_start:block_start + block_size]
             size = tmp_k.size(0)
             blocked_k[block_off, :size] = tmp_k
             blocked_v[block_off, :size] = tmp_v
@@ -127,9 +124,7 @@ def _batched_q(seq_lens, num_heads_q, feat_dim, dtype):
     torch.manual_seed(123)
     batch_size = len(seq_lens)
     max_seq_len = seq_lens.max().item()
-    return torch.randn(
-        batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device="cuda"
-    )
+    return torch.randn(batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device='cuda')
 
 
 def _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype):
@@ -137,12 +132,8 @@ def _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype
     batch_size = len(seq_lens)
     full_seq_lens = seq_lens + history_lens
     max_seq_len = full_seq_lens.max().item()
-    k = torch.rand(
-        batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device="cuda"
-    )
-    v = torch.rand(
-        batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device="cuda"
-    )
+    k = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device='cuda')
+    v = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device='cuda')
     return k, v
 
 
@@ -155,9 +146,7 @@ def _block_offsets(seq_lens, history_lens, block_size):
     batch_size = full_seq_lens.size(0)
     num_blocks = (full_seq_lens + block_size - 1) // block_size
 
-    offset = [
-        torch.arange(size) * batch_size + idx for idx, size in enumerate(num_blocks)
-    ]
+    offset = [torch.arange(size) * batch_size + idx for idx, size in enumerate(num_blocks)]
     max_len = max(len(o) for o in offset)
     new_offset = offset[0].new_zeros(batch_size, max_len)
     for o, no in zip(offset, new_offset):
@@ -247,16 +236,14 @@ def test():
     feat_dim_v = 16
     num_heads_q = 4
     num_heads_k = 2
-    seq_lens = torch.tensor([128], device="cuda")
+    seq_lens = torch.tensor([128], device='cuda')
     start_loc = _start_loc(seq_lens)
     block_size = 16
-    history_lens = torch.tensor([128], device="cuda")
+    history_lens = torch.tensor([128], device='cuda')
     win_size = 32
 
     batched_q = _batched_q(seq_lens, num_heads_q, feat_dim, dtype)
-    batched_kv = _batched_kv(
-        seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype
-    )
+    batched_kv = _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype)
     conti_q = _conti_q(seq_lens, batched_q)
     block_offsets = _block_offsets(seq_lens, history_lens, block_size)
     conti_kv = _conti_kv(batched_kv, seq_lens, history_lens)
@@ -291,29 +278,28 @@ def test():
 
     conti_gt = _conti_gt(_gt(batched_q, batched_kv, mask), seq_lens)
 
-    print("max diff", (conti_gt - out).abs().max())
+    print('max diff', (conti_gt - out).abs().max())
     torch.testing.assert_close(out, conti_gt, atol=1e-3, rtol=1e-5)
 
     configs = []
     configs.append(
         triton.testing.Benchmark(
-            x_names=["op"],
-            x_vals=["fwd"],
-            line_arg="provider",
-            line_vals=["triton", "pytorch"],
-            line_names=["Triton", "PyTorch"],
-            ylabel="ms",
-            plot_name="",
+            x_names=['op'],
+            x_vals=['fwd'],
+            line_arg='provider',
+            line_vals=['triton', 'pytorch'],
+            line_names=['Triton', 'PyTorch'],
+            ylabel='ms',
+            plot_name='',
             args={},
-        )
-    )
+        ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device="cuda"):
+    def bench_fn(op, provider, device='cuda'):
         warmup = 100
         rep = 200
 
-        if "triton" in provider:
+        if 'triton' in provider:
             # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
             fn = lambda: paged_attention_fwd(
                 conti_q,
@@ -326,7 +312,7 @@ def test():
                 kv_seqlens=kv_seq_lens,
                 max_seqlen=max_seq_len,
             )
-        if "pytorch" in provider:
+        if 'pytorch' in provider:
             fn = lambda: _conti_gt(_gt(batched_q, batched_kv, mask), seq_lens)
 
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
@@ -335,5 +321,5 @@ def test():
     bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     test()

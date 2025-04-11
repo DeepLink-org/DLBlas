@@ -1,11 +1,12 @@
 import pytest
 import torch
-from dlblas.kernels.quant_dequant import per_channel_quant_fp8, per_channel_dequant_bf16
+
+from dlblas.kernels.quant_dequant import per_channel_dequant_bf16, per_channel_quant_fp8
 
 
 class TestQuantDequant:
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope='class')
     def x(self):
         yield torch.rand(10, 10, dtype=torch.bfloat16)
 

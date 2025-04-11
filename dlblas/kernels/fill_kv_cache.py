@@ -1,6 +1,7 @@
 import triton
 import triton.language as tl
 from torch import Tensor
+
 from dlblas.utils.device_utils import is_mlu_592, is_muxi
 
 
@@ -18,7 +19,7 @@ def _div_up(val, other):
 
 @triton.autotune(
     configs=get_autotune_config(),
-    key=["num_heads"],
+    key=['num_heads'],
 )
 @triton.jit
 def _fill_kv_cache_kernel(
@@ -83,26 +84,18 @@ def _fill_kv_cache_kernel(
     c_first_tokenloc = block0_first_tokenloc
     if block_id != 0:
         c_first_tokenloc *= 0
-    c_last_tokenloc = tl.minimum(
-        BLOCK, q_seqlen + block0_first_tokenloc - block_id * BLOCK
-    )
+    c_last_tokenloc = tl.minimum(BLOCK, q_seqlen + block0_first_tokenloc - block_id * BLOCK)
 
     for bidx in range(c_first_tokenloc, c_last_tokenloc):
         sidx = bidx - c_first_tokenloc
         mask = (h_off[:, None] < num_heads) & (d_off[None, :] < head_dim)
         k = tl.load(
-            ks_ptr
-            + sidx * stride_kss
-            + h_off[:, None] * stride_ksh
-            + d_off[None, :] * stride_ksd,
+            ks_ptr + sidx * stride_kss + h_off[:, None] * stride_ksh + d_off[None, :] * stride_ksd,
             mask=mask,
             other=0.0,
         )
         tl.store(
-            kc_ptr
-            + bidx * stride_kcb
-            + h_off[:, None] * stride_kch
-            + d_off[None, :] * stride_kcd,
+            kc_ptr + bidx * stride_kcb + h_off[:, None] * stride_kch + d_off[None, :] * stride_kcd,
             k,
             mask=mask,
         )
@@ -111,18 +104,12 @@ def _fill_kv_cache_kernel(
             dv_off = tl.arange(0, BLOCK_DV)
             maskv = (h_off[:, None] < num_heads) & (dv_off[None, :] < head_dim_v)
             v = tl.load(
-                vs_ptr
-                + sidx * stride_vss
-                + h_off[:, None] * stride_vsh
-                + dv_off[None, :] * stride_vsd,
+                vs_ptr + sidx * stride_vss + h_off[:, None] * stride_vsh + dv_off[None, :] * stride_vsd,
                 mask=maskv,
                 other=0.0,
             )
             tl.store(
-                vc_ptr
-                + bidx * stride_vcb
-                + h_off[:, None] * stride_vch
-                + dv_off[None, :] * stride_vcd,
+                vc_ptr + bidx * stride_vcb + h_off[:, None] * stride_vch + dv_off[None, :] * stride_vcd,
                 v,
                 mask=maskv,
             )

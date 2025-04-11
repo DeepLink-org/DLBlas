@@ -1,18 +1,13 @@
-import os
-import torch
-import triton
-import triton.language as tl
-
 import pytest
+import torch
+from dlblas import get_list_op_names, get_op
 
-from dlblas import get_op, get_list_op_names
 
-
-@pytest.mark.parametrize("m", [32, 128])
-@pytest.mark.parametrize("n", [32, 128])
-@pytest.mark.parametrize("k", [4, 16])
-@pytest.mark.parametrize("dtype", [torch.float16])
-@pytest.mark.parametrize("device", ['cuda'])
+@pytest.mark.parametrize('m', [32, 128])
+@pytest.mark.parametrize('n', [32, 128])
+@pytest.mark.parametrize('k', [4, 16])
+@pytest.mark.parametrize('dtype', [torch.float16])
+@pytest.mark.parametrize('device', ['cuda'])
 def test_mm_leaky_relu(m, n, k, dtype, device):
     torch.manual_seed(20)
 
@@ -45,11 +40,11 @@ def test_mm_leaky_relu(m, n, k, dtype, device):
     assert torch.allclose(out, ref_out, **tol)
 
 
-@pytest.mark.parametrize("m", [32, 128])
-@pytest.mark.parametrize("n", [32, 128])
-@pytest.mark.parametrize("k", [4, 16])
-@pytest.mark.parametrize("dtype", [torch.float16])
-@pytest.mark.parametrize("device", ['cuda'])
+@pytest.mark.parametrize('m', [32, 128])
+@pytest.mark.parametrize('n', [32, 128])
+@pytest.mark.parametrize('k', [4, 16])
+@pytest.mark.parametrize('dtype', [torch.float16])
+@pytest.mark.parametrize('device', ['cuda'])
 def test_mm(m, n, k, dtype, device):
     torch.manual_seed(20)
 

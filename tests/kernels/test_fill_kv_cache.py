@@ -137,7 +137,7 @@ class TestFillKVCache:
         yield k_caches, v_caches
 
     @pytest.mark.parametrize(
-        ["seq_lens", "history_lens"],
+        ['seq_lens', 'history_lens'],
         [
             ((1, 1, 1, 1), (1, 16, 31, 24)),
             ((1, 8, 16, 24), (1, 16, 31, 24)),
