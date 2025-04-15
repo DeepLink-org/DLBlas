@@ -28,3 +28,57 @@ pip install -r python/dlBLAS/requirements.txt
 ```
 pip install .
 ```
+## Getting Started
+There are a couple of ways to apply dlblas kernels.
+1. get op from dlblas
+```
+from dlblas.utils import get_op
+args = parse_args()
+dtype = torch.float16
+device = 'cuda'
+a = torch.randn(
+    (args.m, args.k),
+    dtype=dtype,
+    device=device,
+)
+b = torch.randn(
+    (args.k, args.n),
+    dtype=dtype,
+    device=device,
+)
+matmul = get_op('matmul', (a, b))
+# test
+out = matmul(a, b)
+ref_out = a @ b
+tol = {
+    'atol': 1.0,
+}
+if torch.allclose(out, ref_out, **tol):
+    print('✅ Triton and Torch match')
+else:
+    print('❌ Triton and Torch differ')
+
+```
+2. import kernel functions from the kernel file
+```
+from dlblas.kernels.rms_norm import rms_norm
+rms_norm(...)
+
+```
+3. import dlblas and use the kernels directly
+```
+import dlblas
+dlblas.topk_gating(...)
+```
+## Low-level APIs
+| Kernel              | API                                                                  | 
+|:-------------------:|:--------------------------------------------------------------------:|
+| silu_and_mul        | from dlblas.kernels.activation import silu_and_mul                   |
+| add_rms_norm        | from dlblas.kernels.add_rms_norm import call                         |
+| rotary_pos_emb      | from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb |
+| ffn                 | from dlblas.kernels.ffn import call                                  |
+| flash_attention_v2  | from dlblas.kernels.flash_attention_v2 import FlashAttentionV2       |
+| fp8_gemm            | from dlblas.kernels.fp8_gemm import fp8_gemm                         |
+| fused_rotary_and_fa | from dlblas.kernels.fused_rotary_and_fa import FusedRotaryAndFA      |
+| partial_rotary_emb  | from dlblas.kernels.partial_rotary_emb import PartialRotaryEmb       |
+| topk_gating         | from dlblas.kernels.topk_gating import TopKGatingFunc                |
