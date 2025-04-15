@@ -201,7 +201,8 @@ class FusedMoENormal:
                 up_scale: torch.Tensor,
                 down_weights: torch.Tensor,
                 down_scale: torch.Tensor,
-                expert_list: List[int] = None):
+                expert_list: List[int] = None,
+                moe_kernel: 'DlblasTritonFusedMoEBlockedF8Impl' = None):
         """forward."""
         recv_hidden_states, recv_topk_ids, recv_topk_weights, tokens_per_expert = self.token_dispatcher.dispatch(
             hidden_states,
@@ -209,8 +210,8 @@ class FusedMoENormal:
             topk_weights,
             expert_list,
         )
-        out_states = self.experts.forward(recv_hidden_states, tokens_per_expert, up_weights, up_scale, down_weights,
-                                          down_scale)
+        out_states = moe_kernel.forward(recv_hidden_states, recv_topk_weights, recv_topk_ids, up_weights, up_scale,
+                                        down_weights, down_scale)
         out_states = self.token_dispatcher.combine(out_states)
         return out_states
 
@@ -275,6 +276,12 @@ class FusedMoEBlockedF8Impl:
         self.renormalize = renormalize
         self.block_size = block_size
         self.out_dtype = out_dtype
+        self.moe_kernel = DlblasTritonFusedMoEBlockedF8Impl(top_k=top_k,
+                                                            num_experts=num_experts,
+                                                            renormalize=renormalize,
+                                                            block_size=block_size,
+                                                            out_dtype=out_dtype,
+                                                            ep_size=ep_size)
 
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -292,11 +299,13 @@ class FusedMoEBlockedF8Impl:
         if is_decoding is False:
             moe = FusedMoENormal(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
                                  self.out_dtype)
+            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
+                                     down_scale, expert_list, self.moe_kernel)
         else:
             moe = FusedMoELowLatency(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
                                      self.out_dtype)
-        out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
-                                 down_scale, expert_list)
+            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
+                                     down_scale, expert_list)
         return out_states
 
 class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
