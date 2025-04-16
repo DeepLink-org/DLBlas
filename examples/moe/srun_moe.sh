@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 export GPUS_PER_NODE=8
 export PIPELINE_SIZE=1
 export DP_SIZE=1

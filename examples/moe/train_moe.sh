@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 WORLD_SIZE=$(( $SLURM_JOB_NUM_NODES ))
 export MASTER_ADDR=`scontrol show hostname $SLURM_JOB_NODELIST | head -n1`
 export MASTER_PORT=20031

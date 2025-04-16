@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import numpy as np
 import pytest
 import torch

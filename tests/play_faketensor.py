@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import torch
 from torch._guards import detect_fake_mode
 from torch._subclasses import FakeTensor, FakeTensorMode

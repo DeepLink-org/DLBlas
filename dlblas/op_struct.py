@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 from dataclasses import astuple, dataclass, field
 from typing import Any, Union
 

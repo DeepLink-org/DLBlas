@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import torch
 
 from dlblas.kernels.grouped_gemm import grouped_gemm

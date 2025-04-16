@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # modify from: https://github.com/InternLM/lmdeploy/blob/v0.6.1/lmdeploy/pytorch/kernels/cuda/pagedattention.py
 import torch
 import triton

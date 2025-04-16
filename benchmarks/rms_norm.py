@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_rms_norm.py
 # import torch_mlu
 # import torch_mlu.utils.gpu_migration

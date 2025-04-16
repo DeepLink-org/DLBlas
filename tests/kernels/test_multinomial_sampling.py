@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_multinomial_sampling.py
 import pytest
 import torch

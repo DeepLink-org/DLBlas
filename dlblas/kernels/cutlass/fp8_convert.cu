@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 #include <cuda.h>
 #include <cuda_fp8.h>
 #include <iostream>

@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 from z3 import Int, Solver, sat, unsat
 
 x = Int('x')

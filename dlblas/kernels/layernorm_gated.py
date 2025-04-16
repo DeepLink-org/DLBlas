@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # Based on the Triton LayerNorm : https://github.com/state-spaces/mamba/blob/main/mamba_ssm/ops/triton/layernorm_gated.py
 # For the backward pass, we keep weight_grad and bias_grad in registers and accumulate.
 # This backward pass is faster for dimensions up to 8k, but after that it's much slower due to register spilling.
