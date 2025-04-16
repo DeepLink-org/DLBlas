@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import itertools
 import os
 from collections.abc import Iterable

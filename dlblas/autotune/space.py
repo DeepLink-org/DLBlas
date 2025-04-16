@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import math
 import random
 from dataclasses import astuple, dataclass, field

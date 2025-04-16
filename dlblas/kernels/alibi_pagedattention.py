@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # modify from: https://github.com/InternLM/lmdeploy
 import math
 

@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # modify from: https://github.com/vllm-project/vllm
 import torch
 import torch.nn.functional as F

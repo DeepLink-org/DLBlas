@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 import torch
 import triton
 from einops import einsum, rearrange, repeat

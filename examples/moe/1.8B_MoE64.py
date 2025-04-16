@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 JOB_NAME = '1.8b_moe_train'
 DO_ALERT = False
 

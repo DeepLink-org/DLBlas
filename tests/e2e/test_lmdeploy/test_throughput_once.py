@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import csv

@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 # For https://github.com/InternLM/lmdeploy/tree/v0.6.1
 import torch
 

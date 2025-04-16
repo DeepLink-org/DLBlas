@@ -1,3 +1,4 @@
+# Copyright (c) 2025, DeepLink.
 try:
     from deep_ep import Buffer
     use_deepep = True
