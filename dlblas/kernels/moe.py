@@ -473,3 +473,94 @@ def quant_fp8(A: torch.Tensor, group_size: int, dtype: torch.dtype = torch.float
     out = torch.empty_like(A, dtype=dtype)
     scales = A.new_empty(M, num_groups, dtype=torch.float32)
     return _quant_fp8_launcher(A, group_size, out, scales)
+
+
+
+def biased_grouped_topk_impl(
+    hidden_states: torch.Tensor,
+    gating_output: torch.Tensor,
+    correction_bias: torch.Tensor,
+    topk: int,
+    renormalize: bool,
+    num_expert_group: int = 0,
+    topk_group: int = 0,
+    n_share_experts_fusion: int = 0,
+):
+    assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
+
+    scores = gating_output.sigmoid()
+    num_token = scores.shape[0]
+    num_experts = scores.shape[1]
+    scores_for_choice = scores.view(num_token, -1) + correction_bias.unsqueeze(0)
+    group_scores = (
+        scores_for_choice.view(num_token, num_expert_group, -1)
+        .topk(2, dim=-1)[0]
+        .sum(dim=-1)
+    )  # [n, n_group]
+    group_idx = torch.topk(group_scores, k=topk_group, dim=-1, sorted=False)[
+        1
+    ]  # [n, top_k_group]
+    group_mask = torch.zeros_like(group_scores)  # [n, n_group]
+    group_mask.scatter_(1, group_idx, 1)  # [n, n_group]
+    score_mask = (
+        group_mask.unsqueeze(-1)
+        .expand(num_token, num_expert_group, scores.shape[-1] // num_expert_group)
+        .reshape(num_token, -1)
+    )  # [n, e]
+    tmp_scores = scores_for_choice.masked_fill(
+        ~score_mask.bool(), float("-inf")
+    )  # [n, e]
+    _, topk_ids = torch.topk(tmp_scores, k=topk, dim=-1, sorted=False)
+    topk_weights = scores.gather(1, topk_ids)
+
+    if n_share_experts_fusion:
+        topk_ids[:, -1] = torch.randint(
+            low=num_experts,
+            high=num_experts + n_share_experts_fusion,
+            size=(topk_ids.size(0),),
+            dtype=topk_ids.dtype,
+            device=topk_ids.device,
+        )
+        topk_weights[:, -1] = (
+            topk_weights[:, :-1].sum(dim=-1) / 2.5
+        )  # 2.5 is the routed_scaling_factor.
+
+    if renormalize:
+        topk_weights_sum = (
+            topk_weights.sum(dim=-1, keepdim=True)
+            if n_share_experts_fusion == 0
+            else topk_weights[:, :-1].sum(dim=-1, keepdim=True)
+        )
+        topk_weights = topk_weights / topk_weights_sum
+
+    return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
+
+
+def biased_grouped_topk(
+    hidden_states: torch.Tensor,
+    gating_output: torch.Tensor,
+    correction_bias: torch.Tensor,
+    topk: int,
+    renormalize: bool,
+    num_expert_group: int = 0,
+    topk_group: int = 0,
+    compiled: bool = True,
+    n_share_experts_fusion: int = 0,
+):
+    biased_grouped_topk_fn = (
+        torch.compile(
+            biased_grouped_topk_impl, dynamic=True, backend="inductor"
+        )
+        if compiled
+        else biased_grouped_topk_impl
+    )
+    return biased_grouped_topk_fn(
+        hidden_states,
+        gating_output,
+        correction_bias,
+        topk,
+        renormalize,
+        num_expert_group,
+        topk_group,
+        n_share_experts_fusion=n_share_experts_fusion,
+    )

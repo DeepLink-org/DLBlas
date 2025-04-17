@@ -43,6 +43,9 @@ venv/
 # Python deployment artifacts
 *.whl
 build/
+.deps/
+dist/
+dlblas/*.so
 # Archive files
 *.tar
 *.tar.*
