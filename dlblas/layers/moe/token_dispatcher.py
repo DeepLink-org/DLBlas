@@ -153,8 +153,8 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.handle = handle
         self.topk_idx = topk_idx
         self.topk_weights = topk_weights
-        if hidden_states.shape[0] > 0:
-            hidden_states = self.get_permuted_hidden_states_by_experts(hidden_states)
+        # if hidden_states.shape[0] > 0:
+        #     hidden_states = self.get_permuted_hidden_states_by_experts(hidden_states)
         return hidden_states, topk_idx, topk_weights, tokens_per_expert
 
     def dispatch_normal(
@@ -209,8 +209,8 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         )
 
     def combine(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if hidden_states.shape[0] > 0:
-            hidden_states = self.get_restored_hidden_states_by_experts(hidden_states)
+        # if hidden_states.shape[0] > 0:
+        #     hidden_states = self.get_restored_hidden_states_by_experts(hidden_states)
         hidden_states, event = self.combine_normal(hidden_states, self.handle)
         self.handle = None
         return hidden_states.view(self.hidden_shape)
