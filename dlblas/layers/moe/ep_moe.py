@@ -9,6 +9,7 @@ import torch.distributed as dist
 
 from dlblas.kernels.moe import (grouped_gemm_triton, quant_fp8, renormalize, silu_and_mul_masked_post_quant_fwd,
                                 silu_and_mul_triton_kernel, map_logic_to_physical_idx_hash_random)
+from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blocked_fp8
 from dlblas.layers.moe.token_dispatcher import DeepEPTokenDispatcherLowLatency, TokenDispatcherBuilder
 from dlblas.utils.logger import get_logger
 
@@ -338,7 +339,8 @@ class FusedMoENormal:
                 up_scale: torch.Tensor,
                 down_weights: torch.Tensor,
                 down_scale: torch.Tensor,
-                expert_list: List[int] = None):
+                expert_list: List[int] = None,
+                moe_kernel: 'DlblasTritonFusedMoEBlockedF8Impl' = None):
         """forward."""
         if enable_eplb:
             topk_ids = map_logic_to_physical_idx_hash_random(topk_ids, self.log2phy, self.logcnt)
@@ -350,8 +352,8 @@ class FusedMoENormal:
             topk_weights,
             expert_list,
         )
-        out_states = self.experts.forward(recv_hidden_states, tokens_per_expert, up_weights, up_scale, down_weights,
-                                          down_scale)
+        out_states = moe_kernel.forward(recv_hidden_states, recv_topk_weights, recv_topk_ids, up_weights, up_scale,
+                                        down_weights, down_scale)
         out_states = self.token_dispatcher.combine(out_states)
         return out_states
 
@@ -418,6 +420,12 @@ class FusedMoEBlockedF8Impl:
         self.renormalize = renormalize
         self.block_size = block_size
         self.out_dtype = out_dtype
+        self.moe_kernel = DlblasTritonFusedMoEBlockedF8Impl(top_k=top_k,
+                                                            num_experts=num_experts,
+                                                            renormalize=renormalize,
+                                                            block_size=block_size,
+                                                            out_dtype=out_dtype,
+                                                            ep_size=ep_size)
 
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -435,9 +443,77 @@ class FusedMoEBlockedF8Impl:
         if is_decoding is False:
             moe = FusedMoENormal(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.layer_index, self.block_size,
                                  self.out_dtype)
+            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
+                                     down_scale, expert_list, self.moe_kernel)
         else:
             moe = FusedMoELowLatency(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
                                      self.out_dtype)
-        out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
-                                 down_scale, expert_list)
+            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
+                                     down_scale, expert_list)
         return out_states
+
+class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
+    """triton fused moe blocked f8 implementation."""
+
+    def __init__(self,
+                 top_k: int,
+                 num_experts: int,
+                 renormalize: bool = False,
+                 block_size: int = 128,
+                 out_dtype: torch.dtype = torch.float16,
+                 ep_size: int = 1):
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.renormalize = renormalize
+        self.block_size = block_size
+        self.out_dtype = out_dtype
+        self.ep_size = ep_size
+
+    def support_ep(self):
+        """support expert parallelism."""
+        return True
+
+    def ep_expert_list(self, world_size: int, rank: int):
+        """experts list of current rank."""
+        num_experts = self.num_experts
+        expert_per_rank = (num_experts + world_size - 1) // world_size
+        first_expert = rank * expert_per_rank
+        last_expert = min(first_expert + expert_per_rank, num_experts)
+        return list(range(first_expert, last_expert))
+
+
+    def forward(self,
+                hidden_states: torch.Tensor,
+                topk_weights: torch.Tensor,
+                topk_ids: torch.LongTensor,
+                gate_up_weights: torch.Tensor,
+                gate_up_scale: torch.Tensor,
+                down_weights: torch.Tensor,
+                down_scale: torch.Tensor,
+                expert_list: List[int] = None):
+        """forward."""
+        input_size = hidden_states.shape
+        hidden_states = hidden_states.flatten(0, -2)
+        input_quant, input_scale = quant_fp8(hidden_states, self.block_size, dtype=gate_up_weights.dtype)
+
+        expert_offset = 0
+        num_experts = None
+        if expert_list is not None and len(expert_list) != self.num_experts:
+            expert_offset = expert_list[0]
+            num_experts = self.num_experts
+        output = dlblas_fused_moe_blocked_fp8(input_quant,
+                                              input_scale,
+                                              gate_up_weights,
+                                              gate_up_scale,
+                                              down_weights,
+                                              down_scale,
+                                              topk_weights=topk_weights,
+                                              topk_ids=topk_ids,
+                                              topk=self.top_k,
+                                              out_dtype=hidden_states.dtype,
+                                              expert_offset=expert_offset,
+                                              num_experts=num_experts,
+                                              renormalize=self.renormalize,
+                                              ep_size=self.ep_size)
+        output = output.unflatten(0, input_size[:-1])
+        return output
