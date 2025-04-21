@@ -11,6 +11,11 @@ import torch
 import torch.distributed as dist
 
 from dlblas.layers.moe.token_dispatcher_base import TokenDispatcherBase
+from dlblas.utils.moe_utils import global_tokens_per_expert, save_expert_stats_to_file
+
+import os
+enable_moe_load_stats = os.environ.get('MOE_LOAD_STATS', '0') == '1'
+
 
 _buffer_normal = None
 _buffer_low_latency = None
@@ -109,12 +114,15 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         hidden_size: int = None,
         params_dtype: torch.dtype = None,
         num_max_dispatch_tokens_per_rank=128,
+        layer_index: int = None,
     ):
+        self.dispatch_count = 0
         self.group = group
         self.num_experts = num_experts
         self.num_local_experts = num_local_experts
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
+        self.layer_index = layer_index
         # Handle used for combine operation
         self.handle = None
         if not use_deepep:
@@ -150,6 +158,17 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             dtype=torch.int64,
         )
         tokens_per_expert = self.get_number_of_tokens_per_expert()
+        if enable_moe_load_stats:
+            self.dispatch_count += 1 
+            cloned_tensor = self.tokens_per_expert.clone().cpu()
+            global_tokens_per_expert[self.layer_index].append(cloned_tensor)
+
+            if self.dispatch_count % 100 == 0:
+                rank = int(os.environ.get("LOCAL_RANK", 0))
+                output_dir = os.path.join(os.path.dirname(__file__), '../../../../my_output')
+                filepath = os.path.join(output_dir, f"layer{self.layer_index}_rank{rank}_step{self.dispatch_count}_stats.json")
+                save_expert_stats_to_file(rank, filepath=filepath)
+
         self.handle = handle
         self.topk_idx = topk_idx
         self.topk_weights = topk_weights
@@ -337,6 +356,7 @@ class TokenDispatcherBuilder:
         num_local_experts,
         hidden_size,
         params_dtype,
+        layer_index
     ) -> TokenDispatcherBase:
         """build."""
         return DeepEPTokenDispatcherNormal(
@@ -345,4 +365,5 @@ class TokenDispatcherBuilder:
             num_local_experts,
             hidden_size,
             params_dtype,
+            layer_index
         )
