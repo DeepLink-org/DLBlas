@@ -1,6 +1,8 @@
 # Copyright (c) 2025, DeepLink.
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import os
+
+from dlblas.kernels.fused_moe_v2 import fused_moe
 enable_eplb = os.environ.get('EPLB_ENABLED', '0') == '1'
 
 import deep_gemm
@@ -187,13 +189,20 @@ class FusedMoENormal:
                  hidden_dim: int,
                  layer_index: int,
                  block_size: int = 128,
+                 top_k: int = 8,
                  out_dtype: torch.dtype = torch.bfloat16):
         self.layer_index = layer_index
-        self.experts = DeepEPExpertsGroupedGEMM(num_experts, ep_size, [block_size, block_size])
+        self.top_k = top_k
+        self.num_experts = num_experts
+        self.block_size = block_size
+        self.num_local_experts = num_experts // ep_size
+        self.e_map = torch.arange(num_experts, device="cuda", dtype=torch.int32)
+        self.e_map[self.e_map >= self.num_local_experts] = -1
+        # self.experts = DeepEPExpertsGroupedGEMM(num_experts, ep_size, [block_size, block_size])
         self.token_dispatcher = TokenDispatcherBuilder.build(
             group=ep_group,
             num_experts=num_experts,
-            num_local_experts=num_experts // ep_size,
+            num_local_experts=self.num_local_experts,
             hidden_size=hidden_dim,
             params_dtype=out_dtype,
             layer_index=layer_index,
@@ -354,9 +363,70 @@ class FusedMoENormal:
         )
         out_states = moe_kernel.forward(recv_hidden_states, recv_topk_weights, recv_topk_ids, up_weights, up_scale,
                                         down_weights, down_scale)
+        out_states = fused_moe(recv_hidden_states,
+                              up_weights,
+                              down_weights,
+                              recv_topk_weights,
+                              recv_topk_ids,
+                              self.top_k,
+                              global_num_experts=self.num_experts,
+                              num_local_experts=self.num_local_experts,
+                              expert_map=self.e_map,
+                              use_fp8_w8a8=True,
+                              w1_scale=up_scale,
+                              w2_scale=down_scale,
+                              block_shape=[self.block_size, self.block_size],
+                              renormalize=False)
         out_states = self.token_dispatcher.combine(out_states)
         return out_states
 
+    def capture(self):
+        return self.token_dispatcher.buffer_normal.capture()
+
+    def wait(self, event):
+        self.token_dispatcher.release()
+        event.current_stream_wait()
+
+    def dispatch_async(self,
+                       x: torch.Tensor,
+                       topk_idx: torch.Tensor,
+                       topk_weights: torch.Tensor,
+                       num_experts: Optional[int] = None,
+                       previous_event=None,
+                       async_finish=True):
+        return self.token_dispatcher.dispatch_normal_async(x, topk_idx, topk_weights, num_experts, previous_event,
+                                                           async_finish)
+
+    def combine_async(self, x: torch.Tensor, handle: tuple, previous_event=None, async_finish=True):
+        return self.token_dispatcher.combine_normal_async(x, handle, previous_event, async_finish)
+
+    def release(self):
+        return self.token_dispatcher.release()
+
+    def fusedmoe_forward(self, state, up_weight, up_scale, down_weight, down_scale):
+        (
+            hidden_states,
+            recv_hidden_states_shape,
+            dispatched_routing_map,
+            topk_weights,
+            reversed_mapping_for_combine,
+        ) = self.token_dispatcher.get_permuted_hidden_states_by_experts(state['recv_hidden_states'],
+                                                                        state['recv_topk_idx'],
+                                                                        state['recv_topk_weights'],
+                                                                        state['num_experts'])
+        tokens_per_expert = torch.tensor(
+            state['recv_tokens_per_expert'],
+            device=hidden_states.device,
+            dtype=torch.int64,
+        )
+        hidden_states = self.experts.forward(hidden_states, tokens_per_expert, up_weight, up_scale, down_weight,
+                                             down_scale)
+        hidden_states = self.token_dispatcher.get_restored_hidden_states_by_experts(hidden_states,
+                                                                                    reversed_mapping_for_combine,
+                                                                                    recv_hidden_states_shape,
+                                                                                    dispatched_routing_map,
+                                                                                    topk_weights)
+        return hidden_states
 
 class FusedMoELowLatency:
 
@@ -397,6 +467,40 @@ class FusedMoELowLatency:
                                           expected_m)
         out_states = self.token_dispatcher.combine(out_states, topk_idx, topk_weights)
         return out_states
+    
+    def wait(self, event):
+        event.current_stream_wait()
+
+    def dispatch_async(
+        self,
+        hidden_states: torch.Tensor,
+        topk_idx: torch.Tensor,
+        num_experts: Optional[int] = None,
+        use_fp8: bool = True,
+        async_finish: bool = True,
+    ):
+        return self.token_dispatcher.dispatch_async(hidden_states, topk_idx, num_experts, use_fp8, async_finish)
+
+    def combine_async(
+        self,
+        hidden_states: torch.Tensor,
+        topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
+        handle: tuple,
+        async_finish: bool,
+    ):
+        return self.token_dispatcher.combine_async(hidden_states, topk_idx, topk_weights, handle, async_finish)
+
+    def fusedmoe_forward(self, state, up_weight, up_scale, down_weight, down_scale):
+        recv_hidden_states = state['recv_hidden_states']
+        recv_expert_count = state['recv_expert_count']
+        hidden_shape = state['raw_hidden_shape']
+        topk_idx = state['topk_idx']
+        expected_m = (hidden_shape[0] * self.token_dispatcher.buffer_low_latency.group_size * topk_idx.shape[1] +
+                      self.token_dispatcher.num_experts) // self.token_dispatcher.num_experts
+        hidden_states = self.experts.forward(recv_hidden_states, up_weight, up_scale, down_weight, down_scale,
+                                             recv_expert_count, expected_m)
+        return hidden_states
 
 
 class FusedMoEBlockedF8Impl:
@@ -420,12 +524,6 @@ class FusedMoEBlockedF8Impl:
         self.renormalize = renormalize
         self.block_size = block_size
         self.out_dtype = out_dtype
-        self.moe_kernel = DlblasTritonFusedMoEBlockedF8Impl(top_k=top_k,
-                                                            num_experts=num_experts,
-                                                            renormalize=renormalize,
-                                                            block_size=block_size,
-                                                            out_dtype=out_dtype,
-                                                            ep_size=ep_size)
 
     def forward(self,
                 hidden_states: torch.Tensor,
@@ -439,19 +537,19 @@ class FusedMoEBlockedF8Impl:
                 expert_list: List[int] = None):
         """forward."""
         topk_weights = renormalize(topk_weights, self.renormalize)
-        moe = None
-        if is_decoding is False:
-            moe = FusedMoENormal(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.layer_index, self.block_size,
-                                 self.out_dtype)
-            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
-                                     down_scale, expert_list, self.moe_kernel)
-        else:
-            moe = FusedMoELowLatency(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
-                                     self.out_dtype)
-            out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
+        moe = self.fusedmoe_build(is_decoding)
+        out_states = moe.forward(hidden_states, topk_weights, topk_ids, gate_up_weights, gate_up_scale, down_weights,
                                      down_scale, expert_list)
         return out_states
 
+    def fusedmoe_build(self, low_latency_mode: bool = False):
+        if low_latency_mode:
+            return FusedMoELowLatency(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
+                                      self.top_k, self.out_dtype)
+        else:
+            return FusedMoENormal(self.ep_size, self.ep_group, self.num_experts, self.hidden_dim, self.block_size,
+                                  self.out_dtype)
+        
 class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
     """triton fused moe blocked f8 implementation."""
 
