@@ -247,36 +247,19 @@ def moe_kernel_prepare_input(
         assert A_scale is None
     return A, A_scale
 
-@functools.lru_cache
-def get_moe_config(
-    token_cnt: int,
-) -> Optional[Dict[int, Any]]:
-    """
-    Return optimized configurations for the fused MoE kernel.
 
-    The return value will be a dictionary that maps an irregular grid of
-    batch sizes to configurations of the fused_moe kernel. To evaluate the
-    kernel on a given batch size bs, the closest batch size in the grid should
-    be picked and the associated configuration chosen to invoke the kernel.
-    """
-    configs = {"4096": {
-                        "BLOCK_SIZE_M": 64,
-                        "BLOCK_SIZE_N": 256,
-                        "BLOCK_SIZE_K": 64,
-                        "GROUP_SIZE_M": 32,
-                        "num_warps": 4,
-                        "num_stages": 2
-                      }
-                }
-    default_config = {
-                        "BLOCK_SIZE_M": 64,
-                        "BLOCK_SIZE_N": 256,
-                        "BLOCK_SIZE_K": 64,
-                        "GROUP_SIZE_M": 32,
-                        "num_warps": 4,
-                        "num_stages": 2
-                      }
-    return configs.get(str(token_cnt), default_config)
+def get_moe_config(
+    block_shape: List[int],
+) -> Optional[Dict[int, Any]]:
+    config = {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": block_shape[0],
+            "BLOCK_SIZE_K": block_shape[1],
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 4,
+        }
+    return config
 
 def invoke_fused_moe_kernel(A: torch.Tensor,
                             B: torch.Tensor,
@@ -364,14 +347,14 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
         **config,
     )
 
-def fused_experts_impl(hidden_states: torch.Tensor,
+
+def fused_moe(hidden_states: torch.Tensor,
                        w1: torch.Tensor,
                        w2: torch.Tensor,
                        topk_weights: torch.Tensor,
                        topk_ids: torch.Tensor,
                        inplace: bool = False,
                        activation: str = "silu",
-                       apply_router_weight_on_input: bool = False,
                        use_fp8_w8a8: bool = False,
                        use_int8_w8a8: bool = False,
                        use_int8_w8a16: bool = False,
@@ -387,7 +370,7 @@ def fused_experts_impl(hidden_states: torch.Tensor,
                        a1_scale: Optional[torch.Tensor] = None,
                        a2_scale: Optional[torch.Tensor] = None,
                        block_shape: Optional[List[int]] = None,
-                       chunk_size: Optional[int] = 64 * 1024,
+                       chunk_size: Optional[int] = 32 * 1024,
                        ):
     # Check constraints.
     if use_int4_w4a16:
@@ -403,7 +386,7 @@ def fused_experts_impl(hidden_states: torch.Tensor,
     assert hidden_states.dtype in [
         torch.float32, torch.float16, torch.bfloat16
     ]
-
+    apply_router_weight_on_input = False
     num_tokens, _ = hidden_states.shape
     E, N, _ = w1.shape
     K = w2.shape[1]
@@ -411,7 +394,7 @@ def fused_experts_impl(hidden_states: torch.Tensor,
         global_num_experts = E
     top_k_num = topk_ids.shape[1]
     M = min(num_tokens, chunk_size)
-    config = get_moe_config(M)
+    config = get_moe_config(block_shape)
 
     # We can reuse the memory between these because by the time we need
     # cache3, we're done with cache1
@@ -457,7 +440,6 @@ def fused_experts_impl(hidden_states: torch.Tensor,
             intermediate_cache2 = intermediate_cache2[:tokens_in_chunk *
                                                       topk_ids.shape[1]]
             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
-            config = get_moe_config(tokens_in_chunk)
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
         qcurr_hidden_states, qa1_scale = moe_kernel_prepare_input(
@@ -523,117 +505,3 @@ def fused_experts_impl(hidden_states: torch.Tensor,
         moe_sum(intermediate_cache3.view(*intermediate_cache3.shape),
                     out_hidden_states[begin_chunk_idx:end_chunk_idx])
     return out_hidden_states
-
-def fused_moe(
-    hidden_states: torch.Tensor,
-    w1: torch.Tensor,
-    w2: torch.Tensor,
-    # gating_output: torch.Tensor,
-    topk_weights, topk_ids,
-    topk: int,
-    renormalize: bool,
-    inplace: bool = False,
-    activation: str = "silu",
-    use_grouped_topk: bool = False,
-    num_expert_group: Optional[int] = None,
-    topk_group: Optional[int] = None,
-    use_fp8_w8a8: bool = False,
-    use_int8_w8a8: bool = False,
-    use_int8_w8a16: bool = False,
-    use_int4_w4a16: bool = False,
-    per_channel_quant: bool = False,
-    global_num_experts: int = -1,
-    num_local_experts: int = -1,
-    expert_map: Optional[torch.Tensor] = None,
-    w1_scale: Optional[torch.Tensor] = None,
-    w2_scale: Optional[torch.Tensor] = None,
-    w1_zp: Optional[torch.Tensor] = None,
-    w2_zp: Optional[torch.Tensor] = None,
-    a1_scale: Optional[torch.Tensor] = None,
-    a2_scale: Optional[torch.Tensor] = None,
-    block_shape: Optional[List[int]] = None,
-) -> torch.Tensor:
-    """
-    This function computes a Mixture of Experts (MoE) layer using two sets of
-    weights, w1 and w2, and top-k gating mechanism.
-
-    Parameters:
-    - hidden_states (torch.Tensor): The input tensor to the MoE layer.
-    - w1 (torch.Tensor): The first set of expert weights.
-    - w2 (torch.Tensor): The second set of expert weights.
-    - gating_output (torch.Tensor): The output of the gating operation
-        (before softmax).
-    - topk (int): The number of top-k experts to select.
-    - renormalize (bool): If True, renormalize the top-k weights to sum to 1.
-    - inplace (bool): If True, perform the operation in-place.
-        Defaults to False.
-    - activation (str): The activation function to apply after the first
-        MoE layer.
-    - num_expert_group: Optional[int]: additional parameter for grouped_topk
-    - topk_group: Optional[int]: additional parameter for grouped_topk
-    - use_grouped_topk: If True, use grouped_topk instead of fused_topk
-        note: Deepseekv2 model uses grouped_topk
-    - use_fp8_w8a8 (bool): If True, use fp8 arithmetic to compute the inner
-        products for w1 and w2. Defaults to False.
-    - use_int8_w8a8 (bool): If True, use int8 arithmetic to compute the inner
-        products for w1 and w2. Defaults to False.
-    - use_int8_w8a16 (bool): If True, use matmul of int8 weight and bf16/fp16
-        activation to compute the inner products for w1 and w2.
-        Defaults to False.
-    - use_int4_w4a16 (bool): If True, use matmul of int4 weight and bf16/fp16
-        activation to compute the inner products for w1 and w2.
-        Defaults to False.
-    - global_num_experts (int): The total number of experts in the global
-        expert space.
-    - expert_map (Optional[torch.Tensor]):  A tensor mapping expert indices 
-        from the global expert space to the local expert space of the expert 
-        parallel shard.
-    - w1_scale (Optional[torch.Tensor]): Optional scale to be used for
-        w1.
-    - w2_scale (Optional[torch.Tensor]): Optional scale to be used for
-        w2.
-    - a1_scale (Optional[torch.Tensor]): Optional scale to be used for
-        a1.
-    - a2_scale (Optional[torch.Tensor]): Optional scale to be used for
-        a2.
-    - block_shape: (Optional[List[int]]): Optional block size for block-wise
-        quantization.
-
-    Returns:
-    - torch.Tensor: The output tensor after applying the MoE layer.
-    """
-
-    # if use_grouped_topk:
-    #     assert num_expert_group is not None and topk_group is not None
-    #     topk_weights, topk_ids = grouped_topk(hidden_states, gating_output,
-    #                                           topk, renormalize,
-    #                                           num_expert_group, topk_group)
-    # elif custom_routing_function is None:
-    #     topk_weights, topk_ids = fused_topk(hidden_states, gating_output, topk,
-    #                                         renormalize)
-    # else:
-    #     topk_weights, topk_ids = custom_routing_function(
-    #         hidden_states, gating_output, topk, renormalize)
-
-    return fused_experts_impl(hidden_states,
-                         w1,
-                         w2,
-                         topk_weights,
-                         topk_ids,
-                         inplace=inplace,
-                         activation=activation,
-                         use_fp8_w8a8=use_fp8_w8a8,
-                         use_int8_w8a8=use_int8_w8a8,
-                         use_int8_w8a16=use_int8_w8a16,
-                         use_int4_w4a16=use_int4_w4a16,
-                         per_channel_quant=per_channel_quant,
-                         global_num_experts=global_num_experts,
-                         num_local_experts=num_local_experts,
-                         expert_map=expert_map,
-                         w1_scale=w1_scale,
-                         w2_scale=w2_scale,
-                         w1_zp=w1_zp,
-                         w2_zp=w2_zp,
-                         a1_scale=a1_scale,
-                         a2_scale=a2_scale,
-                         block_shape=block_shape)

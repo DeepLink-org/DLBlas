@@ -1,9 +1,8 @@
 # modify form sglang
 import torch
 import triton
+import dlblas
 from dlblas.kernels.moe import biased_grouped_topk
-import dlblas._DLBLAS
-moe_fused_gate = torch.ops._DLBLAS.moe_fused_gate.default
 
 
 def biased_grouped_topk_org(scores, bias, num_expert_group, topk_group, topk):
@@ -13,14 +12,14 @@ def biased_grouped_topk_org(scores, bias, num_expert_group, topk_group, topk):
         bias,
         topk=topk,
         renormalize=True,
-        compiled=False,
         num_expert_group=num_expert_group,
         topk_group=topk_group,
+        routed_scaling_factor=2.5
     )
 
 
 def biased_grouped_topk_org_kernel(scores, bias, num_expert_group, topk_group, topk):
-    return moe_fused_gate(scores, bias, num_expert_group, topk_group, topk)
+    return dlblas.moe_fused_gate(scores, bias, num_expert_group, topk_group, topk, routed_scaling_factor=2.5)
 
 
 seq_length_range = [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000]

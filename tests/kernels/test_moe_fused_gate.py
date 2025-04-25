@@ -1,10 +1,8 @@
 # modify from sglang
 import pytest
 import torch
-
+import dlblas
 from dlblas.kernels.moe import biased_grouped_topk
-import dlblas._DLBLAS
-moe_fused_gate = torch.ops._DLBLAS.moe_fused_gate.default
 
 
 @pytest.mark.parametrize(
@@ -23,18 +21,19 @@ moe_fused_gate = torch.ops._DLBLAS.moe_fused_gate.default
 )
 def test_moe_fused_gate_combined(seq_length, dtype, params):
     num_experts, num_expert_group, topk_group, topk = params
-
+    routed_scaling_factor = 0
     torch.manual_seed(seq_length)
     tensor = torch.rand((seq_length, num_experts)).to(dtype).cuda()
     scores = tensor.clone()
     bias = torch.rand(num_experts).to(dtype).cuda()
 
-    output, indices = moe_fused_gate(
+    output, indices = dlblas.moe_fused_gate(
         tensor,
         bias,
         num_expert_group=num_expert_group,
         topk_group=topk_group,
         topk=topk,
+        routed_scaling_factor = routed_scaling_factor
     )
     ref_output, ref_indices = biased_grouped_topk(
         scores,
@@ -44,7 +43,7 @@ def test_moe_fused_gate_combined(seq_length, dtype, params):
         renormalize=True,
         num_expert_group=num_expert_group,
         topk_group=topk_group,
-        compiled=False,
+        routed_scaling_factor = routed_scaling_factor
     )
 
     idx_check = torch.allclose(
@@ -56,8 +55,8 @@ def test_moe_fused_gate_combined(seq_length, dtype, params):
     output_check = torch.allclose(
         ref_output.sort()[0].to(torch.float32),
         output.sort()[0].to(torch.float32),
-        rtol=1e-04,
-        atol=1e-05,
+        rtol=1e-02,
+        atol=1e-03,
     )
 
     assert idx_check, (

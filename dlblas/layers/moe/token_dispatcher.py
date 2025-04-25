@@ -30,6 +30,8 @@ def get_buffer_common(
     hidden_bytes: int,
 ):
     global _buffer_common
+    if _buffer_common is not None:
+        return _buffer_common
     num_nvl_bytes, num_rdma_bytes = 0, 0
     for config in (
             Buffer.get_dispatch_config(group.size()),
@@ -41,16 +43,13 @@ def get_buffer_common(
     num_rdma_bytes = max(
         Buffer.get_low_latency_rdma_size_hint(num_max_dispatch_tokens_per_rank, hidden, group.size(), num_experts),
         num_rdma_bytes)
-
-    if (_buffer_common is None or _buffer_common.group != group or _buffer_common.num_nvl_bytes < num_nvl_bytes
-            or _buffer_common.num_rdma_bytes < num_rdma_bytes):
-        _buffer_common = Buffer(
-            group,
-            num_nvl_bytes=num_nvl_bytes,
-            num_rdma_bytes=num_rdma_bytes,
-            low_latency_mode=True,
-            num_qps_per_rank=num_experts // group.size(),
-        )
+    _buffer_common = Buffer(
+        group,
+        num_nvl_bytes=num_nvl_bytes,
+        num_rdma_bytes=num_rdma_bytes,
+        low_latency_mode=True,
+        num_qps_per_rank=num_experts // group.size(),
+    )
     return _buffer_common
 
 
@@ -113,7 +112,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_local_experts: int = None,
         hidden_size: int = None,
         params_dtype: torch.dtype = None,
-        num_max_dispatch_tokens_per_rank=128,
         layer_index: int = None,
     ):
         self.dispatch_count = 0
@@ -123,16 +121,19 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
         self.layer_index = layer_index
+        self.num_max_dispatch_tokens_per_rank = 128
         # Handle used for combine operation
         self.handle = None
         if not use_deepep:
             raise ImportError('DeepEP is not installed. Please install DeepEP package from '
                               'https://github.com/deepseek-ai/deepep.')
         self.buffer_normal = get_buffer_common(self.group,
-                                               num_max_dispatch_tokens_per_rank,
+                                               self.num_max_dispatch_tokens_per_rank,
                                                self.hidden_size,
                                                self.num_experts,
                                                hidden_bytes=self.hidden_size * self.params_bytes)
+        # self.buffer_normal = get_buffer_normal(self.group,
+        #                                        hidden_bytes=self.hidden_size * self.params_bytes)
 
     def dispatch(
         self,
@@ -304,9 +305,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.handle = None
         self.topk_idx = None
         self.topk_weights = None
-        self.hidden_shape_before_permute = None
-        self.dispatched_routing_map = None
-        self.reversed_mapping_for_combine = None
         return True
 
 
@@ -336,6 +334,10 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
                                                     self.hidden_size,
                                                     self.num_experts,
                                                     hidden_bytes=self.hidden_size * self.params_bytes)
+        # self.buffer_low_latency = get_buffer_low_latency(self.group,
+        #                                             self.num_max_dispatch_tokens_per_rank,
+        #                                             self.hidden_size,
+        #                                             self.num_experts)
         self.return_recv_hook = return_recv_hook
 
     def dispatch(
@@ -423,27 +425,3 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
             return_recv_hook=not async_finish,
         )
         return combined_hidden_states, event, hook
-
-
-
-class TokenDispatcherBuilder:
-    """token dispatcher builder."""
-
-    @staticmethod
-    def build(
-        group,
-        num_experts,
-        num_local_experts,
-        hidden_size,
-        params_dtype,
-        layer_index
-    ) -> TokenDispatcherBase:
-        """build."""
-        return DeepEPTokenDispatcherNormal(
-            group,
-            num_experts,
-            num_local_experts,
-            hidden_size,
-            params_dtype,
-            layer_index
-        )

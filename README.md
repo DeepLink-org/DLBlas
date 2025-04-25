@@ -28,7 +28,7 @@ pip install -r python/dlBLAS/requirements.txt
 2. install packages
 
 ```
-pip install .
+python setup.py install
 ```
 ## Getting Started
 There are a couple of ways to apply dlblas kernels.

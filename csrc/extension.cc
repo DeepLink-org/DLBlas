@@ -5,8 +5,9 @@
 #include "dlblas_ops.h"
 
 TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
-  m.def(
-      "moe_fused_gate(Tensor input, Tensor bias, int num_expert_group, int topk_group, int topk) -> "
+    m.def(
+      "moe_fused_gate(Tensor input, Tensor bias, int num_expert_group, int topk_group, int topk, int "
+      "n_share_experts_fusion, float routed_scaling_factor) -> "
       "(Tensor[])");
   m.impl("moe_fused_gate", torch::kCUDA, &moe_fused_gate);
   // Calculate the result of moe by summing up the partial results
