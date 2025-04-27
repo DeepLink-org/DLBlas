@@ -5,6 +5,7 @@ try:
 except ImportError:
     use_deepep = False
 
+import os
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -13,9 +14,7 @@ import torch.distributed as dist
 from dlblas.layers.moe.token_dispatcher_base import TokenDispatcherBase
 from dlblas.utils.moe_utils import global_tokens_per_expert, save_expert_stats_to_file
 
-import os
 enable_moe_load_stats = os.environ.get('MOE_LOAD_STATS', '0') == '1'
-
 
 _buffer_normal = None
 _buffer_low_latency = None
@@ -90,7 +89,8 @@ def get_buffer_low_latency(
 
     if (_buffer_low_latency is None or _buffer_low_latency.group != group or not _buffer_low_latency.low_latency_mode
             or _buffer_low_latency.num_rdma_bytes < num_rdma_bytes):
-        assert num_experts % group.size() == 0, f'num_experts:{num_experts} must be divisible by ep_size:{group.size()}'
+        assert num_experts % group.size(
+        ) == 0, f'num_experts: {num_experts} must be divisible by ep_size: {group.size()}'
         _buffer_low_latency = Buffer(
             group,
             num_rdma_bytes=num_rdma_bytes,
@@ -160,13 +160,14 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
                 device=hidden_states.device,
                 dtype=torch.int64,
             )
-            self.dispatch_count += 1 
+            self.dispatch_count += 1
             cloned_tensor = tokens_per_expert.clone().cpu()
             global_tokens_per_expert[self.layer_index].append(cloned_tensor)
             if self.dispatch_count % 100 == 0:
-                rank = int(os.environ.get("LOCAL_RANK", 0))
+                rank = int(os.environ.get('LOCAL_RANK', 0))
                 output_dir = os.path.join(os.path.dirname(__file__), '../../../../my_output')
-                filepath = os.path.join(output_dir, f"layer{self.layer_index}_rank{rank}_step{self.dispatch_count}_stats.json")
+                filepath = os.path.join(output_dir,
+                                        f"layer{self.layer_index}_rank{rank}_step{self.dispatch_count}_stats.json")
                 save_expert_stats_to_file(rank, filepath=filepath)
 
         self.handle = handle
@@ -224,7 +225,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             handle,
             event,
         )
-    
+
     def dispatch_normal_async(self,
                               x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                               topk_idx: torch.Tensor,
@@ -289,7 +290,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             allocate_on_comm_stream=False,
         )
         return combined_x, event
-    
+
     def combine_normal_async(self, x: torch.Tensor, handle: Tuple, previous_event=None, async_finish=True):
         combined_x, _, event = self.buffer_normal.combine(
             x,
@@ -299,7 +300,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             allocate_on_comm_stream=previous_event is not None and async_finish,
         )
         return combined_x, event
-    
+
     def release(self):
         self.handle = None
         self.topk_idx = None
@@ -367,7 +368,7 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
             masked_m,
             expected_m,
         )
-    
+
     def dispatch_async(
         self,
         hidden_states: torch.Tensor,
@@ -404,7 +405,7 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
         ))
         hook() if self.return_recv_hook else event.current_stream_wait()
         return combined_hidden_states
-    
+
     def combine_async(
         self,
         hidden_states: torch.Tensor,

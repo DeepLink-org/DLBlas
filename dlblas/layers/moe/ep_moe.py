@@ -1,24 +1,24 @@
 # Copyright (c) 2025, DeepLink.
-from typing import List, Optional, Tuple, Union
 import os
-
-from dlblas.kernels.fp8 import per_token_group_quant_fp8
-from dlblas.kernels.fused_moe_v2 import fused_moe
-enable_eplb = os.environ.get('EPLB_ENABLED', '0') == '1'
+from typing import List, Optional, Tuple, Union
 
 import deep_gemm
 import torch
 import torch.distributed as dist
 
-from dlblas.kernels.moe import (grouped_gemm_triton, quant_fp8, renormalize, silu_and_mul_masked_post_quant_fwd,
-                                silu_and_mul_triton_kernel, map_logic_to_physical_idx_hash_random)
+from dlblas.kernels.fp8 import per_token_group_quant_fp8
+from dlblas.kernels.fused_moe_v2 import fused_moe
+from dlblas.kernels.moe import map_logic_to_physical_idx_hash_random, quant_fp8, silu_and_mul_masked_post_quant_fwd
 from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blocked_fp8
 from dlblas.layers.moe.token_dispatcher import DeepEPTokenDispatcherLowLatency, DeepEPTokenDispatcherNormal
 from dlblas.utils.logger import get_logger
 
 logger = get_logger(__name__)
+enable_eplb = os.environ.get('EPLB_ENABLED', '0') == '1'
+
 
 class FusedExperts:
+
     def __init__(
         self,
         num_experts: int,
@@ -32,36 +32,39 @@ class FusedExperts:
         self.num_local_experts = num_local_experts
         self.top_k = top_k
         self.block_shape = block_shape
-        self.experts_map = torch.arange(num_experts, device="cuda", dtype=torch.int32)
+        self.experts_map = torch.arange(num_experts, device='cuda', dtype=torch.int32)
         self.experts_map[self.experts_map >= self.num_local_experts] = -1
         self.chunk_size = chunk_size
         self.out_dtype = out_dtype
 
-    def forward(self, x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                topk_weights: torch.Tensor,
-                topk_ids: torch.LongTensor,
-                up_weights: torch.Tensor,
-                up_scale: torch.Tensor,
-                down_weights: torch.Tensor,
-                down_scale: torch.Tensor,
-                expert_list: List[int] = None,):
+    def forward(
+        self,
+        x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        topk_weights: torch.Tensor,
+        topk_ids: torch.LongTensor,
+        up_weights: torch.Tensor,
+        up_scale: torch.Tensor,
+        down_weights: torch.Tensor,
+        down_scale: torch.Tensor,
+        expert_list: List[int] = None,
+    ):
         hidden_states, hidden_states_scales = x if isinstance(x, tuple) else (x, None)
         out_states = fused_moe(hidden_states,
-                              up_weights,
-                              down_weights,
-                              topk_weights,
-                              topk_ids,
-                              inplace=False if isinstance(x, tuple) else True,
-                              global_num_experts=self.num_experts,
-                              num_local_experts=self.num_local_experts,
-                              expert_map=self.experts_map,
-                              use_fp8_w8a8=True,
-                              w1_scale=up_scale,
-                              w2_scale=down_scale,
-                              hidden_states_scale=hidden_states_scales,
-                              block_shape=self.block_shape,
-                              chunk_size=self.chunk_size,
-                              out_dtype=self.out_dtype)
+                               up_weights,
+                               down_weights,
+                               topk_weights,
+                               topk_ids,
+                               inplace=False if isinstance(x, tuple) else True,
+                               global_num_experts=self.num_experts,
+                               num_local_experts=self.num_local_experts,
+                               expert_map=self.experts_map,
+                               use_fp8_w8a8=True,
+                               w1_scale=up_scale,
+                               w2_scale=down_scale,
+                               hidden_states_scale=hidden_states_scales,
+                               block_shape=self.block_shape,
+                               chunk_size=self.chunk_size,
+                               out_dtype=self.out_dtype)
         return out_states
 
 
@@ -132,30 +135,31 @@ class DeepEPExpertsDeepGEMM:
 
 class FusedMoENormal:
 
-    def __init__(self,
-                 ep_size: int,
-                 ep_group: dist.ProcessGroup,
-                 num_experts: int,
-                 hidden_dim: int,
-                 layer_index: int = 0,
-                 block_size: int = 128,
-                 top_k: int = 8,
-                 out_dtype: torch.dtype = torch.bfloat16,
-                 chunk_size: Optional[int] = 32 * 1024,
-                 ):
+    def __init__(
+        self,
+        ep_size: int,
+        ep_group: dist.ProcessGroup,
+        num_experts: int,
+        hidden_dim: int,
+        layer_index: int = 0,
+        block_size: int = 128,
+        top_k: int = 8,
+        out_dtype: torch.dtype = torch.bfloat16,
+        chunk_size: Optional[int] = 32 * 1024,
+    ):
         self.layer_index = layer_index
         self.top_k = top_k
         self.num_experts = num_experts
         self.block_size = block_size
         self.num_local_experts = num_experts // ep_size
         self.experts = FusedExperts(
-            num_experts=num_experts, 
+            num_experts=num_experts,
             num_local_experts=self.num_local_experts,
-            top_k=self.top_k, 
+            top_k=self.top_k,
             block_shape=[block_size, block_size],
             chunk_size=chunk_size,
             out_dtype=out_dtype,
-            )
+        )
         self.token_dispatcher = DeepEPTokenDispatcherNormal(
             group=ep_group,
             num_experts=num_experts,
@@ -164,9 +168,9 @@ class FusedMoENormal:
             params_dtype=out_dtype,
             layer_index=layer_index,
         )
-        
+
     def balanced_packing(self, weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        
+
         num_layers, num_groups = weight.shape
         assert num_groups % num_packs == 0
         groups_per_pack = num_groups // num_packs
@@ -183,15 +187,14 @@ class FusedMoENormal:
             pack_weights = [0] * num_packs
             pack_items = [0] * num_packs
             for group in indices[i]:
-                pack = min((i for i in range(num_packs) if pack_items[i] < groups_per_pack), 
-                        key=pack_weights.__getitem__)
+                pack = min((i for i in range(num_packs) if pack_items[i] < groups_per_pack),
+                           key=pack_weights.__getitem__)
                 assert pack_items[pack] < groups_per_pack
                 pack_index[i, group] = pack
                 rank_in_pack[i, group] = pack_items[pack]
                 pack_weights[pack] += weight[i, group]
                 pack_items[pack] += 1
         return pack_index, rank_in_pack
-
 
     def replicate_experts(self, weight: torch.Tensor, num_phy: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
@@ -210,12 +213,12 @@ class FusedMoENormal:
             logcnt[arangen, redundant_indices] += 1
         return phy2log, rank, logcnt
 
-
-    def rebalance_experts_hierarchical(self, weight: torch.Tensor, num_physical_experts: int, num_groups: int, num_nodes: int, num_gpus: int):
+    def rebalance_experts_hierarchical(self, weight: torch.Tensor, num_physical_experts: int, num_groups: int,
+                                       num_nodes: int, num_gpus: int):
 
         num_layers, num_logical_experts = weight.shape
         assert num_logical_experts % num_groups == 0
-        group_size = num_logical_experts // num_groups 
+        group_size = num_logical_experts // num_groups
         assert num_groups % num_nodes == 0
         groups_per_node = num_groups // num_nodes
         assert num_gpus % num_nodes == 0
@@ -228,51 +231,60 @@ class FusedMoENormal:
             return inv
 
         tokens_per_group = weight.unflatten(-1, (num_groups, group_size)).sum(-1)
-        group_pack_index, group_rank_in_pack = self.balanced_packing(tokens_per_group, num_nodes) 
-        log2mlog = (((group_pack_index * groups_per_node + group_rank_in_pack) * group_size).unsqueeze(-1) + 
+        group_pack_index, group_rank_in_pack = self.balanced_packing(tokens_per_group, num_nodes)
+        log2mlog = (((group_pack_index * groups_per_node + group_rank_in_pack) * group_size).unsqueeze(-1) +
                     torch.arange(group_size, dtype=torch.int64, device=group_pack_index.device)).flatten(-2)
         mlog2log = inverse(log2mlog)
         tokens_per_mlog = weight.gather(-1, mlog2log).view(-1, num_logical_experts // num_nodes)
-        phy2mlog, phyrank, mlogcnt = self.replicate_experts(tokens_per_mlog, num_physical_experts // num_nodes)  
+        phy2mlog, phyrank, mlogcnt = self.replicate_experts(tokens_per_mlog, num_physical_experts // num_nodes)
         tokens_per_phy = (tokens_per_mlog / mlogcnt).gather(-1, phy2mlog)
         pack_index, rank_in_pack = self.balanced_packing(tokens_per_phy, num_gpus // num_nodes)
         phy2pphy = pack_index * phy_experts_per_gpu + rank_in_pack
         pphy2phy = inverse(phy2pphy)
-        pphy2mlog = phy2mlog.gather(-1, pphy2phy) # [num_layers * num_nodes, num_log_per_nodes]
-        pphy2mlog = (pphy2mlog.view(num_layers, num_nodes, -1) + 
-                    torch.arange(0, num_logical_experts, num_logical_experts // num_nodes).view(1, -1, 1)).flatten(-2)
+        pphy2mlog = phy2mlog.gather(-1, pphy2phy)  # [num_layers * num_nodes, num_log_per_nodes]
+        pphy2mlog = (pphy2mlog.view(num_layers, num_nodes, -1) +
+                     torch.arange(0, num_logical_experts, num_logical_experts // num_nodes).view(1, -1, 1)).flatten(-2)
         pphy2log = mlog2log.gather(-1, pphy2mlog)
         pphyrank = phyrank.gather(-1, pphy2phy).view(num_layers, -1)
         logcnt = mlogcnt.view(num_layers, -1).gather(-1, log2mlog)
         return pphy2log, pphyrank, logcnt
 
-    def rebalance_experts(self, weight: torch.Tensor, num_replicas: int, num_groups: int,
-                        num_nodes: int, num_gpus: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        
+    def rebalance_experts(self, weight: torch.Tensor, num_replicas: int, num_groups: int, num_nodes: int,
+                          num_gpus: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
         num_layers, num_logical_experts = weight.shape
         weight = weight.float().cpu()
         if num_groups % num_nodes == 0:
             # use hierarchical load-balance policy
-            phy2log, phyrank, logcnt = self.rebalance_experts_hierarchical(weight, num_replicas, 
-                                                                    num_groups, num_nodes, num_gpus)
+            phy2log, phyrank, logcnt = self.rebalance_experts_hierarchical(weight, num_replicas, num_groups, num_nodes,
+                                                                           num_gpus)
         else:
             # use global load-balance policy
             phy2log, phyrank, logcnt = self.replicate_experts(weight, num_replicas)
         maxlogcnt = logcnt.max().item()
-        log2phy: torch.Tensor = torch.full((num_layers, num_logical_experts, maxlogcnt), 
-                                        -1, dtype=torch.int64, device=logcnt.device)
-        log2phy.view(num_layers, -1).scatter_(-1, phy2log * maxlogcnt + phyrank, 
-                torch.arange(num_replicas, dtype=torch.int64, device=log2phy.device).expand(num_layers, -1))
+        log2phy: torch.Tensor = torch.full((num_layers, num_logical_experts, maxlogcnt),
+                                           -1,
+                                           dtype=torch.int64,
+                                           device=logcnt.device)
+        log2phy.view(num_layers, -1).scatter_(
+            -1, phy2log * maxlogcnt + phyrank,
+            torch.arange(num_replicas, dtype=torch.int64, device=log2phy.device).expand(num_layers, -1))
         return phy2log, log2phy, logcnt
-    
-    def ep_expert_list(self, world_size: int, rank: int, num_groups: int=None, num_nodes: int=None, weight: torch.Tensor=None):
+
+    def ep_expert_list(self,
+                       world_size: int,
+                       rank: int,
+                       num_groups: int = None,
+                       num_nodes: int = None,
+                       weight: torch.Tensor = None):
         """experts list of current rank."""
         if enable_eplb:
             self.num_groups = num_groups
             self.num_nodes = num_nodes
             self.num_gpus = world_size
             # 调用 rebalance_experts 函数获取映射信息
-            phy2log, log2phy, logcnt = self.rebalance_experts(weight, self.num_experts, self.num_groups, self.num_nodes, self.num_gpus)
+            phy2log, log2phy, logcnt = self.rebalance_experts(weight, self.num_experts, self.num_groups, self.num_nodes,
+                                                              self.num_gpus)
             self.phy2log = phy2log[0].to('cuda')
             self.log2phy = log2phy[0].to('cuda')
             self.logcnt = logcnt[0].to('cuda')
@@ -297,17 +309,17 @@ class FusedMoENormal:
             last_expert = min(first_expert + expert_per_rank, num_experts)
             return list(range(first_expert, last_expert))
 
-
-    def forward(self,
-                hidden_states: torch.Tensor,
-                topk_weights: torch.Tensor,
-                topk_ids: torch.LongTensor,
-                up_weights: torch.Tensor,
-                up_scale: torch.Tensor,
-                down_weights: torch.Tensor,
-                down_scale: torch.Tensor,
-                expert_list: List[int] = None,
-                ):
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.LongTensor,
+        up_weights: torch.Tensor,
+        up_scale: torch.Tensor,
+        down_weights: torch.Tensor,
+        down_scale: torch.Tensor,
+        expert_list: List[int] = None,
+    ):
         """forward."""
         if enable_eplb:
             topk_ids = map_logic_to_physical_idx_hash_random(topk_ids, self.log2phy, self.logcnt)
@@ -322,8 +334,8 @@ class FusedMoENormal:
             expert_list,
         )
         topk_ids, topk_weights = None, None
-        out_states = self.experts.forward(x, recv_topk_weights, recv_topk_ids, up_weights, up_scale,
-                                       down_weights, down_scale)
+        out_states = self.experts.forward(x, recv_topk_weights, recv_topk_ids, up_weights, up_scale, down_weights,
+                                          down_scale)
         out_states = self.token_dispatcher.combine(out_states)
         return out_states
 
@@ -343,8 +355,8 @@ class FusedMoENormal:
                        async_finish=True):
         hs_quant, hs_scale = per_token_group_quant_fp8(x, self.block_size)
         x = None
-        return self.token_dispatcher.dispatch_normal_async((hs_quant, hs_scale), topk_idx, topk_weights, num_experts, previous_event,
-                                                           async_finish)
+        return self.token_dispatcher.dispatch_normal_async((hs_quant, hs_scale), topk_idx, topk_weights, num_experts,
+                                                           previous_event, async_finish)
 
     def combine_async(self, x: torch.Tensor, handle: tuple, previous_event=None, async_finish=True):
         return self.token_dispatcher.combine_normal_async(x, handle, previous_event, async_finish)
@@ -353,7 +365,8 @@ class FusedMoENormal:
         return self.token_dispatcher.release()
 
     def fusedmoe_forward(self, state, up_weight, up_scale, down_weight, down_scale):
-        return self.experts.forward(state['recv_hidden_states'], state['recv_topk_weights'], state['recv_topk_idx'], up_weight, up_scale, down_weight, down_scale)
+        return self.experts.forward(state['recv_hidden_states'], state['recv_topk_weights'], state['recv_topk_idx'],
+                                    up_weight, up_scale, down_weight, down_scale)
 
 
 class FusedMoELowLatency:
@@ -396,7 +409,7 @@ class FusedMoELowLatency:
                                           expected_m)
         out_states = self.token_dispatcher.combine(out_states, topk_idx, topk_weights)
         return out_states
-    
+
     def wait(self, event):
         event.current_stream_wait()
 
@@ -454,13 +467,33 @@ class FusedMoEBlockedF8Impl:
         self.out_dtype = out_dtype
 
 
-def build_deepep_moe(low_latency_mode: bool, ep_size:int, ep_group: dist.ProcessGroup, num_experts:int, hidden_dim:int, block_size:int, top_k:int, out_dtype: torch.dtype,chunk_size: Optional[int] = 32 * 1024):
+def build_deepep_moe(low_latency_mode: bool,
+                     ep_size: int,
+                     ep_group: dist.ProcessGroup,
+                     num_experts: int,
+                     hidden_dim: int,
+                     block_size: int,
+                     top_k: int,
+                     out_dtype: torch.dtype,
+                     chunk_size: Optional[int] = 32 * 1024):
     if low_latency_mode:
-        return FusedMoELowLatency(ep_size=ep_size, ep_group=ep_group, num_experts=num_experts, hidden_dim=hidden_dim, block_size=block_size, out_dtype=out_dtype)
+        return FusedMoELowLatency(ep_size=ep_size,
+                                  ep_group=ep_group,
+                                  num_experts=num_experts,
+                                  hidden_dim=hidden_dim,
+                                  block_size=block_size,
+                                  out_dtype=out_dtype)
     else:
-        return FusedMoENormal(ep_size=ep_size, ep_group=ep_group, num_experts=num_experts, hidden_dim=hidden_dim, block_size=block_size, top_k=top_k, out_dtype=out_dtype, chunk_size=chunk_size)
-        
-        
+        return FusedMoENormal(ep_size=ep_size,
+                              ep_group=ep_group,
+                              num_experts=num_experts,
+                              hidden_dim=hidden_dim,
+                              block_size=block_size,
+                              top_k=top_k,
+                              out_dtype=out_dtype,
+                              chunk_size=chunk_size)
+
+
 class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
     """triton fused moe blocked f8 implementation."""
 
@@ -489,7 +522,6 @@ class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
         first_expert = rank * expert_per_rank
         last_expert = min(first_expert + expert_per_rank, num_experts)
         return list(range(first_expert, last_expert))
-
 
     def forward(self,
                 hidden_states: torch.Tensor,

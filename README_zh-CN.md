@@ -60,7 +60,7 @@ import dlblas
 dlblas.topk_gating(...)
 ```
 ## kernel列表
-| Kernel              | API                                                                  | 
+| Kernel              | API                                                                  |
 |:-------------------:|:--------------------------------------------------------------------:|
 | silu_and_mul        | from dlblas.kernels.activation import silu_and_mul                   |
 | add_rms_norm        | from dlblas.kernels.add_rms_norm import call                         |

@@ -485,30 +485,21 @@ def biased_grouped_topk(
     n_share_experts_fusion: int = 0,
     routed_scaling_factor: Optional[float] = None,
 ):
-    assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
+    assert hidden_states.shape[0] == gating_output.shape[0], 'Number of tokens mismatch'
 
     scores = gating_output.sigmoid()
     num_token = scores.shape[0]
     num_experts = scores.shape[1]
     scores_for_choice = scores.view(num_token, -1) + correction_bias.unsqueeze(0)
-    group_scores = (
-        scores_for_choice.view(num_token, num_expert_group, -1)
-        .topk(2, dim=-1)[0]
-        .sum(dim=-1)
-    )  # [n, n_group]
-    group_idx = torch.topk(group_scores, k=topk_group, dim=-1, sorted=False)[
-        1
-    ]  # [n, top_k_group]
+    group_scores = (scores_for_choice.view(num_token, num_expert_group, -1).topk(2,
+                                                                                 dim=-1)[0].sum(dim=-1))  # [n, n_group]
+    group_idx = torch.topk(group_scores, k=topk_group, dim=-1, sorted=False)[1]  # [n, top_k_group]
     group_mask = torch.zeros_like(group_scores)  # [n, n_group]
     group_mask.scatter_(1, group_idx, 1)  # [n, n_group]
-    score_mask = (
-        group_mask.unsqueeze(-1)
-        .expand(num_token, num_expert_group, scores.shape[-1] // num_expert_group)
-        .reshape(num_token, -1)
-    )  # [n, e]
-    tmp_scores = scores_for_choice.masked_fill(
-        ~score_mask.bool(), float("-inf")
-    )  # [n, e]
+    score_mask = (group_mask.unsqueeze(-1).expand(num_token, num_expert_group,
+                                                  scores.shape[-1] // num_expert_group).reshape(num_token,
+                                                                                                -1))  # [n, e]
+    tmp_scores = scores_for_choice.masked_fill(~score_mask.bool(), float('-inf'))  # [n, e]
     _, topk_ids = torch.topk(tmp_scores, k=topk, dim=-1, sorted=False)
     topk_weights = scores.gather(1, topk_ids)
 
@@ -516,35 +507,23 @@ def biased_grouped_topk(
         topk_ids[:, -1] = torch.randint(
             low=num_experts,
             high=num_experts + n_share_experts_fusion,
-            size=(topk_ids.size(0),),
+            size=(topk_ids.size(0), ),
             dtype=topk_ids.dtype,
             device=topk_ids.device,
         )
         topk_weights[:, -1] = topk_weights[:, :-1].sum(dim=-1) / routed_scaling_factor
 
     if renormalize:
-        topk_weights_sum = (
-            topk_weights.sum(dim=-1, keepdim=True)
-            if n_share_experts_fusion == 0
-            else topk_weights[:, :-1].sum(dim=-1, keepdim=True)
-        )
+        topk_weights_sum = (topk_weights.sum(dim=-1, keepdim=True)
+                            if n_share_experts_fusion == 0 else topk_weights[:, :-1].sum(dim=-1, keepdim=True))
         topk_weights = topk_weights / topk_weights_sum
 
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
 
+
 @triton.jit
-def kernel_map_logic_to_physical_hash(
-    topk_idx_ptr,
-    physical_idx_ptr,
-    log2phy_ptr,
-    logcnt_ptr,
-    seed,
-    num_tokens,
-    num_topk,
-    num_logical_experts,
-    max_replica,
-    BLOCK: tl.constexpr
-):
+def kernel_map_logic_to_physical_hash(topk_idx_ptr, physical_idx_ptr, log2phy_ptr, logcnt_ptr, seed, num_tokens,
+                                      num_topk, num_logical_experts, max_replica, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     start_t = pid * BLOCK
     end_t = tl.minimum(start_t + BLOCK, num_tokens)
@@ -576,25 +555,25 @@ def kernel_map_logic_to_physical_hash(
                 tl.store(physical_idx_ptr + row_off + k, -1)
 
 
-def map_logic_to_physical_idx_hash_random(
-    topk_idx: torch.Tensor,
-    log2phy: torch.Tensor,
-    logcnt: torch.Tensor,
-    seed: int = 12345,
-    block_size: int = 128
-) -> torch.Tensor:
+def map_logic_to_physical_idx_hash_random(topk_idx: torch.Tensor,
+                                          log2phy: torch.Tensor,
+                                          logcnt: torch.Tensor,
+                                          seed: int = 12345,
+                                          block_size: int = 128) -> torch.Tensor:
     num_tokens, num_topk = topk_idx.shape
     physical_idx = torch.empty_like(topk_idx, dtype=torch.int32, device=topk_idx.device)
 
-    grid = ((num_tokens + block_size - 1) // block_size,)
+    grid = ((num_tokens + block_size - 1) // block_size, )
 
-    kernel_map_logic_to_physical_hash[grid](
-        topk_idx, physical_idx,
-        log2phy, logcnt,
-        seed,
-        num_tokens, num_topk,
-        log2phy.shape[0], log2phy.shape[1],
-        BLOCK=block_size
-    )
+    kernel_map_logic_to_physical_hash[grid](topk_idx,
+                                            physical_idx,
+                                            log2phy,
+                                            logcnt,
+                                            seed,
+                                            num_tokens,
+                                            num_topk,
+                                            log2phy.shape[0],
+                                            log2phy.shape[1],
+                                            BLOCK=block_size)
 
     return physical_idx

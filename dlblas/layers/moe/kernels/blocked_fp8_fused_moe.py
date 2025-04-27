@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+
 from dlblas.kernels.moe import quant_fp8
 from dlblas.layers.moe.kernels.activation import silu_and_mul
 from dlblas.layers.moe.kernels.fused_moe import _dlblas_get_sorted_idx
@@ -17,6 +18,7 @@ def get_cuda_autotune_config():
             'BLOCK_SIZE_N': 128,
         }, num_stages=4, num_warps=4),
     ]
+
 
 @triton.autotune(
     configs=get_cuda_autotune_config(),
@@ -246,12 +248,15 @@ def _renormalize(topk_weights: torch.Tensor, renormalize: bool):
     if not topk_weights.is_contiguous():
         topk_weights = topk_weights.contiguous()
     return topk_weights
+
+
 def _make_intermediate(shape: tuple, dtype: torch.dtype, device: torch.device, zeros: bool):
     """make intermediate."""
     if zeros:
         return torch.zeros(shape, dtype=dtype, device=device)
     else:
         return torch.empty(shape, dtype=dtype, device=device)
+
 
 def dlblas_fused_moe_blocked_fp8(input: torch.Tensor,
                                  input_scale: torch.Tensor,

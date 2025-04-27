@@ -1,18 +1,18 @@
 # modify from sglang
 import pytest
 import torch
+
 import dlblas
 from dlblas.kernels.moe import biased_grouped_topk
 
 
 @pytest.mark.parametrize(
-    "seq_length",
-    list(range(1, 10))
-    + [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536],
+    'seq_length',
+    list(range(1, 10)) + [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize('dtype', [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize(
-    "params",
+    'params',
     [
         (128, 4, 2, 4),
         (256, 8, 4, 8),  # deepseek v3
@@ -27,24 +27,20 @@ def test_moe_fused_gate_combined(seq_length, dtype, params):
     scores = tensor.clone()
     bias = torch.rand(num_experts).to(dtype).cuda()
 
-    output, indices = dlblas.moe_fused_gate(
-        tensor,
-        bias,
-        num_expert_group=num_expert_group,
-        topk_group=topk_group,
-        topk=topk,
-        routed_scaling_factor = routed_scaling_factor
-    )
-    ref_output, ref_indices = biased_grouped_topk(
-        scores,
-        scores,
-        bias,
-        topk=topk,
-        renormalize=True,
-        num_expert_group=num_expert_group,
-        topk_group=topk_group,
-        routed_scaling_factor = routed_scaling_factor
-    )
+    output, indices = dlblas.moe_fused_gate(tensor,
+                                            bias,
+                                            num_expert_group=num_expert_group,
+                                            topk_group=topk_group,
+                                            topk=topk,
+                                            routed_scaling_factor=routed_scaling_factor)
+    ref_output, ref_indices = biased_grouped_topk(scores,
+                                                  scores,
+                                                  bias,
+                                                  topk=topk,
+                                                  renormalize=True,
+                                                  num_expert_group=num_expert_group,
+                                                  topk_group=topk_group,
+                                                  routed_scaling_factor=routed_scaling_factor)
 
     idx_check = torch.allclose(
         ref_indices.sort()[0].to(torch.int32),
@@ -59,15 +55,11 @@ def test_moe_fused_gate_combined(seq_length, dtype, params):
         atol=1e-03,
     )
 
-    assert idx_check, (
-        f"Indices mismatch at seq_length {seq_length}, dtype {dtype}, "
-        f"params {params}"
-    )
-    assert output_check, (
-        f"Output mismatch at seq_length {seq_length}, dtype {dtype}, "
-        f"params {params}"
-    )
+    assert idx_check, (f"Indices mismatch at seq_length {seq_length}, dtype {dtype}, "
+                       f"params {params}")
+    assert output_check, (f"Output mismatch at seq_length {seq_length}, dtype {dtype}, "
+                          f"params {params}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     pytest.main([__file__])
