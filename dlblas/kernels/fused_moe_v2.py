@@ -233,18 +233,15 @@ def fused_moe_kernel(
 
 def moe_kernel_prepare_input(
     A: torch.Tensor,
-    A_scale: Optional[torch.Tensor],
     use_fp8_w8a8: bool,
     block_shape: Optional[List[int]] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-    if use_fp8_w8a8:
-        assert block_shape is not None
-        assert len(block_shape) == 2
-        _, block_k = block_shape[0], block_shape[1]
-        A, A_scale = per_token_group_quant_fp8(A, block_k)
-        assert triton.cdiv(A.shape[-1], block_k) == A_scale.shape[-1]
-    else:
-        assert A_scale is None
+    assert use_fp8_w8a8
+    assert block_shape is not None
+    assert len(block_shape) == 2
+    _, block_k = block_shape[0], block_shape[1]
+    A, A_scale = per_token_group_quant_fp8(A, block_k)
+    assert triton.cdiv(A.shape[-1], block_k) == A_scale.shape[-1]
     return A, A_scale
 
 
@@ -348,30 +345,31 @@ def invoke_fused_moe_kernel(A: torch.Tensor,
     )
 
 
-def fused_moe(hidden_states: torch.Tensor,
-                       w1: torch.Tensor,
-                       w2: torch.Tensor,
-                       topk_weights: torch.Tensor,
-                       topk_ids: torch.Tensor,
-                       inplace: bool = False,
-                       activation: str = "silu",
-                       use_fp8_w8a8: bool = False,
-                       use_int8_w8a8: bool = False,
-                       use_int8_w8a16: bool = False,
-                       use_int4_w4a16: bool = False,
-                       per_channel_quant: bool = False,
-                       global_num_experts: int = -1,
-                       num_local_experts: int = -1,
-                       expert_map: Optional[torch.Tensor] = None,
-                       w1_scale: Optional[torch.Tensor] = None,
-                       w2_scale: Optional[torch.Tensor] = None,
-                       w1_zp: Optional[torch.Tensor] = None,
-                       w2_zp: Optional[torch.Tensor] = None,
-                       a1_scale: Optional[torch.Tensor] = None,
-                       a2_scale: Optional[torch.Tensor] = None,
-                       block_shape: Optional[List[int]] = None,
-                       chunk_size: Optional[int] = 32 * 1024,
-                       ):
+def fused_moe(
+        hidden_states: torch.Tensor,
+        w1: torch.Tensor,
+        w2: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        inplace: bool = False,
+        activation: str = "silu",
+        use_fp8_w8a8: bool = False,
+        use_int8_w8a8: bool = False,
+        use_int8_w8a16: bool = False,
+        use_int4_w4a16: bool = False,
+        per_channel_quant: bool = False,
+        global_num_experts: int = -1,
+        num_local_experts: int = -1,
+        expert_map: Optional[torch.Tensor] = None,
+        w1_scale: Optional[torch.Tensor] = None,
+        w2_scale: Optional[torch.Tensor] = None,
+        w1_zp: Optional[torch.Tensor] = None,
+        w2_zp: Optional[torch.Tensor] = None,
+        hidden_states_scale: Optional[torch.Tensor] = None,
+        block_shape: Optional[List[int]] = None,
+        chunk_size: Optional[int] = 32 * 1024,
+        out_dtype: Optional[torch.dtype] = torch.bfloat16,
+    ):
     # Check constraints.
     if use_int4_w4a16:
         assert hidden_states.shape[1] // 2 == w1.shape[
@@ -384,7 +382,7 @@ def fused_moe(hidden_states: torch.Tensor,
     assert w1.stride(-1) == 1, "Stride of last dimension must be 1"
     assert w2.stride(-1) == 1, "Stride of last dimension must be 1"
     assert hidden_states.dtype in [
-        torch.float32, torch.float16, torch.bfloat16
+        torch.float32, torch.float16, torch.bfloat16, torch.float8_e4m3fn
     ]
     apply_router_weight_on_input = False
     num_tokens, _ = hidden_states.shape
@@ -400,16 +398,17 @@ def fused_moe(hidden_states: torch.Tensor,
     # cache3, we're done with cache1
     cache13 = torch.empty(M * top_k_num * max(N, K),
                           device=hidden_states.device,
-                          dtype=hidden_states.dtype)
+                          dtype=out_dtype)
     intermediate_cache1 = cache13[:M * top_k_num * N].view(M, top_k_num, N)
     intermediate_cache3 = cache13[:M * top_k_num * K].view(M, top_k_num, K)
 
     # This needs separate memory since it's used concurrently with cache1
     intermediate_cache2 = torch.empty((M * top_k_num, N // 2),
                                       device=hidden_states.device,
-                                      dtype=hidden_states.dtype)
-
-    if hidden_states.dtype == torch.bfloat16:
+                                      dtype=out_dtype)
+    if hidden_states.dtype == torch.float8_e4m3fn:
+        compute_type = tl.bfloat16
+    elif hidden_states.dtype == torch.bfloat16:
         compute_type = tl.bfloat16
     elif hidden_states.dtype == torch.float16:
         compute_type = tl.float16
@@ -421,13 +420,14 @@ def fused_moe(hidden_states: torch.Tensor,
     if inplace:
         out_hidden_states = hidden_states
     else:
-        out_hidden_states = torch.empty_like(hidden_states)
+        out_hidden_states = torch.empty_like(hidden_states, dtype=out_dtype)
 
     for chunk in range((num_tokens // chunk_size) + 1):
         begin_chunk_idx, end_chunk_idx = (chunk * chunk_size,
                                           min((chunk + 1) * chunk_size,
                                               num_tokens))
         curr_hidden_states = hidden_states[begin_chunk_idx:end_chunk_idx]
+        
         tokens_in_chunk, _ = curr_hidden_states.shape
         if tokens_in_chunk == 0:
             break
@@ -442,11 +442,14 @@ def fused_moe(hidden_states: torch.Tensor,
             intermediate_cache3 = intermediate_cache3[:tokens_in_chunk]
         curr_topk_ids = topk_ids[begin_chunk_idx:end_chunk_idx]
         curr_topk_weights = topk_weights[begin_chunk_idx:end_chunk_idx]
-        qcurr_hidden_states, qa1_scale = moe_kernel_prepare_input(
-            A=curr_hidden_states,
-            A_scale=a1_scale,
-            use_fp8_w8a8=use_fp8_w8a8,
-            block_shape=block_shape)
+        if hidden_states_scale is not None:
+            qcurr_hidden_states = curr_hidden_states
+            qa1_scale = hidden_states_scale[begin_chunk_idx:end_chunk_idx]
+        else:
+            qcurr_hidden_states, qa1_scale = moe_kernel_prepare_input(
+                A=curr_hidden_states,
+                use_fp8_w8a8=use_fp8_w8a8,
+                block_shape=block_shape)
         sorted_token_ids, expert_ids, num_tokens_post_padded = (
             moe_align_block_size(curr_topk_ids, config['BLOCK_SIZE_M'],
                                  global_num_experts, num_local_experts, expert_map))
@@ -478,7 +481,6 @@ def fused_moe(hidden_states: torch.Tensor,
             raise ValueError(f"Unsupported FusedMoe activation: {activation}")
         qintermediate_cache2, qa2_scale = moe_kernel_prepare_input(
             A=intermediate_cache2,
-            A_scale=a2_scale,
             use_fp8_w8a8=use_fp8_w8a8,
             block_shape=block_shape)
         invoke_fused_moe_kernel(qintermediate_cache2,

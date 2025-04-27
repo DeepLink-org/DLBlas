@@ -5,7 +5,7 @@ try:
 except ImportError:
     use_deepep = False
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -137,32 +137,32 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
 
     def dispatch(
         self,
-        hidden_states: torch.Tensor,
+        x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
         expert_list: List[int] = None,
         previous_event=None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        hidden_states, x_scales = x if isinstance(x, tuple) else (x, None)
         self.hidden_shape = hidden_states.shape
         topk_idx = topk_idx.to(torch.int64)
         (
-            hidden_states,
+            x,
             topk_idx,
             topk_weights,
             recv_tokens_per_expert,
             handle,
             event,
-        ) = self.dispatch_normal(hidden_states, topk_idx, topk_weights, self.num_experts, previous_event)
-        self.tokens_per_expert = torch.tensor(
-            recv_tokens_per_expert,
-            device=hidden_states.device,
-            dtype=torch.int64,
-        )
+        ) = self.dispatch_normal(x, topk_idx, topk_weights, self.num_experts, previous_event)
         if enable_moe_load_stats:
+            tokens_per_expert = torch.tensor(
+                recv_tokens_per_expert,
+                device=hidden_states.device,
+                dtype=torch.int64,
+            )
             self.dispatch_count += 1 
-            cloned_tensor = self.tokens_per_expert.clone().cpu()
+            cloned_tensor = tokens_per_expert.clone().cpu()
             global_tokens_per_expert[self.layer_index].append(cloned_tensor)
-
             if self.dispatch_count % 100 == 0:
                 rank = int(os.environ.get("LOCAL_RANK", 0))
                 output_dir = os.path.join(os.path.dirname(__file__), '../../../../my_output')
@@ -172,11 +172,11 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.handle = handle
         self.topk_idx = topk_idx
         self.topk_weights = topk_weights
-        return hidden_states, topk_idx, topk_weights, self.tokens_per_expert
+        return x, topk_idx, topk_weights
 
     def dispatch_normal(
         self,
-        x: torch.Tensor,
+        x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
         num_experts: int,
@@ -226,7 +226,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         )
     
     def dispatch_normal_async(self,
-                              x: torch.Tensor,
+                              x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                               topk_idx: torch.Tensor,
                               topk_weights: torch.Tensor,
                               num_experts: Optional[int] = None,
@@ -301,7 +301,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         return combined_x, event
     
     def release(self):
-        self.tokens_per_expert = None
         self.handle = None
         self.topk_idx = None
         self.topk_weights = None

@@ -72,6 +72,7 @@ TOP_KS = [8]
 @pytest.mark.parametrize("ep_size", EP_SIZE)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
 @pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("quant", [False, True])
 def test_fused_moe(
     m: int,
     n: int,
@@ -81,6 +82,7 @@ def test_fused_moe(
     ep_size: int,
     dtype: torch.dtype,
     inplace: bool,
+    quant: bool,
 ):
     group_size = 128
     quant_dtype = torch.float8_e4m3fn
@@ -99,18 +101,19 @@ def test_fused_moe(
     topk_idx[topk_idx < local_e] = -1
     topk_idx[topk_idx >= local_e] -= local_e
     
-    triton_output = fused_moe(a,
+    triton_output = fused_moe(a_quant if quant else a,
                               w1_quant,
                               w2_quant,
                               topk_weight,
                               topk_idx,
-                              inplace=inplace,
+                              inplace=False if quant else inplace,
                               global_num_experts=e,
                               num_local_experts=local_e,
                               expert_map=e_map,
                               use_fp8_w8a8=True,
                               w1_scale=w1_scale,
                               w2_scale=w2_scale,
+                              hidden_states_scale = a_scale if quant else None,
                               block_shape=[group_size, group_size],
                               chunk_size=32*1024)
     dlblas_output = dlblas_fused_moe_blocked_fp8(a_quant,
