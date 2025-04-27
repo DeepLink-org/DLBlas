@@ -14,8 +14,6 @@ import torch.distributed as dist
 from dlblas.layers.moe.token_dispatcher_base import TokenDispatcherBase
 from dlblas.utils.moe_utils import global_tokens_per_expert, save_expert_stats_to_file
 
-enable_moe_load_stats = os.environ.get('MOE_LOAD_STATS', '0') == '1'
-
 _buffer_normal = None
 _buffer_low_latency = None
 _buffer_common = None
@@ -112,7 +110,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_local_experts: int = None,
         hidden_size: int = None,
         params_dtype: torch.dtype = None,
-        layer_index: int = None,
     ):
         self.dispatch_count = 0
         self.group = group
@@ -120,7 +117,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.num_local_experts = num_local_experts
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
-        self.layer_index = layer_index
         self.num_max_dispatch_tokens_per_rank = 128
         # Handle used for combine operation
         self.handle = None
@@ -154,21 +150,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             handle,
             event,
         ) = self.dispatch_normal(x, topk_idx, topk_weights, self.num_experts, previous_event)
-        if enable_moe_load_stats:
-            tokens_per_expert = torch.tensor(
-                recv_tokens_per_expert,
-                device=hidden_states.device,
-                dtype=torch.int64,
-            )
-            self.dispatch_count += 1
-            cloned_tensor = tokens_per_expert.clone().cpu()
-            global_tokens_per_expert[self.layer_index].append(cloned_tensor)
-            if self.dispatch_count % 100 == 0:
-                rank = int(os.environ.get('LOCAL_RANK', 0))
-                output_dir = os.path.join(os.path.dirname(__file__), '../../../../my_output')
-                filepath = os.path.join(output_dir,
-                                        f"layer{self.layer_index}_rank{rank}_step{self.dispatch_count}_stats.json")
-                save_expert_stats_to_file(rank, filepath=filepath)
 
         self.handle = handle
         self.topk_idx = topk_idx
