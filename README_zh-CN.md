@@ -15,7 +15,7 @@ dlBLAS 旨在成为一个基于 Triton 的运算符库。因此，内核开发�
 
 ```
 cd dlBLAS
-pip install .
+python setup.py install
 ```
 ## 开始
 有几种方法可以应用 dlblas kernel。

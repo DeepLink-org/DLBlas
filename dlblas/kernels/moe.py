@@ -460,7 +460,6 @@ def _quant_fp8_launcher(A: torch.Tensor, group_size: int, out: torch.Tensor, sca
         num_warps=num_warps,
         num_stages=num_stages,
     )
-
     return out, scales
 
 
@@ -475,8 +474,7 @@ def quant_fp8(A: torch.Tensor, group_size: int, dtype: torch.dtype = torch.float
     return _quant_fp8_launcher(A, group_size, out, scales)
 
 
-
-def biased_grouped_topk_impl(
+def biased_grouped_topk(
     hidden_states: torch.Tensor,
     gating_output: torch.Tensor,
     correction_bias: torch.Tensor,
@@ -485,6 +483,7 @@ def biased_grouped_topk_impl(
     num_expert_group: int = 0,
     topk_group: int = 0,
     n_share_experts_fusion: int = 0,
+    routed_scaling_factor: Optional[float] = None,
 ):
     assert hidden_states.shape[0] == gating_output.shape[0], "Number of tokens mismatch"
 
@@ -521,9 +520,7 @@ def biased_grouped_topk_impl(
             dtype=topk_ids.dtype,
             device=topk_ids.device,
         )
-        topk_weights[:, -1] = (
-            topk_weights[:, :-1].sum(dim=-1) / 2.5
-        )  # 2.5 is the routed_scaling_factor.
+        topk_weights[:, -1] = topk_weights[:, :-1].sum(dim=-1) / routed_scaling_factor
 
     if renormalize:
         topk_weights_sum = (
@@ -534,36 +531,6 @@ def biased_grouped_topk_impl(
         topk_weights = topk_weights / topk_weights_sum
 
     return topk_weights.to(torch.float32), topk_ids.to(torch.int32)
-
-
-def biased_grouped_topk(
-    hidden_states: torch.Tensor,
-    gating_output: torch.Tensor,
-    correction_bias: torch.Tensor,
-    topk: int,
-    renormalize: bool,
-    num_expert_group: int = 0,
-    topk_group: int = 0,
-    compiled: bool = True,
-    n_share_experts_fusion: int = 0,
-):
-    biased_grouped_topk_fn = (
-        torch.compile(
-            biased_grouped_topk_impl, dynamic=True, backend="inductor"
-        )
-        if compiled
-        else biased_grouped_topk_impl
-    )
-    return biased_grouped_topk_fn(
-        hidden_states,
-        gating_output,
-        correction_bias,
-        topk,
-        renormalize,
-        num_expert_group,
-        topk_group,
-        n_share_experts_fusion=n_share_experts_fusion,
-    )
 
 @triton.jit
 def kernel_map_logic_to_physical_hash(
