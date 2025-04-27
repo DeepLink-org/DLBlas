@@ -132,7 +132,4 @@ def test_fused_moe(
                                                  expert_offset=local_e,
                                                  ep_size=ep_size)
 
-    # print(f"vllm_out:{triton_output}")
-    # print(f"dlblas_out:{dlblas_output}")
-    # print(f"最大差值：{torch.max(torch.abs(triton_output - dlblas_output)).item()}")
     torch.testing.assert_close(triton_output, dlblas_output, atol=0.07, rtol=0)
