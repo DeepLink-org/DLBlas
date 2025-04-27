@@ -1,7 +1,4 @@
-/*
- * Adapted from
- * https://github.com/pytorch/pytorch/blob/v2.0.1/aten/src/ATen/Dispatch.h
- */
+// modify from: https://github.com/vllm-project/vllm
 #pragma once
 
 #include <torch/all.h>

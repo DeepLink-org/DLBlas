@@ -1,7 +1,9 @@
 from typing import Optional, Tuple
+
 import torch
 import triton
 import triton.language as tl
+
 
 @triton.jit
 def _per_token_group_quant_fp8(
@@ -124,9 +126,8 @@ def per_token_group_quant_fp8(
         scaling factor for quantization.
     """
     assert (x.shape[-1] % group_size == 0), (
-        f"the last dimension of `x` {x.shape[-1]} must be divisible "
-        f"by `group_size` {group_size}")
-    assert x.stride(-1) == 1, "`x` groups must be contiguous"
+        f"the last dimension of 'x' {x.shape[-1]} must be divisible by 'group_size' {group_size}")
+    assert x.stride(-1) == 1, f'{x} groups must be contiguous'
 
     finfo = torch.finfo(dtype)
     fp8_min = finfo.min
@@ -137,8 +138,7 @@ def per_token_group_quant_fp8(
     N = group_size
     if column_major_scales:
         shape = (x.shape[-1] // group_size, ) + x.shape[:-1]
-        x_s = torch.empty(shape, device=x.device,
-                          dtype=torch.float32).permute(-1, -2)
+        x_s = torch.empty(shape, device=x.device, dtype=torch.float32).permute(-1, -2)
     else:
         shape = x.shape[:-1] + (x.shape[-1] // group_size, )
         x_s = torch.empty(shape, device=x.device, dtype=torch.float32)

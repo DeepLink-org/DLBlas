@@ -1,9 +1,11 @@
 from typing import Optional, Tuple
+
 import torch
 import triton
 import triton.language as tl
 
 from dlblas.utils.utils import round_up
+
 
 def ceil_div(a, b):
     return (a + b - 1) // b
@@ -97,11 +99,9 @@ def moe_align_block_size_triton(
     num_tokens_post_pad: torch.Tensor,
 ) -> None:
     numel = topk_ids.numel()
-    grid = (num_experts,)
-    tokens_cnts = torch.zeros(
-        (num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device
-    )
-    cumsum = torch.zeros((num_experts + 1,), dtype=torch.int32, device=topk_ids.device)
+    grid = (num_experts, )
+    tokens_cnts = torch.zeros((num_experts + 1, num_experts), dtype=torch.int32, device=topk_ids.device)
+    cumsum = torch.zeros((num_experts + 1, ), dtype=torch.int32, device=topk_ids.device)
     tokens_per_thread = ceil_div(numel, num_experts)
 
     moe_align_block_size_stage1[grid](
@@ -115,7 +115,7 @@ def moe_align_block_size_triton(
         tokens_cnts,
         num_experts,
     )
-    moe_align_block_size_stage3[(1,)](
+    moe_align_block_size_stage3[(1, )](
         num_tokens_post_pad,
         tokens_cnts,
         cumsum,
@@ -134,14 +134,13 @@ def moe_align_block_size_triton(
         tokens_per_thread,
     )
 
-def moe_align_block_size(
-    topk_ids: torch.Tensor,
-    block_size: int,
-    num_experts: int,
-    num_local_experts: int,
-    expert_map: Optional[torch.Tensor] = None,
-    pad_sorted_ids: bool = False
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+def moe_align_block_size(topk_ids: torch.Tensor,
+                         block_size: int,
+                         num_experts: int,
+                         num_local_experts: int,
+                         expert_map: Optional[torch.Tensor] = None,
+                         pad_sorted_ids: bool = False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Aligns the token distribution across experts to be compatible with block
     size for matrix multiplication.
@@ -187,52 +186,37 @@ def moe_align_block_size(
     """
     fake_expert_id = num_local_experts
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
-    topk_ids[topk_ids<0] = fake_expert_id
-    # max_num_tokens_padded = topk_ids_activate_num + num_experts * (block_size - 1)
+    topk_ids[topk_ids < 0] = fake_expert_id
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
-    sorted_ids = torch.empty((max_num_tokens_padded, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
+    sorted_ids = torch.empty((max_num_tokens_padded, ), dtype=torch.int32, device=topk_ids.device)
     sorted_ids.fill_(topk_ids.numel())
-    # sorted_ids.fill_(topk_ids_activate_num)
     max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
     # Expert ids must be zeroed out to prevent index out of bounds error while
     # mapping global expert ids to local expert ids in expert parallelism.
-    expert_ids = torch.zeros((max_num_m_blocks, ),
-                             dtype=torch.int32,
-                             device=topk_ids.device)
-    num_tokens_post_pad = torch.empty((1),
-                                      dtype=torch.int32,
-                                      device=topk_ids.device)
-    # if num_experts >= 224:
-    #     if envs.VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON or num_experts != 256:
-    # moe_align_block_size_triton(
-    #     topk_ids,
-    #     num_experts,
-    #     block_size,
-    #     sorted_ids,
-    #     expert_ids,
-    #     num_tokens_post_pad,
-    # )
-    #     else:
-    #         # Currently requires num_experts=256
-    torch.ops._DLBLAS.sgl_moe_align_block_size(
-        topk_ids,
-        num_experts,
-        block_size,
-        sorted_ids,
-        expert_ids,
-        num_tokens_post_pad,
-    )
-    # else:
-    #     ops.moe_align_block_size(topk_ids, num_experts, block_size, sorted_ids,
-    #                              expert_ids, num_tokens_post_pad)
+    expert_ids = torch.zeros((max_num_m_blocks, ), dtype=torch.int32, device=topk_ids.device)
+    num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
+    if num_experts != 256:
+        moe_align_block_size_triton(
+            topk_ids,
+            num_experts,
+            block_size,
+            sorted_ids,
+            expert_ids,
+            num_tokens_post_pad,
+        )
+    else:
+        # Currently requires num_experts=256
+        torch.ops._DLBLAS.sgl_moe_align_block_size(
+            topk_ids,
+            num_experts,
+            block_size,
+            sorted_ids,
+            expert_ids,
+            num_tokens_post_pad,
+        )
+
     if expert_map is not None:
-        # print(f"before expert_ids:{expert_ids}")
         expert_ids = expert_map[expert_ids]
-        # print(f"after expert_ids:{expert_ids}")
-    # print(f"expert_map:{expert_map}")
-    # print(f"sorted_ids:{sorted_ids.shape} {sorted_ids}, num_tokens_post_pad:{num_tokens_post_pad}")
-    # quit()
+
     return sorted_ids, expert_ids, num_tokens_post_pad

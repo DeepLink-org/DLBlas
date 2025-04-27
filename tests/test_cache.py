@@ -5,6 +5,7 @@ import torch
 from dlblas import get_op
 from dlblas.cache import Cache
 
+
 @pytest.mark.parametrize('dtype', [torch.float16])
 @pytest.mark.parametrize('device', ['cuda'])
 def test_gen_key(dtype, device):
@@ -24,7 +25,7 @@ def test_gen_key(dtype, device):
     op = 'matmul'
 
     key = cache.gen_key(op, (a, b, activation))
-    assert key == f'{op}-0:f16_1x2-1:f16_2x1-2:leaky_relu-{device}'
+    assert key == f'{op}-0:f16_1x2-1:f16_2x1-2:leaky_relu-{device}'  # noqa: E231
 
 
 @pytest.mark.parametrize('dtype', [torch.float16])

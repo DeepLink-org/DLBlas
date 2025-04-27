@@ -2,6 +2,9 @@
 import torch
 from sympy import symbols
 from torch import SymInt
+from torch._C import _disabled_torch_function_impl
+from torch.fx.experimental.sym_node import SymNode
+from torch.fx.experimental.symbolic_shapes import DimDynamic, ShapeEnv, StatelessSymbolicContext
 
 x, y = symbols('x y')
 expr = x + 2 * y
@@ -50,10 +53,6 @@ print()
 print('======================')
 print('======================')
 print()
-
-from torch._C import _disabled_torch_function_impl
-from torch.fx.experimental.sym_node import SymNode
-from torch.fx.experimental.symbolic_shapes import (DimDynamic, ShapeEnv, StatelessSymbolicContext)
 
 meta_funcs = {}
 
