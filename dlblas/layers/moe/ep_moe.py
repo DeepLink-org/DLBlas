@@ -18,13 +18,12 @@ enable_eplb = os.environ.get('EPLB_ENABLED', '0') == '1'
 enable_moe_load_stats = os.environ.get('MOE_LOAD_STATS', '0') == '1'
 
 normal_dispatch_count = {}
-normal_dispatch_threshold = int(os.environ.get('NORMAL_DISPATCH_THRESHOLD', 1000))
+normal_dispatch_threshold = int(os.environ.get('NORMAL_DISPATCH_THRESHOLD', 500))
 normal_accum_global_token_counts = {}
 
 ll_dispatch_count = {}
-ll_dispatch_threshold = int(os.environ.get('LL_DISPATCH_THRESHOLD', 1000))
-ll_accum_global_token_counts = {}  # <<<<<< 改成字典，key是layer_index
-
+ll_dispatch_threshold = int(os.environ.get('LL_DISPATCH_THRESHOLD', 5000))
+ll_accum_global_token_counts = {}
 
 
 class FusedExperts:
@@ -333,12 +332,12 @@ class FusedMoENormal:
             normal_dispatch_count[self.layer_index] += 1
 
             if self.layer_index not in normal_accum_global_token_counts:
-                normal_accum_global_token_counts[self.layer_index] = torch.zeros(
-                    self.num_experts, dtype=torch.int64, device='cuda')
+                normal_accum_global_token_counts[self.layer_index] = torch.zeros(self.num_experts,
+                                                                                 dtype=torch.int64,
+                                                                                 device='cuda')
 
-            num_global_experts = self.num_experts
             topk_ids_flat = topk_ids.view(-1)
-            step_local_counts = torch.bincount(topk_ids_flat, minlength=num_global_experts)
+            step_local_counts = torch.bincount(topk_ids_flat, minlength=self.num_experts)
 
             normal_accum_global_token_counts[self.layer_index] += step_local_counts
 
@@ -351,15 +350,14 @@ class FusedMoENormal:
                 rank = dist.get_rank() if dist.is_initialized() else 0
                 if rank == 0:
                     output_dir = '/tmp/dlblas/prefill_moe_stats/'
+                    step = normal_dispatch_count[self.layer_index]
                     os.makedirs(output_dir, exist_ok=True)
-                    filepath = os.path.join(
-                        output_dir,
-                        f"rank{rank}_layer{self.layer_index}_step{normal_dispatch_count[self.layer_index]}_global_token_counts.json")
+                    filepath = os.path.join(output_dir,
+                                            f"rank{rank}_layer{self.layer_index}_step{step}_global_token_counts.json")
                     with open(filepath, 'w') as f:
                         import json
                         json.dump(global_list, f, indent=2)
-                    logger.info(
-                        f"[EPLB] Layer rank{rank} {self.layer_index} step {normal_dispatch_count[self.layer_index]} dump to {output_dir}")
+                    logger.info(f"[EPLB]rank{rank} layer{self.layer_index} step{step} dump to {output_dir}")
 
         if enable_eplb:
             topk_ids = map_logic_to_physical_idx_hash_random(topk_ids, self.log2phy, self.logcnt)
@@ -449,12 +447,12 @@ class FusedMoELowLatency:
             ll_dispatch_count[self.layer_index] += 1
 
             if self.layer_index not in ll_accum_global_token_counts:
-                ll_accum_global_token_counts[self.layer_index] = torch.zeros(
-                    num_global_experts, dtype=torch.int64, device='cuda')
-                
-            num_global_experts = self.num_experts
+                ll_accum_global_token_counts[self.layer_index] = torch.zeros(self.num_experts,
+                                                                             dtype=torch.int64,
+                                                                             device='cuda')
+
             topk_ids_flat = topk_ids.view(-1)
-            step_local_counts = torch.bincount(topk_ids_flat, minlength=num_global_experts)
+            step_local_counts = torch.bincount(topk_ids_flat, minlength=self.num_experts)
             ll_accum_global_token_counts[self.layer_index] += step_local_counts
 
             if ll_dispatch_count[self.layer_index] % ll_dispatch_threshold == 0:
@@ -468,14 +466,13 @@ class FusedMoELowLatency:
                 if rank == 0:
                     output_dir = '/tmp/dlblas/decode_moe_stats/'
                     os.makedirs(output_dir, exist_ok=True)
-                    filepath = os.path.join(
-                        output_dir,
-                        f"rank{rank}_layer{self.layer_index}_step{ll_dispatch_count[self.layer_index]}_global_token_counts.json")
+                    step = ll_dispatch_count[self.layer_index]
+                    filepath = os.path.join(output_dir,
+                                            f"rank{rank}_layer{self.layer_index}_step{step}_global_token_counts.json")
                     with open(filepath, 'w') as f:
                         import json
                         json.dump(global_list, f, indent=2)
-                    logger.info(
-                        f"[EPLB] Layer rank{rank} {self.layer_index} step {ll_dispatch_count[self.layer_index]} dump to {output_dir}")
+                    logger.info(f"[EPLB]rank{rank} layer{self.layer_index} step{step} dump to {output_dir}")
 
         recv_hidden_states, topk_idx, topk_weights, masked_m, expected_m = self.token_dispatcher.dispatch(
             hidden_states,
@@ -554,14 +551,14 @@ def build_deepep_moe(low_latency_mode: bool,
                      block_size: int,
                      top_k: int,
                      out_dtype: torch.dtype,
-                     layer_index: int = 0,
+                     layer_idx: int = 0,
                      chunk_size: Optional[int] = 32 * 1024):
     if low_latency_mode:
         return FusedMoELowLatency(ep_size=ep_size,
                                   ep_group=ep_group,
                                   num_experts=num_experts,
                                   hidden_dim=hidden_dim,
-                                  layer_index=layer_index,
+                                  layer_index=layer_idx,
                                   block_size=block_size,
                                   out_dtype=out_dtype)
     else:
@@ -569,7 +566,7 @@ def build_deepep_moe(low_latency_mode: bool,
                               ep_group=ep_group,
                               num_experts=num_experts,
                               hidden_dim=hidden_dim,
-                              layer_index=layer_index,
+                              layer_index=layer_idx,
                               block_size=block_size,
                               top_k=top_k,
                               out_dtype=out_dtype,
