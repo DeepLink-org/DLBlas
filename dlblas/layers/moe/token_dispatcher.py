@@ -47,7 +47,7 @@ def get_buffer_common(
         num_nvl_bytes=num_nvl_bytes,
         num_rdma_bytes=num_rdma_bytes,
         low_latency_mode=True,
-        num_qps_per_rank=num_experts // group.size(),
+        num_qps_per_rank=max(num_experts // group.size(), Buffer.num_sms // 2),
     )
     return _buffer_common
 
@@ -95,7 +95,7 @@ def get_buffer_low_latency(
             group,
             num_rdma_bytes=num_rdma_bytes,
             low_latency_mode=True,
-            num_qps_per_rank=num_experts // group.size(),
+            num_qps_per_rank=max(num_experts // group.size(), Buffer.num_sms // 2),
         )
     return _buffer_low_latency
 

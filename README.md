@@ -17,17 +17,6 @@ it improves over Triton's autotuner in the following ways:
 
 ```
 cd dlBLAS
-```
-
-1. install deps
-
-```
-pip install -r python/dlBLAS/requirements.txt
-```
-
-2. install packages
-
-```
 python setup.py install
 ```
 ## Getting Started
