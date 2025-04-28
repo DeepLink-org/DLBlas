@@ -4,8 +4,9 @@ from typing import Tuple
 import torch
 from torch import Tensor
 
+import dlblas._DLBLAS  # noqa
 # this import all kernels dynamically
-import dlblas.kernels
+import dlblas.kernels  # noqa
 from dlblas.utils import get_op
 
 __version__ = '0.0.1'
@@ -197,3 +198,7 @@ def moe_fused_gate(
         n_share_experts_fusion,
         routed_scaling_factor,
     )
+
+
+def moe_sum(input, output):
+    return torch.ops._DLBLAS.moe_sum.default(input, output)

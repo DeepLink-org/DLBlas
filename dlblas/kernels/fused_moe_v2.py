@@ -5,10 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
+import dlblas
 from dlblas.kernels.fp8 import per_token_group_quant_fp8
 from dlblas.kernels.moe_align_block_size import moe_align_block_size
-
-moe_sum = torch.ops._DLBLAS.moe_sum.default
 
 
 @triton.jit
@@ -466,5 +465,6 @@ def fused_moe(
                                 per_channel_quant=per_channel_quant,
                                 block_shape=block_shape)
 
-        moe_sum(intermediate_cache3.view(*intermediate_cache3.shape), out_hidden_states[begin_chunk_idx:end_chunk_idx])
+        dlblas.moe_sum(intermediate_cache3.view(*intermediate_cache3.shape),
+                       out_hidden_states[begin_chunk_idx:end_chunk_idx])
     return out_hidden_states
