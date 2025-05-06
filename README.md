@@ -17,18 +17,7 @@ it improves over Triton's autotuner in the following ways:
 
 ```
 cd dlBLAS
-```
-
-1. install deps
-
-```
-pip install -r python/dlBLAS/requirements.txt
-```
-
-2. install packages
-
-```
-pip install .
+python setup.py install
 ```
 ## Getting Started
 There are a couple of ways to apply dlblas kernels.
@@ -73,7 +62,7 @@ import dlblas
 dlblas.topk_gating(...)
 ```
 ## Low-level APIs
-| Kernel              | API                                                                  | 
+| Kernel              | API                                                                  |
 |:-------------------:|:--------------------------------------------------------------------:|
 | silu_and_mul        | from dlblas.kernels.activation import silu_and_mul                   |
 | add_rms_norm        | from dlblas.kernels.add_rms_norm import call                         |

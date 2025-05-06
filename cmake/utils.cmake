@@ -156,13 +156,13 @@ macro(clear_cuda_arches CUDA_ARCH_FLAGS)
 endmacro()
 
 #
-# Extract unique CUDA architectures from a list of compute capabilities codes in 
-# the form `<major><minor>[<letter>]`, convert them to the form sort 
-# `<major>.<minor>`, dedupes them and then sorts them in ascending order and 
+# Extract unique CUDA architectures from a list of compute capabilities codes in
+# the form `<major><minor>[<letter>]`, convert them to the form sort
+# `<major>.<minor>`, dedupes them and then sorts them in ascending order and
 # stores them in `OUT_ARCHES`.
 #
 # Example:
-#   CUDA_ARCH_FLAGS="-gencode arch=compute_75,code=sm_75;...;-gencode arch=compute_90a,code=sm_90a" 
+#   CUDA_ARCH_FLAGS="-gencode arch=compute_75,code=sm_75;...;-gencode arch=compute_90a,code=sm_90a"
 #   extract_unique_cuda_archs_ascending(OUT_ARCHES CUDA_ARCH_FLAGS)
 #   OUT_ARCHES="7.5;...;9.0"
 function(extract_unique_cuda_archs_ascending OUT_ARCHES CUDA_ARCH_FLAGS)
@@ -183,15 +183,15 @@ function(extract_unique_cuda_archs_ascending OUT_ARCHES CUDA_ARCH_FLAGS)
 endfunction()
 
 #
-# For a specific file set the `-gencode` flag in compile options conditionally 
-# for the CUDA language. 
+# For a specific file set the `-gencode` flag in compile options conditionally
+# for the CUDA language.
 #
 # Example:
 #   set_gencode_flag_for_srcs(
 #     SRCS "foo.cu"
 #     ARCH "compute_75"
 #     CODE "sm_75")
-#   adds: "-gencode arch=compute_75,code=sm_75" to the compile options for 
+#   adds: "-gencode arch=compute_75,code=sm_75" to the compile options for
 #    `foo.cu` (only for the CUDA language).
 #
 macro(set_gencode_flag_for_srcs)
@@ -211,14 +211,14 @@ macro(set_gencode_flag_for_srcs)
 endmacro(set_gencode_flag_for_srcs)
 
 #
-# For a list of source files set the `-gencode` flags in the files specific 
+# For a list of source files set the `-gencode` flags in the files specific
 #  compile options (specifically for the CUDA language).
 #
 # arguments are:
 #  SRCS: list of source files
 #  CUDA_ARCHS: list of CUDA architectures in the form `<major>.<minor>[letter]`
 #  BUILD_PTX_FOR_ARCH: if set to true, then the PTX code will be built
-#    for architecture `BUILD_PTX_FOR_ARCH` if there is a CUDA_ARCH in CUDA_ARCHS 
+#    for architecture `BUILD_PTX_FOR_ARCH` if there is a CUDA_ARCH in CUDA_ARCHS
 #    that is larger than BUILD_PTX_FOR_ARCH.
 #
 macro(set_gencode_flags_for_srcs)
@@ -250,9 +250,9 @@ macro(set_gencode_flags_for_srcs)
 endmacro()
 
 #
-# For the given `SRC_CUDA_ARCHS` list of gencode versions in the form 
-#  `<major>.<minor>[letter]` compute the "loose intersection" with the 
-#  `TGT_CUDA_ARCHS` list of gencodes. 
+# For the given `SRC_CUDA_ARCHS` list of gencode versions in the form
+#  `<major>.<minor>[letter]` compute the "loose intersection" with the
+#  `TGT_CUDA_ARCHS` list of gencodes.
 # The loose intersection is defined as:
 #   { max{ x \in tgt | x <= y } | y \in src, { x \in tgt | x <= y } != {} }
 #  where `<=` is the version comparison operator.
@@ -260,7 +260,7 @@ endmacro()
 #  in `SRC_CUDA_ARCHS` that is less or equal to the version in `TGT_CUDA_ARCHS`.
 # We have special handling for x.0a, if x.0a is in `SRC_CUDA_ARCHS` and x.0 is
 #  in `TGT_CUDA_ARCHS` then we should remove x.0a from `SRC_CUDA_ARCHS` and add
-#  x.0a to the result (and remove x.0 from TGT_CUDA_ARCHS). 
+#  x.0a to the result (and remove x.0 from TGT_CUDA_ARCHS).
 # The result is stored in `OUT_CUDA_ARCHS`.
 #
 # Example:
@@ -328,7 +328,7 @@ endfunction()
 #
 # Override the GPU architectures detected by cmake/torch and filter them by
 # `GPU_SUPPORTED_ARCHES`. Sets the final set of architectures in
-# `GPU_ARCHES`. This only applies to the HIP language since for CUDA we set 
+# `GPU_ARCHES`. This only applies to the HIP language since for CUDA we set
 # the architectures on a per file basis.
 #
 # Note: this is defined as a macro since it updates `CMAKE_CUDA_FLAGS`.

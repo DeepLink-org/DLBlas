@@ -1,13 +1,16 @@
-
 from collections import defaultdict
+
+import torch
 
 # 模块级别的单例
 global_tokens_per_expert = defaultdict(list)
 # print(f"global_tokens_per_expert id in utils: {id(global_tokens_per_expert)}")
 
+
 def save_expert_stats_to_file(rank: int, filepath: str = None):
     # print(f"global_tokens_per_expert id in utils: {id(global_tokens_per_expert)}")
-    import os, json
+    import json
+    import os
     if filepath is None:
         filepath = f"/tmp/expert_load_rank{rank}.json"
     else:

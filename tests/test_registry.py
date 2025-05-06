@@ -1,8 +1,8 @@
 # Copyright (c) 2025, DeepLink.
 import re
+
 import pytest
 import torch
-import triton.language as tl
 
 from dlblas import get_list_op_names
 

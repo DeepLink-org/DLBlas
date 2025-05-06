@@ -1,32 +1,37 @@
 # modify from vllm
-import os
 import logging
-from pathlib import Path
-from shutil import which
+import os
 import subprocess
 import sys
-from setuptools import find_packages, setup
-from setuptools import Extension, setup
+from pathlib import Path
+from shutil import which
+
+from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
 from torch.utils.cpp_extension import CUDA_HOME
 
 ROOT_DIR = Path(__file__).parent
 logger = logging.getLogger(__name__)
 
+
 def is_ninja_available() -> bool:
-    return which("ninja") is not None
+    return which('ninja') is not None
+
 
 def is_sccache_available() -> bool:
-    return which("sccache") is not None
+    return which('sccache') is not None
+
 
 def is_ccache_available() -> bool:
-    return which("ccache") is not None
+    return which('ccache') is not None
+
 
 class CMakeExtension(Extension):
 
     def __init__(self, name: str, cmake_lists_dir: str = '.', **kwa) -> None:
         super().__init__(name, sources=[], py_limited_api=True, **kwa)
         self.cmake_lists_dir = os.path.abspath(cmake_lists_dir)
+
 
 class cmake_build_ext(build_ext):
     # A dict of extension directories that have been configured.
@@ -51,12 +56,12 @@ class cmake_build_ext(build_ext):
 
         # Select the build type.
         # Note: optimization level + debug info are set by the build type
-        cfg = "Debug" if self.debug else "RelWithDebInfo"
+        cfg = 'Debug' if self.debug else 'RelWithDebInfo'
         # cfg = envs.CMAKE_BUILD_TYPE or default_cfg
 
         cmake_args = [
             '-DCMAKE_BUILD_TYPE={}'.format(cfg),
-            '-DDLBLAS_TARGET_DEVICE={}'.format("cuda"),
+            '-DDLBLAS_TARGET_DEVICE={}'.format('cuda'),
         ]
 
         if is_sccache_available():
@@ -80,15 +85,15 @@ class cmake_build_ext(build_ext):
 
         # Pass the python path to cmake so it can reuse the build dependencies
         # on subsequent calls to python.
-        cmake_args += ['-DDLBLAS_PYTHON_PATH={}'.format(":".join(sys.path))]
+        cmake_args += ['-DDLBLAS_PYTHON_PATH={}'.format(':'.join(sys.path))]
         print(cmake_args)
 
         # Override the base directory for FetchContent downloads to $ROOT/.deps
         # This allows sharing dependencies between profiles,
         # and plays more nicely with sccache.
         # To override this, set the FETCHCONTENT_BASE_DIR environment variable.
-        fc_base_dir = os.path.join(ROOT_DIR, ".deps")
-        fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
+        fc_base_dir = os.path.join(ROOT_DIR, '.deps')
+        fc_base_dir = os.environ.get('FETCHCONTENT_BASE_DIR', fc_base_dir)
         cmake_args += ['-DFETCHCONTENT_BASE_DIR={}'.format(fc_base_dir)]
 
         #
@@ -111,9 +116,7 @@ class cmake_build_ext(build_ext):
         # Make sure we use the nvcc from CUDA_HOME
         # if _is_cuda():
         cmake_args += [f'-DCMAKE_CUDA_COMPILER={CUDA_HOME}/bin/nvcc']
-        subprocess.check_call(
-            ['cmake', ext.cmake_lists_dir, *build_tool, *cmake_args],
-            cwd=self.build_temp)
+        subprocess.check_call(['cmake', ext.cmake_lists_dir, *build_tool, *cmake_args], cwd=self.build_temp)
 
     def build_extensions(self) -> None:
         # Ensure that CMake is present and working
@@ -129,7 +132,7 @@ class cmake_build_ext(build_ext):
         targets = []
 
         def target_name(s: str) -> str:
-            return s.removeprefix("dlblas.")
+            return s.removeprefix('dlblas.')
 
         # Build all the extensions
         for ext in self.extensions:
@@ -139,13 +142,13 @@ class cmake_build_ext(build_ext):
         num_jobs, _ = self.compute_num_jobs()
 
         build_args = [
-            "--build",
-            ".",
+            '--build',
+            '.',
             f"-j={num_jobs}",
             *[f"--target={name}" for name in targets],
         ]
 
-        subprocess.check_call(["cmake", *build_args], cwd=self.build_temp)
+        subprocess.check_call(['cmake', *build_args], cwd=self.build_temp)
 
         # Install the libraries
         for ext in self.extensions:
@@ -166,46 +169,41 @@ class cmake_build_ext(build_ext):
                 prefix = prefix.parent
 
             # prefix here should actually be the same for all components
-            install_args = [
-                "cmake", "--install", ".", "--prefix", prefix, "--component",
-                target_name(ext.name)
-            ]
+            install_args = ['cmake', '--install', '.', '--prefix', prefix, '--component', target_name(ext.name)]
             subprocess.check_call(install_args, cwd=self.build_temp)
 
     def run(self):
         super().run()
 
+
 def get_requirements() -> list[str]:
     """Get Python package dependencies from requirements.txt."""
-    requirements_dir = ROOT_DIR / "requirements"
+    requirements_dir = ROOT_DIR / 'requirements'
 
     def _read_requirements(filename: str) -> list[str]:
         with open(requirements_dir / filename) as f:
-            requirements = f.read().strip().split("\n")
+            requirements = f.read().strip().split('\n')
         resolved_requirements = []
         for line in requirements:
-            if line.startswith("-r "):
+            if line.startswith('-r '):
                 resolved_requirements += _read_requirements(line.split()[1])
-            elif not line.startswith("--") and not line.startswith(
-                    "#") and line.strip() != "":
+            elif not line.startswith('--') and not line.startswith('#') and line.strip() != '':
                 resolved_requirements.append(line)
         return resolved_requirements
 
-    
-    requirements = _read_requirements("cuda.txt")
+    requirements = _read_requirements('cuda.txt')
     return requirements
 
+
 ext_modules = []
-ext_modules.append(CMakeExtension(name="dlblas._DLBLAS"))
+ext_modules.append(CMakeExtension(name='dlblas._DLBLAS'))
 
 setup(
     name='dlblas',
-    version='0.0.1',
+    version='0.0.2',
     ext_modules=ext_modules,
     install_requires=get_requirements(),
     # package_dir={"": "dlblas"},
-    cmdclass={
-        "build_ext": cmake_build_ext
-    },
+    cmdclass={'build_ext': cmake_build_ext},
     packages=find_packages(exclude=()),
 )

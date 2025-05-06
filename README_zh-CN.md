@@ -15,7 +15,7 @@ dlBLAS 旨在成为一个基于 Triton 的运算符库。因此，内核开发�
 
 ```
 cd dlBLAS
-pip install .
+python setup.py install
 ```
 ## 开始
 有几种方法可以应用 dlblas kernel。
@@ -60,7 +60,7 @@ import dlblas
 dlblas.topk_gating(...)
 ```
 ## kernel列表
-| Kernel              | API                                                                  | 
+| Kernel              | API                                                                  |
 |:-------------------:|:--------------------------------------------------------------------:|
 | silu_and_mul        | from dlblas.kernels.activation import silu_and_mul                   |
 | add_rms_norm        | from dlblas.kernels.add_rms_norm import call                         |
