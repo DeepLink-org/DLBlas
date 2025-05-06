@@ -279,28 +279,27 @@ class FusedMoENormal:
             torch.arange(num_replicas, dtype=torch.int64, device=log2phy.device).expand(num_layers, -1))
         return phy2log, log2phy, logcnt
 
-    def ep_expert_list(self,
-                       world_size: int,
-                       rank: int,
-                       num_groups: int = None,
-                       num_nodes: int = None,
-                       weight: torch.Tensor = None):
+     def _load_ep_mapping(self, json_path: str):
+        """Load expert partition metadata from JSON (class-internal)."""
+        import json
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+        num_groups = data['num_groups']
+        num_nodes = data['num_nodes']
+        weight = torch.tensor(data['weight'], dtype=torch.float32, device='cuda')
+        return num_groups, num_nodes, weight
+    
+    def ep_expert_list(self, world_size: int, rank: int, num_groups: int=None, num_nodes: int=None, weight: torch.Tensor=None):
         """experts list of current rank."""
         if enable_eplb:
-            self.num_groups = num_groups
-            self.num_nodes = num_nodes
-            self.num_gpus = world_size
-            # 调用 rebalance_experts 函数获取映射信息
-            phy2log, log2phy, logcnt = self.rebalance_experts(weight, self.num_experts, self.num_groups, self.num_nodes,
-                                                              self.num_gpus)
+            num_groups, num_nodes, weight = self._load_ep_mapping("ep_mapping_json_prefill.json")
+            phy2log, log2phy, logcnt = self.rebalance_experts(weight, num_experts, num_groups, num_nodes, self.world_size)
             self.phy2log = phy2log[0].to('cuda')
             self.log2phy = log2phy[0].to('cuda')
             self.logcnt = logcnt[0].to('cuda')
-            # 计算每个 rank 对应的专家数量
             expert_per_rank = (self.num_experts + world_size - 1) // world_size
             first_expert = rank * expert_per_rank
             last_expert = min(first_expert + expert_per_rank, self.num_experts)
-            # 获取 phy2log 的切片数据
             sliced_phy2log = self.phy2log[first_expert:last_expert].tolist()
 
             return sliced_phy2log
@@ -427,6 +426,136 @@ class FusedMoELowLatency:
             hidden_size=hidden_dim,
             params_dtype=out_dtype,
         )
+
+    def balanced_packing(self, weight: torch.Tensor, num_packs: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        
+        num_layers, num_groups = weight.shape
+        assert num_groups % num_packs == 0
+        groups_per_pack = num_groups // num_packs
+
+        if groups_per_pack == 1:
+            pack_index = torch.arange(weight.size(-1), dtype=torch.int64, device=weight.device).expand(weight.shape)
+            rank_in_pack = torch.zeros_like(weight, dtype=torch.int64)
+            return pack_index, rank_in_pack
+
+        indices = weight.float().sort(-1, descending=True).indices.cpu()
+        pack_index = torch.full_like(weight, fill_value=-1, dtype=torch.int64, device='cpu')
+        rank_in_pack = torch.full_like(pack_index, fill_value=-1)
+        for i in range(num_layers):
+            pack_weights = [0] * num_packs
+            pack_items = [0] * num_packs
+            for group in indices[i]:
+                pack = min((i for i in range(num_packs) if pack_items[i] < groups_per_pack), 
+                        key=pack_weights.__getitem__)
+                assert pack_items[pack] < groups_per_pack
+                pack_index[i, group] = pack
+                rank_in_pack[i, group] = pack_items[pack]
+                pack_weights[pack] += weight[i, group]
+                pack_items[pack] += 1
+        return pack_index, rank_in_pack
+
+
+    def replicate_experts(self, weight: torch.Tensor, num_phy: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        n, num_log = weight.shape
+        num_redundant = num_phy - num_log
+        assert num_redundant >= 0
+        device = weight.device
+        phy2log = torch.arange(num_phy, dtype=torch.int64, device=device).repeat(n, 1)
+        rank = torch.zeros(n, num_phy, dtype=torch.int64, device=device)
+        logcnt = torch.ones(n, num_log, dtype=torch.int64, device=device)
+        arangen = torch.arange(n, dtype=torch.int64, device=device)
+        for i in range(num_log, num_phy):
+            redundant_indices = (weight / logcnt).max(dim=-1).indices
+            phy2log[:, i] = redundant_indices
+            rank[:, i] = logcnt[arangen, redundant_indices]
+            logcnt[arangen, redundant_indices] += 1
+        return phy2log, rank, logcnt
+
+
+    def rebalance_experts_hierarchical(self, weight: torch.Tensor, num_physical_experts: int, num_groups: int, num_nodes: int, num_gpus: int):
+
+        num_layers, num_logical_experts = weight.shape
+        assert num_logical_experts % num_groups == 0
+        group_size = num_logical_experts // num_groups 
+        assert num_groups % num_nodes == 0
+        groups_per_node = num_groups // num_nodes
+        assert num_gpus % num_nodes == 0
+        assert num_physical_experts % num_gpus == 0
+        phy_experts_per_gpu = num_physical_experts // num_gpus
+
+        def inverse(perm: torch.Tensor) -> torch.Tensor:
+            inv = torch.empty_like(perm)
+            inv.scatter_(1, perm, torch.arange(perm.size(1), dtype=torch.int64, device=perm.device).expand(perm.shape))
+            return inv
+
+        tokens_per_group = weight.unflatten(-1, (num_groups, group_size)).sum(-1)
+        group_pack_index, group_rank_in_pack = self.balanced_packing(tokens_per_group, num_nodes) 
+        log2mlog = (((group_pack_index * groups_per_node + group_rank_in_pack) * group_size).unsqueeze(-1) + 
+                    torch.arange(group_size, dtype=torch.int64, device=group_pack_index.device)).flatten(-2)
+        mlog2log = inverse(log2mlog)
+        tokens_per_mlog = weight.gather(-1, mlog2log).view(-1, num_logical_experts // num_nodes)
+        phy2mlog, phyrank, mlogcnt = self.replicate_experts(tokens_per_mlog, num_physical_experts // num_nodes)  
+        tokens_per_phy = (tokens_per_mlog / mlogcnt).gather(-1, phy2mlog)
+        pack_index, rank_in_pack = self.balanced_packing(tokens_per_phy, num_gpus // num_nodes)
+        phy2pphy = pack_index * phy_experts_per_gpu + rank_in_pack
+        pphy2phy = inverse(phy2pphy)
+        pphy2mlog = phy2mlog.gather(-1, pphy2phy) # [num_layers * num_nodes, num_log_per_nodes]
+        pphy2mlog = (pphy2mlog.view(num_layers, num_nodes, -1) + 
+                    torch.arange(0, num_logical_experts, num_logical_experts // num_nodes).view(1, -1, 1)).flatten(-2)
+        pphy2log = mlog2log.gather(-1, pphy2mlog)
+        pphyrank = phyrank.gather(-1, pphy2phy).view(num_layers, -1)
+        logcnt = mlogcnt.view(num_layers, -1).gather(-1, log2mlog)
+        return pphy2log, pphyrank, logcnt
+
+    def rebalance_experts(self, weight: torch.Tensor, num_replicas: int, num_groups: int,
+                        num_nodes: int, num_gpus: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        num_layers, num_logical_experts = weight.shape
+        weight = weight.float().cpu()
+        if num_groups % num_nodes == 0:
+            # use hierarchical load-balance policy
+            phy2log, phyrank, logcnt = self.rebalance_experts_hierarchical(weight, num_replicas, 
+                                                                    num_groups, num_nodes, num_gpus)
+        else:
+            # use global load-balance policy
+            phy2log, phyrank, logcnt = self.replicate_experts(weight, num_replicas)
+        maxlogcnt = logcnt.max().item()
+        log2phy: torch.Tensor = torch.full((num_layers, num_logical_experts, maxlogcnt), 
+                                        -1, dtype=torch.int64, device=logcnt.device)
+        log2phy.view(num_layers, -1).scatter_(-1, phy2log * maxlogcnt + phyrank, 
+                torch.arange(num_replicas, dtype=torch.int64, device=log2phy.device).expand(num_layers, -1))
+        return phy2log, log2phy, logcnt
+    
+    def _load_ep_mapping(self, json_path: str):
+        """Load expert partition metadata from JSON (class-internal)."""
+        import json
+        with open(json_path, 'r') as f:
+            data = json.load(f)
+        num_groups = data['num_groups']
+        num_nodes = data['num_nodes']
+        weight = torch.tensor(data['weight'], dtype=torch.float32, device='cuda')
+        return num_groups, num_nodes, weight
+    
+    def ep_expert_list(self, world_size: int, rank: int):
+        """experts list of current rank."""
+        if enable_eplb:
+            num_groups, num_nodes, weight = self._load_ep_mapping("ep_mapping_json_decode.json")
+            phy2log, log2phy, logcnt = self.rebalance_experts(weight, num_experts, num_groups, num_nodes, world_size)
+            self.phy2log = phy2log[0].to('cuda')
+            self.log2phy = log2phy[0].to('cuda')
+            self.logcnt = logcnt[0].to('cuda')
+            expert_per_rank = (self.num_experts + world_size - 1) // world_size
+            first_expert = rank * expert_per_rank
+            last_expert = min(first_expert + expert_per_rank, self.num_experts)
+            sliced_phy2log = self.phy2log[first_expert:last_expert].tolist()
+            return sliced_phy2log
+        else:
+            num_experts = self.num_experts
+            expert_per_rank = (num_experts + world_size - 1) // world_size
+            first_expert = rank * expert_per_rank
+            last_expert = min(first_expert + expert_per_rank, num_experts)
+            return list(range(first_expert, last_expert))
 
     def forward(self,
                 hidden_states: torch.Tensor,
