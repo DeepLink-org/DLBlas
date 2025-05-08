@@ -279,7 +279,7 @@ class FusedMoENormal:
             torch.arange(num_replicas, dtype=torch.int64, device=log2phy.device).expand(num_layers, -1))
         return phy2log, log2phy, logcnt
 
-     def _load_ep_mapping(self, json_path: str):
+    def _load_ep_mapping(self, json_path: str):
         """Load expert partition metadata from JSON (class-internal)."""
         import json
         with open(json_path, 'r') as f:
