@@ -18,6 +18,7 @@ _buffer_normal = None
 _buffer_low_latency = None
 _buffer_common = None
 
+_max_batch_size = int(os.getenv("DEEPEP_MAX_BATCH_SIZE", 128))
 
 def get_buffer_common(
     group: dist.ProcessGroup,
@@ -117,7 +118,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.num_local_experts = num_local_experts
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
-        self.num_max_dispatch_tokens_per_rank = 128
+        self.num_max_dispatch_tokens_per_rank = _max_batch_size
         # Handle used for combine operation
         self.handle = None
         if not use_deepep:
@@ -309,7 +310,7 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
         self.handle = None
-        self.num_max_dispatch_tokens_per_rank = 128
+        self.num_max_dispatch_tokens_per_rank = _max_batch_size
         self.buffer_low_latency = get_buffer_common(self.group,
                                                     self.num_max_dispatch_tokens_per_rank,
                                                     self.hidden_size,

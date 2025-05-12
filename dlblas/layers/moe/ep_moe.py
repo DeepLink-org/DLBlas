@@ -384,14 +384,18 @@ class FusedMoENormal:
         event.current_stream_wait()
 
     def dispatch_async(self,
-                       x: torch.Tensor,
+                       x: Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor],
                        topk_idx: torch.Tensor,
                        topk_weights: torch.Tensor,
                        num_experts: Optional[int] = None,
                        previous_event=None,
                        async_finish=True):
-        hs_quant, hs_scale = per_token_group_quant_fp8(x, self.block_size)
-        x = None
+        if isinstance(x, torch.Tensor):
+            hs_quant, hs_scale = per_token_group_quant_fp8(x, self.block_size)
+            x = None
+        else:
+            hs_quant = x[0]
+            hs_scale = x[1]
         return self.token_dispatcher.dispatch_normal_async((hs_quant, hs_scale), topk_idx, topk_weights, num_experts,
                                                            previous_event, async_finish)
 
@@ -404,6 +408,9 @@ class FusedMoENormal:
     def fusedmoe_forward(self, state, up_weight, up_scale, down_weight, down_scale):
         return self.experts.forward(state['recv_hidden_states'], state['recv_topk_weights'], state['recv_topk_idx'],
                                     up_weight, up_scale, down_weight, down_scale)
+
+    def per_token_group_quant_fp8(self, x: torch.Tensor):
+        return per_token_group_quant_fp8(x, self.block_size)
 
 
 class FusedMoELowLatency:
