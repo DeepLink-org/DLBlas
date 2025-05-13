@@ -207,7 +207,7 @@ def moe_align_block_size(topk_ids: torch.Tensor,
         )
     else:
         # Currently requires num_experts=256
-        torch.ops._DLBLAS.sgl_moe_align_block_size(
+        torch.ops._DLBLAS.moe_align_block_size(
             topk_ids,
             num_experts,
             block_size,

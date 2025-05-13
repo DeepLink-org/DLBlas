@@ -12,9 +12,9 @@
 #endif
 
 #ifndef USE_ROCM
-  #define VLLM_LDG(arg) __ldg(arg)
+  #define DLBLAS_LDG(arg) __ldg(arg)
 #else
-  #define VLLM_LDG(arg) *(arg)
+  #define DLBLAS_LDG(arg) *(arg)
 #endif
 
 #ifndef USE_ROCM
