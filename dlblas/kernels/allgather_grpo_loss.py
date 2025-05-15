@@ -5,7 +5,11 @@ import triton
 import triton.language as tl
 import torch.nn.functional as F
 import torch.distributed as dist
-import torch.distributed._symmetric_memory as symm_mem
+
+try:
+    import torch.distributed._symmetric_memory as symm_mem
+except ImportError:
+    pass
 
 from triton import Config
 from contextlib import nullcontext
