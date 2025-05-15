@@ -5,7 +5,12 @@ import triton
 import triton.language as tl
 import torch.nn.functional as F
 import torch.distributed as dist
-import torch.distributed._symmetric_memory as symm_mem
+
+import_symm = True
+try:
+    import torch.distributed._symmetric_memory as symm_mem
+except ImportError:
+    import_symm = False
 
 from triton import Config
 from contextlib import nullcontext
@@ -181,6 +186,7 @@ def all_gather_with_progress(
     splits_per_rank: int,
 ):
     assert inp.is_contiguous()
+    assert import_symm == True
     symm_mem_hdl = symm_mem.rendezvous(inp, group=dist.group.WORLD)
     assert symm_mem_hdl is not None
 
@@ -235,6 +241,7 @@ def grpo_loss(
         rank = 0
         world_size = int(os.environ.get("WORLD_SIZE", "8"))
     else:
+        assert import_symm == True
         symm_mem_hdl = symm_mem.rendezvous(log_probs_shard, group=dist.group.WORLD)
         assert symm_mem_hdl is not None, "a_shard must be allocated via SymmetricMemory"
         rank = symm_mem_hdl.rank
