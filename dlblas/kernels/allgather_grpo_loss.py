@@ -10,7 +10,6 @@ import torch.distributed._symmetric_memory as symm_mem
 from triton import Config
 from contextlib import nullcontext
 from typing import Callable, List, Optional
-from liger_kernel.chunked_loss.fused_linear_rlhf import LigerFusedLinearRLHFBase
 
 
 @triton.jit
