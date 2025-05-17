@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from dlblas.utils.utils import DisposibleTensor
+
 
 @triton.jit
 def _per_token_group_quant_fp8(
@@ -178,5 +180,47 @@ def per_token_group_quant_fp8(
             num_warps=num_warps,
             num_stages=num_stages,
         )
+
+    return x_q, x_s
+
+
+def per_token_group_quant_fp8_v2(
+    x: torch.Tensor,
+    group_size: int,
+    eps: float = 1e-10,
+    column_major_scales: bool = False,
+    scale_tma_aligned: bool = False,
+):
+    x = DisposibleTensor.maybe_unwrap(x)
+    assert (x.shape[-1] % group_size == 0), 'the last dimension of `x` cannot be divisible by `group_size`'
+    assert x.is_contiguous(), '`x` is not contiguous'
+
+    x_q = torch.empty_like(x, device=x.device, dtype=torch.float8_e4m3fn)
+    if column_major_scales:
+        if scale_tma_aligned:
+            # aligned to 4 * sizeof(float)
+            aligned_size = (x.shape[-2] + 3) // 4 * 4
+            x_s = torch.empty(
+                x.shape[:-2] + (x.shape[-1] // group_size, aligned_size),
+                device=x.device,
+                dtype=torch.float32,
+            ).permute(-1, -2)[:x.shape[-2], :]
+        else:
+            x_s = torch.empty(
+                (x.shape[-1] // group_size, ) + x.shape[:-1],
+                device=x.device,
+                dtype=torch.float32,
+            ).permute(-1, -2)
+    else:
+        x_s = torch.empty(
+            x.shape[:-1] + (x.shape[-1] // group_size, ),
+            device=x.device,
+            dtype=torch.float32,
+        )
+
+    if x.shape[0] > 0:
+        fp8_max = torch.finfo(torch.float8_e4m3fn).max
+        fp8_min = -fp8_max
+        torch.ops._DLBLAS.per_token_group_quant_fp8(x, x_q, x_s, group_size, eps, fp8_min, fp8_max)
 
     return x_q, x_s

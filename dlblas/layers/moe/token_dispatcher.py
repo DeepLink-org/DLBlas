@@ -12,13 +12,14 @@ import torch
 import torch.distributed as dist
 
 from dlblas.layers.moe.token_dispatcher_base import TokenDispatcherBase
-from dlblas.utils.moe_utils import global_tokens_per_expert, save_expert_stats_to_file
+from dlblas.utils.utils import DisposibleTensor
 
 _buffer_normal = None
 _buffer_low_latency = None
 _buffer_common = None
 
-_max_batch_size = int(os.getenv("DEEPEP_MAX_BATCH_SIZE", 128))
+_max_batch_size = int(os.getenv('DEEPEP_MAX_BATCH_SIZE', 128))
+
 
 def get_buffer_common(
     group: dist.ProcessGroup,
@@ -155,7 +156,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.handle = handle
         self.topk_idx = topk_idx
         self.topk_weights = topk_weights
-        return x, topk_idx, topk_weights
+        return x, topk_idx, topk_weights, recv_tokens_per_expert
 
     def dispatch_normal(
         self,
@@ -186,18 +187,17 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             recv_tokens_per_expert,
             handle,
             event,
-        ) = self.buffer_normal.dispatch(
-            x,
-            topk_idx=topk_idx,
-            topk_weights=topk_weights.to(torch.float32),
-            num_tokens_per_rank=num_tokens_per_rank,
-            num_tokens_per_rdma_rank=num_tokens_per_rdma_rank,
-            is_token_in_rank=is_token_in_rank,
-            num_tokens_per_expert=num_tokens_per_expert,
-            previous_event=previous_event,
-            async_finish=False,
-            allocate_on_comm_stream=False,
-        )
+        ) = self.buffer_normal.dispatch(x,
+                                        topk_idx=topk_idx,
+                                        topk_weights=topk_weights.to(torch.float32),
+                                        num_tokens_per_rank=num_tokens_per_rank,
+                                        num_tokens_per_rdma_rank=num_tokens_per_rdma_rank,
+                                        is_token_in_rank=is_token_in_rank,
+                                        num_tokens_per_expert=num_tokens_per_expert,
+                                        previous_event=previous_event,
+                                        async_finish=False,
+                                        allocate_on_comm_stream=False,
+                                        expert_alignment=128)
 
         return (
             recv_x,
@@ -343,6 +343,7 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
             return_recv_hook=self.return_recv_hook,
         ))
         hook() if self.return_recv_hook else event.current_stream_wait()
+        packed_recv_hidden = [DisposibleTensor(x) for x in packed_recv_hidden]
         return (
             packed_recv_hidden,
             topk_idx,

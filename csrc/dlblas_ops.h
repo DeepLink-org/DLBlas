@@ -43,3 +43,12 @@ void moe_align_block_size(torch::Tensor topk_ids, int64_t num_experts,
 void moe_sum(torch::Tensor& input, torch::Tensor& output);
 
 void silu_and_mul(torch::Tensor& out, torch::Tensor& input);
+
+void per_token_group_quant_fp8(
+    at::Tensor input,
+    at::Tensor output_q,
+    at::Tensor output_s,
+    int64_t group_size,
+    double eps,
+    double fp8_min,
+    double fp8_max);
