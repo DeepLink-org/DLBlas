@@ -86,6 +86,7 @@ set(DLBLAS_EXT_SRC
     "csrc/moe/fused_gate.cu"
     "csrc/moe/moe_align_sum_kernels.cu"
     "csrc/activations.cu"
+    "csrc/per_token_group_quant_8.cu"
     "csrc/extension.cc"
 )
 if(DLBLAS_GPU_LANG STREQUAL "CUDA")

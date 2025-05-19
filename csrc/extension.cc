@@ -26,5 +26,11 @@ TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
 
   m.def("silu_and_mul(Tensor! out, Tensor input) -> ()");
   m.impl("silu_and_mul", torch::kCUDA, &silu_and_mul);
+
+  m.def(
+      "per_token_group_quant_fp8(Tensor input, Tensor output_q, Tensor output_s, int group_size,"
+      " float eps, float fp8_min, float fp8_max) -> ()");
+  m.impl("per_token_group_quant_fp8", torch::kCUDA, &per_token_group_quant_fp8);
+
 }
 REGISTER_EXTENSION(TORCH_EXTENSION_NAME)
