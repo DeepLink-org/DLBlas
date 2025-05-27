@@ -247,6 +247,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=async_finish,
             allocate_on_comm_stream=previous_event is not None and async_finish,
+            expert_alignment=128,
         )
 
         return (
