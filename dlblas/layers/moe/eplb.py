@@ -229,6 +229,8 @@ class EPLBMetadata:
                     experts_statistic = torch.tensor(json.load(f), dtype=torch.float32, device='cuda')
             except Exception:
                 raise RuntimeError(f'Load eplb experts statistic data failed, path: {weight_path}')
+            target_shape = torch.Size([num_hidden_layers, num_routed_experts])
+            assert experts_statistic.shape == target_shape, f"Shape of {weight_path} must be {target_shape}"
         num_nodes = 1 if ep_size < ranks_per_node else ep_size // ranks_per_node
         num_physical_experts = num_routed_experts + num_redundant_experts
 
