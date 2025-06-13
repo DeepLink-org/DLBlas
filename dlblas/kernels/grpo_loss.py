@@ -206,6 +206,7 @@ def grpo_loss_backward(
     B,
     T,
     V,
+    BLOCK_SIZE_T,
 ):
     if ref_logprobs is None:
         ref_logprobs = log_probs.detach()

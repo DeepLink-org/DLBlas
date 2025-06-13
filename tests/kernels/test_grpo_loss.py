@@ -2,6 +2,8 @@
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_rms_norm.py
 import pytest
 import torch
+import os
+from typing import Callable, Optional, List
 
 from dlblas.kernels.grpo_loss import grpo_loss_forward, grpo_loss_backward
 
@@ -106,7 +108,6 @@ def reference_backward(log_probs,  ref_loss):
 
 class TestGRPOLoss:
 
-    @pytest.mark.parametrize(indirect=True)
     def test_grpo_loss(self):
 
         B = 8
@@ -141,14 +142,14 @@ class TestGRPOLoss:
 
         lat_out_logp = benchmark_with_event(
             lambda: grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs1,
-                        out_logprobs, advantages, clip, B, T, V),
+                        out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
             warmup_iters=0,
             benchmark_iters=1,
         )
 
         out_logp = grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs1,
-                        out_logprobs, advantages, clip, B, T, V)
+                        out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T)
 
         lat_ref_loss = benchmark_with_event(
             lambda: reference_forward(log_probs, log_probs1, advantages,
