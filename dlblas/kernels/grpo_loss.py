@@ -2,6 +2,11 @@
 import triton
 import triton.language as tl
 
+if triton.__version__ >= "3.0.0":
+    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
+else:
+    from triton.language.math import fast_expf as tl_exp
+
 
 KL = 0
 UNBIAS = 1
@@ -37,7 +42,7 @@ def grpo_loss_fwd_kernel(
                           offs_probs_dim1[:, None] * V +
                           offs_probs_dim2[None, :])
     log_probs_diff = d_log_probs - d_log_probs_old
-    ratio = tl.exp(log_probs_diff)
+    ratio = tl_exp(log_probs_diff)
 
     adv_off = tl.arange(0, T)
     d_advantages = tl.load(advantages + adv_off)
@@ -61,7 +66,7 @@ def grpo_loss_fwd_kernel(
         kl_penalty_loss = tl.sum(kl_penalty_loss, axis=1) * loss_factor
     elif kl_type == 1:
         kl = d_ref_log_probs - d_log_probs
-        nobias_kl = tl.exp(kl) - kl - 1
+        nobias_kl = tl_exp(kl) - kl - 1
         kl_penalty_loss = kl_coef * nobias_kl
         kl_penalty_loss = tl.sum(kl_penalty_loss, axis=1) * loss_factor
     elif kl_type == 2:
@@ -139,8 +144,8 @@ def grpo_loss_bwd_kernel(
 
     log_probs_diff = d_log_probs - d_log_probs_old
     log_probs_diff1 = d_log_probs_ref - d_log_probs
-    exp = tl.exp(log_probs_diff)
-    exp1 = tl.exp(log_probs_diff1)
+    exp = tl_exp(log_probs_diff)
+    exp1 = tl_exp(log_probs_diff1)
     clamp = tl.clamp(exp, 0.8, 1.2)
 
     adv_off = tl.arange(0, T)
