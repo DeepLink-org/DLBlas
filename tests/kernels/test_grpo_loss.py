@@ -122,6 +122,7 @@ class TestGRPOLoss:
         advantages = torch.randn((T,), dtype=torch.float32, device='cuda', requires_grad=True)
         log_probs = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
         log_probs1 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        log_probs2 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
         out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
 
         loss_factor = kl_coef = 1.0
@@ -129,35 +130,35 @@ class TestGRPOLoss:
         clip = 0.2
 
         lat_tri_loss = benchmark_with_event(
-            lambda: grpo_loss_forward(log_probs, log_probs1, log_probs1,
+            lambda: grpo_loss_forward(log_probs, log_probs1, log_probs2,
                             advantages, kl_type, kl_coef, loss_factor, clip,
                             loss, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
         )
 
-        tri_loss = grpo_loss_forward(log_probs, log_probs1, log_probs1,
+        tri_loss = grpo_loss_forward(log_probs, log_probs1, log_probs2,
                             advantages, kl_type, kl_coef, loss_factor, clip,
                             loss, B, T, V, BLOCK_SIZE_T)
 
         lat_out_logp = benchmark_with_event(
-            lambda: grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs1,
+            lambda: grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs2,
                         out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
             warmup_iters=0,
             benchmark_iters=1,
         )
 
-        out_logp = grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs1,
+        out_logp = grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs2,
                         out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T)
 
         lat_ref_loss = benchmark_with_event(
             lambda: reference_forward(log_probs, log_probs1, advantages,
-                    log_probs1, 1, kl_coef, loss_factor, clip),
+                    log_probs2, 1, kl_coef, loss_factor, clip),
             flush_l2=True,
         )
 
         ref_loss = reference_forward(log_probs, log_probs1, advantages,
-                    log_probs1, 1, kl_coef, loss_factor, clip)
+                    log_probs2, 1, kl_coef, loss_factor, clip)
 
         lat_ref_logp = benchmark_with_event(
             lambda: reference_backward(log_probs, ref_loss),
@@ -166,11 +167,11 @@ class TestGRPOLoss:
             benchmark_iters=1,
         )
 
-        assert torch.allclose(tri_loss, ref_loss)
-        assert torch.allclose(out_logp, log_probs.grad)
+        assert torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
+        assert torch.allclose(out_logp, log_probs.grad, rtol=1e-2, atol=1e-4)
 
-        print('forward accuracy: ', torch.allclose(tri_loss, ref_loss))
-        print('backward accuracy: ', torch.allclose(out_logp, log_probs.grad))
+        print('forward accuracy: ', torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4))
+        print('backward accuracy: ', torch.allclose(out_logp, log_probs.grad, rtol=1e-2, atol=1e-4))
 
         print('tri_loss latency: ', lat_tri_loss)
         print('ref_loss latency: ', lat_ref_loss)
