@@ -138,8 +138,9 @@ def grpo_loss_bwd_kernel(
                           offs_probs_dim2[None, :])
 
     log_probs_diff = d_log_probs - d_log_probs_old
+    log_probs_diff1 = d_log_probs_ref - d_log_probs
     exp = tl.exp(log_probs_diff)
-    exp1 = tl.exp(-log_probs_diff)
+    exp1 = tl.exp(log_probs_diff1)
     clamp = tl.clamp(exp, 0.8, 1.2)
 
     adv_off = tl.arange(0, T)
