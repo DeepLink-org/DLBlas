@@ -167,6 +167,9 @@ class TestGRPOLoss:
             benchmark_iters=1,
         )
 
+        assert torch.allclose(tri_loss, ref_loss)
+        assert torch.allclose(out_logp, log_probs.grad)
+
         print('forward accuracy: ', torch.allclose(tri_loss, ref_loss))
         print('backward accuracy: ', torch.allclose(out_logp, log_probs.grad))
 
