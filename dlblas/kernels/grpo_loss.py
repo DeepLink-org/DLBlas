@@ -1,5 +1,4 @@
 # Copyright (c) 2025, DeepLink.
-# https://github.com/InternLM/lmdeploy/blob/v0.6.1/lmdeploy/pytorch/kernels/cuda/rms_norm.py
 import triton
 import triton.language as tl
 
