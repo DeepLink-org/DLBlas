@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from dlblas.kernels.fp8 import per_token_group_quant_fp8_v2
+from dlblas.kernels.fp8 import per_token_group_quant_fp8
 from dlblas.kernels.quant_dequant import tma_align_input_scale
+from dlblas.layers.moe.kernels.activation import silu_and_mul
 
 try:
     from deep_gemm import m_grouped_gemm_fp8_fp8_bf16_nt_contiguous
@@ -312,13 +313,13 @@ def fused_moe_v3(
         device=gateup_output.device,
         dtype=torch.float32,
     )
-    torch.ops._DLBLAS.silu_and_mul(down_input, gateup_output.view(-1, N))
+    silu_and_mul(gateup_output.view(-1, N), down_input)
     down_output = torch.empty(
         (all_tokens, K),
         device=gather_out.device,
         dtype=torch.bfloat16,
     )
-    down_input_fp8, down_input_scale = per_token_group_quant_fp8_v2(
+    down_input_fp8, down_input_scale = per_token_group_quant_fp8(
         down_input,
         scale_block_size,
     )
