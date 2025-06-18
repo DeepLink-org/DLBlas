@@ -1,6 +1,7 @@
 # Copyright (c) 2025, DeepLink.
 import triton
 import triton.language as tl
+import torch.nn as nn
 
 if triton.__version__ >= "3.0.0":
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
@@ -80,37 +81,6 @@ def grpo_loss_fwd_kernel(
     # output loss value
     off_loss = tl.arange(0, T)
     tl.store(out_loss + off_loss, final_loss)
-
-
-def grpo_loss_forward(
-    log_probs,
-    old_logprobs,
-    ref_log_probs,
-    advantages,
-    kl_type,
-    kl_coef,
-    loss_factor,
-    clip,
-    loss,
-    B,
-    T,
-    V,
-    BLOCK_SIZE_T,
-):
-    if ref_log_probs is None:
-        ref_log_probs = log_probs.detach()
-
-    kl_type = {
-        'kl': KL,
-        'unbias': UNBIAS,
-        'mse': MSE
-    }.get(kl_type, None) 
-
-    grid = lambda META: (T // BLOCK_SIZE_T,)
-    grpo_loss_fwd_kernel[grid](log_probs, old_logprobs, 
-                           ref_log_probs, advantages, kl_type, kl_coef,
-                           loss_factor, clip, loss, B, T, V, BLOCK_SIZE_T)
-    return loss
 
 
 @triton.jit
@@ -200,24 +170,60 @@ def grpo_loss_bwd_kernel(
              add4)
 
 
-def grpo_loss_backward(
-    loss,
-    log_probs,
-    old_logprobs,
-    ref_logprobs,
-    out_logprobs,
-    advantages,
-    clip,
-    B,
-    T,
-    V,
-    BLOCK_SIZE_T,
-):
-    if ref_logprobs is None:
-        ref_logprobs = log_probs.detach()
-    beta = 1.0
+class GRPOLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
 
-    grid = lambda META: (T // BLOCK_SIZE_T,)
-    grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_logprobs, 
-                                out_logprobs, advantages, clip, beta, B, T, V)
-    return out_logprobs
+    def forward(
+        self,
+        log_probs,
+        old_logprobs,
+        ref_log_probs,
+        advantages,
+        kl_type,
+        kl_coef,
+        loss_factor,
+        clip,
+        loss,
+        B,
+        T,
+        V,
+        BLOCK_SIZE_T,
+    ):
+        if ref_log_probs is None:
+            ref_log_probs = log_probs.detach()
+
+        kl_type = {
+            'kl': KL,
+            'unbias': UNBIAS,
+            'mse': MSE
+        }.get(kl_type, None)
+
+        grid = lambda META: (T // BLOCK_SIZE_T,)
+        grpo_loss_fwd_kernel[grid](log_probs, old_logprobs,
+                            ref_log_probs, advantages, kl_type, kl_coef,
+                            loss_factor, clip, loss, B, T, V, BLOCK_SIZE_T)
+        return loss
+
+    def backward(
+        self,
+        loss,
+        log_probs,
+        old_logprobs,
+        ref_logprobs,
+        out_logprobs,
+        advantages,
+        clip,
+        B,
+        T,
+        V,
+        BLOCK_SIZE_T,
+    ):
+        if ref_logprobs is None:
+            ref_logprobs = log_probs.detach()
+        beta = 1.0
+
+        grid = lambda META: (T // BLOCK_SIZE_T,)
+        grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_logprobs,
+                                    out_logprobs, advantages, clip, beta, B, T, V)
+        return out_logprobs
