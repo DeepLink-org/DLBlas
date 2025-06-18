@@ -4,7 +4,7 @@ import torch
 import os
 from typing import Callable, Optional, List
 
-from dlblas.kernels.grpo_loss import grpo_loss_forward, grpo_loss_backward
+from dlblas.kernels.grpo_loss import GRPOLoss
 
 
 def benchmark_with_event(
@@ -109,6 +109,8 @@ class TestGRPOLoss:
 
     def test_grpo_loss(self):
 
+        grpo = GRPOLoss()
+
         B = 8
         T = 32
         H = 256
@@ -130,25 +132,25 @@ class TestGRPOLoss:
         clip = 0.2
 
         lat_tri_loss = benchmark_with_event(
-            lambda: grpo_loss_forward(log_probs, log_probs1, log_probs2,
+            lambda: grpo.forward(log_probs, log_probs1, log_probs2,
                             advantages, kl_type, kl_coef, loss_factor, clip,
                             loss, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
         )
 
-        tri_loss = grpo_loss_forward(log_probs, log_probs1, log_probs2,
+        tri_loss = grpo.forward(log_probs, log_probs1, log_probs2,
                             advantages, kl_type, kl_coef, loss_factor, clip,
                             loss, B, T, V, BLOCK_SIZE_T)
 
         lat_out_logp = benchmark_with_event(
-            lambda: grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs2,
+            lambda: grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
                         out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
             warmup_iters=0,
             benchmark_iters=1,
         )
 
-        out_logp = grpo_loss_backward(tri_loss, log_probs, log_probs1, log_probs2,
+        out_logp = grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
                         out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T)
 
         lat_ref_loss = benchmark_with_event(
