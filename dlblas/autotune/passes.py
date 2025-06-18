@@ -1,19 +1,8 @@
 # Copyright (c) 2025, DeepLink.
-import os
 import re
 
 
 def find_call_pattern_index_from_text(text: str, pattern: str) -> [[int]]:
-    '''call pattern:
-        xxx(whatever)
-        |           |
-       / \         / \
-      start_idx   end_idx
-
-        1. find `xxx` based on pattern
-        2. find the first `(`
-        3. find the last `)`
-    '''
     start_idx = []
     matches: list[re.Match] = re.finditer(
         pattern,

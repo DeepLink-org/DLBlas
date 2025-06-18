@@ -196,26 +196,14 @@ def moe_align_block_size(topk_ids: torch.Tensor,
     # mapping global expert ids to local expert ids in expert parallelism.
     expert_ids = torch.zeros((max_num_m_blocks, ), dtype=torch.int32, device=topk_ids.device)
     num_tokens_post_pad = torch.empty((1), dtype=torch.int32, device=topk_ids.device)
-    if num_experts != 256:
-        moe_align_block_size_triton(
-            topk_ids,
-            num_experts,
-            block_size,
-            sorted_ids,
-            expert_ids,
-            num_tokens_post_pad,
-        )
-    else:
-        # Currently requires num_experts=256
-        torch.ops._DLBLAS.moe_align_block_size(
-            topk_ids,
-            num_experts,
-            block_size,
-            sorted_ids,
-            expert_ids,
-            num_tokens_post_pad,
-        )
-
+    moe_align_block_size_triton(
+        topk_ids,
+        num_experts,
+        block_size,
+        sorted_ids,
+        expert_ids,
+        num_tokens_post_pad,
+    )
     if expert_map is not None:
         expert_ids = expert_map[expert_ids]
 

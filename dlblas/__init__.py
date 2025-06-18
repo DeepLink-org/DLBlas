@@ -4,7 +4,6 @@ from typing import Tuple
 import torch
 from torch import Tensor
 
-import dlblas._DLBLAS  # noqa
 # this import all kernels dynamically
 import dlblas.kernels  # noqa
 from dlblas.utils import get_op
@@ -17,12 +16,11 @@ def topk_gating(
     logits: Tensor,
     k: int,
     capacity_factor: float = 1.0,
-    drop_policy: bool = False,
     min_capacity: int = 2,
     higher_precision: bool = False,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    op = get_op('topk_gating', (logits, k, capacity_factor, drop_policy, min_capacity, higher_precision))
-    return op(logits, k, capacity_factor, drop_policy, min_capacity, higher_precision)
+    op = get_op('topk_gating', (logits, k, capacity_factor, min_capacity, higher_precision))
+    return op(logits, k, capacity_factor, min_capacity, higher_precision)
 
 
 def layernorm_gated(
@@ -56,33 +54,6 @@ def matmul(a: Tensor, b: Tensor, activation=''):
         return op(a, b)
     else:
         raise f"matmul_{activation} not impl."
-
-
-def _topk_gating_fwd_part1(logits: Tensor, k: int):
-    op = get_op('_topk_gating_fwd_part1', (logits, k))
-    return op(logits, k)
-
-
-def _topk_gating_fwd_part2_position(gates: Tensor, masks: Tensor, k: int, capacity: int, moe_aux_loss_coeff: float):
-    op = get_op('_topk_gating_fwd_part2_position', (gates, masks, k, capacity, moe_aux_loss_coeff))
-    return op(gates, masks, k, capacity, moe_aux_loss_coeff)
-
-
-def _topk_gating_fwd_part2_probs(gates: Tensor, masks: Tensor, masks_gates: torch.Tensor, k: int, capacity: int,
-                                 moe_aux_loss_coeff: float):
-    op = get_op('_topk_gating_fwd_part2_probs', (gates, masks, masks_gates, k, capacity, moe_aux_loss_coeff))
-    return op(gates, masks, masks_gates, k, capacity, moe_aux_loss_coeff)
-
-
-def _topk_gating_fwd_part3(gates: Tensor, mask_with_capacity: Tensor, topk_indices: Tensor, topk_values: Tensor, k: int,
-                           capacity: int):
-    op = get_op('_topk_gating_fwd_part3', (gates, mask_with_capacity, topk_indices, topk_values, k, capacity))
-    return op(gates, mask_with_capacity, topk_indices, topk_values, k, capacity)
-
-
-def _topk_gating_bwd(tokens_per_expert, logits_softmax, grad_l_aux, k):
-    op = get_op('_topk_gating_bwd', (tokens_per_expert, logits_softmax, grad_l_aux, k))
-    return op(tokens_per_expert, logits_softmax, grad_l_aux, k)
 
 
 def paged_attention(

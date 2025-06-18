@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-import dlblas
+from dlblas.kernels.activation import silu_and_mul
 from dlblas.kernels.fp8 import per_token_group_quant_fp8
 from dlblas.kernels.moe_align_block_size import moe_align_block_size
 
@@ -438,7 +438,7 @@ def fused_moe(
                                 block_shape=block_shape)
 
         if activation == 'silu':
-            torch.ops._DLBLAS.silu_and_mul(intermediate_cache2, intermediate_cache1.view(-1, N))
+            silu_and_mul(intermediate_cache1.view(-1, N), intermediate_cache2)
         else:
             raise ValueError(f"Unsupported FusedMoe activation: {activation}")
         qintermediate_cache2, qa2_scale = moe_kernel_prepare_input(A=intermediate_cache2,
@@ -465,6 +465,7 @@ def fused_moe(
                                 per_channel_quant=per_channel_quant,
                                 block_shape=block_shape)
 
-        dlblas.moe_sum(intermediate_cache3.view(*intermediate_cache3.shape),
-                       out_hidden_states[begin_chunk_idx:end_chunk_idx])
+        torch.sum(input=intermediate_cache3.view(*intermediate_cache3.shape),
+                  dim=1,
+                  out=out_hidden_states[begin_chunk_idx:end_chunk_idx])
     return out_hidden_states
