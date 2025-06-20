@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from dlblas.utils.utils import infer_device
+from dlblas.utils.device_utils import infer_device
 
 
 @triton.jit

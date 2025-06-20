@@ -1,15 +1,11 @@
 # Copyright (c) 2025, DeepLink.
-import os
-
 import numpy as np
 from torch import Tensor
 from torch._inductor.codecache import PyCodeCache
-from triton.runtime.autotuner import OutOfResources
 
 from dlblas.autotune.configs import AutotuneConfig
 from dlblas.autotune.dynamic_compiler import Parser
 from dlblas.autotune.policy import Policy, get_policy
-from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.op_struct import OpImpl
 
 
@@ -18,11 +14,9 @@ def perf_op(op: OpImpl, args: tuple):
     try:
         tmp_args = [arg.clone() if isinstance(arg, Tensor) else arg for arg in args]
         perf = op.bench(*tmp_args)
-    except OutOfResources:
-        bench_ok = False
     except AssertionError:
         bench_ok = False
-    except Exception as e:
+    except Exception:
         bench_ok = False
     return bench_ok, perf if bench_ok else float('inf')
 
@@ -68,11 +62,8 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
     # get best
     best_kernel_configs_idx = int(np.argmin(perfs))
     if srcs[best_kernel_configs_idx] is None:
-        raise RuntimeError(f'''
-            unable to tune for op {op.name},
-            consider to config more tunning iteration,
-            or widen the search space
-        ''')
+        raise RuntimeError(
+            f'unable to tune for op {op.name}, consider to config more tunning iteration, or widen the search space')
     op.src = srcs[best_kernel_configs_idx]
     best_perf = perfs[best_kernel_configs_idx]
     return best_perf

@@ -4,7 +4,7 @@ import random
 import numpy as np
 import torch
 
-from dlblas.utils.utils import infer_device
+from dlblas.utils.device_utils import infer_device
 
 device = infer_device()
 

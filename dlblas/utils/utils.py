@@ -7,6 +7,8 @@ from typing import Any, Callable, Dict, Optional, Union
 import torch
 from packaging.version import Version
 
+from dlblas.utils.device_utils import infer_device
+
 
 def round_up(x: int, y: int) -> int:
     return ((x + y - 1) // y) * y
@@ -76,16 +78,6 @@ class DisposibleTensor:
 
 
 MaybeDisposibleTensor = Union[torch.Tensor, DisposibleTensor]
-
-
-def infer_device():
-    """
-    Get current device name based on available devices
-    """
-    if torch.cuda.is_available():
-        return 'cuda'
-    else:
-        return 'cpu'
 
 
 def compare_version(package: str, operator: Callable, target: str):

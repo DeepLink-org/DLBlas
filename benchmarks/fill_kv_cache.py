@@ -1,12 +1,14 @@
 # Copyright (c) 2025, DeepLink.
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_fill_kv_cache.py
-import pytest
 import torch
 import triton
 
 # import torch_mlu
 # import torch_mlu.utils.gpu_migration
 from dlblas.kernels.fill_kv_cache import fill_kv_cache
+from dlblas.utils.device_utils import infer_device
+
+device = infer_device()
 
 
 def _div_up(a, b):
@@ -19,7 +21,7 @@ def _block_offsets(num_blocks_per_input):
     batch_ids = torch.arange(batch_size)
     ret = torch.arange(max_num_blocks)
     ret = batch_ids[:, None] + ret[None, :] * batch_size
-    return ret.cuda()
+    return ret.to(device)
 
 
 def _gt(
@@ -100,12 +102,12 @@ def test():
     num_tokens = sum(seq_lens)
     num_blocks_per_input = [_div_up(kv_len, block_size) for kv_len in kv_lens]
     max_num_blocks = max(num_blocks_per_input)
-    q_seq_length = torch.tensor(seq_lens).cuda()
+    q_seq_length = torch.tensor(seq_lens).to(device)
     q_start_loc = q_seq_length.cumsum(0) - q_seq_length
-    kv_seq_length = torch.tensor(kv_lens).cuda()
-    k_states = torch.rand(num_tokens, num_heads, head_dim).cuda()
+    kv_seq_length = torch.tensor(kv_lens).to(device)
+    k_states = torch.rand(num_tokens, num_heads, head_dim).to(device)
     v_states = torch.rand_like(k_states)
-    k_caches = torch.full((batch_size * max_num_blocks, block_size, num_heads, head_dim), 0.0).cuda()
+    k_caches = torch.full((batch_size * max_num_blocks, block_size, num_heads, head_dim), 0.0).to(device)
     v_caches = torch.rand_like(k_caches)
     block_offsets = _block_offsets(num_blocks_per_input)
 
@@ -119,7 +121,7 @@ def test():
         block_offsets,
         block_size,
     )
-    tt = fill_kv_cache(
+    fill_kv_cache(
         k_states,
         v_states,
         k_caches,
@@ -148,13 +150,12 @@ def test():
         ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device='cuda'):
+    def bench_fn(op, provider):
         warmup = 100
         rep = 200
 
         if 'triton' in provider:
-            # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
-            fn = lambda: fill_kv_cache(
+            ms = triton.testing.do_bench(lambda: fill_kv_cache(
                 k_states,
                 v_states,
                 k_caches,
@@ -164,9 +165,11 @@ def test():
                 kv_seq_length,
                 max_q_seq_length,
                 block_offsets,
-            )
+            ),
+                                         warmup=warmup,
+                                         rep=rep)
         if 'pytorch' in provider:
-            fn = lambda: _gt(
+            ms = triton.testing.do_bench(lambda: _gt(
                 k_states,
                 v_states,
                 k_caches,
@@ -175,9 +178,10 @@ def test():
                 history_lens,
                 block_offsets,
                 block_size,
-            )
+            ),
+                                         warmup=warmup,
+                                         rep=rep)
 
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

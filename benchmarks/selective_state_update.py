@@ -5,13 +5,14 @@ import torch
 import triton
 
 import dlblas
+from dlblas.utils.device_utils import infer_device
 
 sys.path.append('..')
-from tests.kernels.test_selective_state_update import selective_state_update_ref
+from tests.kernels.test_selective_state_update import selective_state_update_ref  # noqa
 
 
 def benchmark():
-    device = 'cuda'
+    device = infer_device()
     rtol, atol = (5e-3, 3e-2)
     itype = torch.float16
     # set seed
@@ -49,7 +50,7 @@ def benchmark():
             line_names=['Triton', 'PyTorch'],
             styles=[('red', '-'), ('blue', '-'), ('green', '-'), ('orange', '-')],
             ylabel='ms',
-            plot_name=f"selective_state_update",
+            plot_name='selective_state_update',
             args={},
         ))
 
@@ -59,14 +60,16 @@ def benchmark():
         rep = 100
         state_ref = state.detach().clone()
         if 'triton' in provider:
-            fn = lambda: dlblas.selective_state_update(
-                state_ref, x, dt, A, B, C, D, z=z, dt_bias=dt_bias, dt_softplus=True)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ms = triton.testing.do_bench(lambda: dlblas.selective_state_update(
+                state_ref, x, dt, A, B, C, D, z=z, dt_bias=dt_bias, dt_softplus=True),
+                                         warmup=warmup,
+                                         rep=rep)
 
         if 'pytorch' in provider:
-            fn = lambda: selective_state_update_ref(
-                state_ref, x, dt, A, B, C, D, z=z, dt_bias=dt_bias, dt_softplus=True)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ms = triton.testing.do_bench(lambda: selective_state_update_ref(
+                state_ref, x, dt, A, B, C, D, z=z, dt_bias=dt_bias, dt_softplus=True),
+                                         warmup=warmup,
+                                         rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

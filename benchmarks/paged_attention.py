@@ -1,13 +1,15 @@
 # Copyright (c) 2025, DeepLink.
 import math
 
-import pytest
 # import torch_mlu
 # import torch_mlu.utils.gpu_migration
 import torch
 import triton
 
 from dlblas.kernels.paged_attention import paged_attention_fwd
+from dlblas.utils.device_utils import infer_device
+
+DEVICE = infer_device()
 
 
 def _conti_input(data, seq_lens):
@@ -23,9 +25,9 @@ def _make_bias(seq_lens, history_lens, neg_val):
     seq_ranges = [torch.arange(max_seq_len) for _ in seq_lens]
     for r, l in zip(seq_ranges, seq_lens):
         r[l:] = -max_full_len
-    seq_ranges = torch.stack(seq_ranges, dim=0).cuda()
+    seq_ranges = torch.stack(seq_ranges, dim=0).to(DEVICE)
     kv_ranges = [torch.arange(max_full_len) for _ in full_seq_lens]
-    kv_ranges = torch.stack(kv_ranges, 0).cuda()
+    kv_ranges = torch.stack(kv_ranges, 0).to(DEVICE)
     mask = kv_ranges[:, None, :] - seq_ranges[:, :, None] > history_lens[:, None, None]
     return mask.float() * neg_val
 
@@ -125,7 +127,7 @@ def _batched_q(seq_lens, num_heads_q, feat_dim, dtype):
     torch.manual_seed(123)
     batch_size = len(seq_lens)
     max_seq_len = seq_lens.max().item()
-    return torch.randn(batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device='cuda')
+    return torch.randn(batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device=DEVICE)
 
 
 def _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype):
@@ -133,8 +135,8 @@ def _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype
     batch_size = len(seq_lens)
     full_seq_lens = seq_lens + history_lens
     max_seq_len = full_seq_lens.max().item()
-    k = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device='cuda')
-    v = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device='cuda')
+    k = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device=DEVICE)
+    v = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device=DEVICE)
     return k, v
 
 
@@ -156,7 +158,7 @@ def _block_offsets(seq_lens, history_lens, block_size):
 
     print(new_offset)
 
-    return new_offset.cuda()
+    return new_offset.to(DEVICE)
 
 
 def _conti_kv(batched_kv, seq_lens, history_lens):
@@ -237,17 +239,15 @@ def test():
     feat_dim_v = 16
     num_heads_q = 4
     num_heads_k = 2
-    seq_lens = torch.tensor([128], device='cuda')
+    seq_lens = torch.tensor([128], device=DEVICE)
     start_loc = _start_loc(seq_lens)
     block_size = 16
-    history_lens = torch.tensor([128], device='cuda')
-    win_size = 32
+    history_lens = torch.tensor([128], device=DEVICE)
 
     batched_q = _batched_q(seq_lens, num_heads_q, feat_dim, dtype)
     batched_kv = _batched_kv(seq_lens, history_lens, num_heads_k, feat_dim, feat_dim_v, dtype)
     conti_q = _conti_q(seq_lens, batched_q)
     block_offsets = _block_offsets(seq_lens, history_lens, block_size)
-    conti_kv = _conti_kv(batched_kv, seq_lens, history_lens)
     blocked_kv = _blocked_kv(
         batched_kv,
         seq_lens,
@@ -296,13 +296,12 @@ def test():
         ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device='cuda'):
+    def bench_fn(op, provider):
         warmup = 100
         rep = 200
 
         if 'triton' in provider:
-            # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
-            fn = lambda: paged_attention_fwd(
+            ms = triton.testing.do_bench(lambda: paged_attention_fwd(
                 conti_q,
                 blocked_k,
                 blocked_v,
@@ -312,11 +311,14 @@ def test():
                 q_seqlens=seq_lens,
                 kv_seqlens=kv_seq_lens,
                 max_seqlen=max_seq_len,
-            )
+            ),
+                                         warmup=warmup,
+                                         rep=rep)
         if 'pytorch' in provider:
-            fn = lambda: _conti_gt(_gt(batched_q, batched_kv, mask), seq_lens)
+            ms = triton.testing.do_bench(lambda: _conti_gt(_gt(batched_q, batched_kv, mask), seq_lens),
+                                         warmup=warmup,
+                                         rep=rep)
 
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)
