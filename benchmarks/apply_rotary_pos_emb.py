@@ -23,7 +23,6 @@ def torch_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin, position_id
 
 def test():
     device_ = torch.device(infer_device())
-    torch.cuda.set_device(device_)
     dtype_ = torch.float16
     b, s, h, d = 1, 256, 32, 128
     cached_cos = torch.randn((s, d), dtype=dtype_, device=device_)
