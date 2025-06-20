@@ -5,22 +5,20 @@ from typing import List
 import torch
 import torch.nn.functional as F
 import triton
-from functorch.compile import aot_function, aot_module, make_boxed_func
-from torch import nn
+from functorch.compile import make_boxed_func
 from torch._dynamo.backends.common import aot_autograd
-from torch.profiler import ProfilerActivity, profile, record_function
+from torch.profiler import ProfilerActivity, profile
 
 import dlblas
-from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 from dlblas.kernels.partial_rotary_emb import PartialRotaryEmb
-from dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import infer_device
 
 
 def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
     print('>>> my_compiler() invoked:')
     # print(">>> FX graph:")
     # gm.graph.print_tabular()
-    print(f">>> Code:\n{gm.code}")
+    print(f">>> Code: \n{gm.code}")
     return make_boxed_func(gm.forward)  # fwd do not need boxed
 
 
@@ -157,8 +155,7 @@ def test_emb(q, k_pe, kv, cos, sin):
     return q_out, kv_out, q_pe, k_pe
 
 
-device_ = torch.device(get_idle_device())
-torch.cuda.set_device(device_)
+device_ = torch.device(infer_device())
 
 
 class ApplyRotaryEmb(torch.autograd.Function):
@@ -202,8 +199,6 @@ class ApplyRotaryEmb(torch.autograd.Function):
 def rotary_bwd(q_pe, do_q, cos, sin):
     do0 = do_q[..., :do_q.shape[-1] // 2]
     do1 = do_q[..., do_q.shape[-1] // 2:]
-    x0 = q_pe[..., :q_pe.shape[-1] // 2]
-    x1 = q_pe[..., q_pe.shape[-1] // 2:]
     cos0 = cos[:, :, :, :cos.shape[-1] // 2]
     cos1 = cos[:, :, :, cos.shape[-1] // 2:]
     sin0 = sin[:, :, :, :sin.shape[-1] // 2]
@@ -323,8 +318,8 @@ def test():
             line_vals=['triton', 'pytorch'],
             line_names=['Triton', 'PyTorch'],
             ylabel='ms',
-            plot_name=
-            f"fused_partial_mla(batchSize={bsz}, seqlen:{q_len}, num_heads:{num_heads}, nope_head_dim:{nope_head_dim}, rope_head_dim:{rope_head_dim})",
+            plot_name=f"""fused_partial_mla(batchSize={bsz}, seqlen={q_len}, num_heads=
+{num_heads}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim})""",
             args={'SeqLen': q_len},
         ))
 
@@ -335,24 +330,26 @@ def test():
 
         if 'triton' in provider:
             if 'fwd' == op:
-                fn = lambda: PartialRotaryEmb.apply(q_tri, k_pe_tri, kv_tri, cos, sin)
+                ms = triton.testing.do_bench(lambda: PartialRotaryEmb.apply(q_tri, k_pe_tri, kv_tri, cos, sin),
+                                             warmup=warmup,
+                                             rep=rep)
             elif 'bwd' == op:
                 out_tri_q, out_tri_kv = PartialRotaryEmb.apply(q_tri, k_pe_tri, kv_tri, cos, sin)
                 loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_kv))
-                fn = lambda: loss_tri.backward(retain_graph=True)
+                ms = triton.testing.do_bench(lambda: loss_tri.backward(retain_graph=True), warmup=warmup, rep=rep)
             else:
                 raise Exception()
 
         if 'pytorch' in provider:
             if 'fwd' == op:
-                fn = lambda: partial_rotary_emb(q, k_pe, kv, cos, sin)
+                ms = triton.testing.do_bench(lambda: partial_rotary_emb(q, k_pe, kv, cos, sin), warmup=warmup, rep=rep)
             elif 'bwd' == op:
                 out_q, out_kv = partial_rotary_emb(q, k_pe, kv, cos, sin)
                 loss_torch = torch.sum(torch.mean(out_q) * torch.mean(out_kv))
-                fn = lambda: loss_torch.backward(retain_graph=True)
+                ms = triton.testing.do_bench(lambda: loss_torch.backward(retain_graph=True), warmup=warmup, rep=rep)
             else:
                 raise Exception()
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

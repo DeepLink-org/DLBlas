@@ -2,9 +2,8 @@
 import torch
 import triton
 
-import dlblas
 from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
-from dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import infer_device
 
 
 def _rotate_half(x):
@@ -23,7 +22,7 @@ def torch_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin, position_id
 
 
 def test():
-    device_ = torch.device(get_idle_device())
+    device_ = torch.device(infer_device())
     torch.cuda.set_device(device_)
     dtype_ = torch.float16
     b, s, h, d = 1, 256, 32, 128
@@ -59,12 +58,15 @@ def test():
         rep = 200
 
         if 'triton' in provider:
-            # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
-            fn = lambda: apply_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin)
+            ms = triton.testing.do_bench(lambda: apply_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin),
+                                         warmup=warmup,
+                                         rep=rep)
         if 'pytorch' in provider:
-            fn = lambda: torch_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin, position_ids_1d)
+            ms = triton.testing.do_bench(
+                lambda: torch_rotary_pos_emb(q_states, k_states, cached_cos, cached_sin, position_ids_1d),
+                warmup=warmup,
+                rep=rep)
 
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

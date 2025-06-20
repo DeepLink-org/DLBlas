@@ -1,13 +1,11 @@
 # Copyright (c) 2025, DeepLink.
 import torch
-import torch.nn.functional as F
 import triton
 
-import dlblas
 from dlblas.kernels.apply_rotary_pos_emb import apply_rotary_pos_emb
 from dlblas.kernels.flash_attention_v2 import _flash_attn_forward as flash_attention_v2
 from dlblas.kernels.fused_rotary_and_fa import _flash_attn_forward as fused_rotary_and_fa
-from dlblas.utils.device_utils import get_idle_device, is_cuda, is_muxi
+from dlblas.utils.device_utils import infer_device, is_cuda, is_muxi
 
 MUXI_CUDA = is_muxi() or is_cuda()
 
@@ -19,41 +17,41 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
-    """Applies Rotary Position Embedding to the query and key tensors.
+# def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
+#     """Applies Rotary Position Embedding to the query and key tensors.
 
-    Args:
-        q (`torch.Tensor`): The query tensor.
-        k (`torch.Tensor`): The key tensor.
-        cos (`torch.Tensor`): The cosine part of the rotary embedding.
-        sin (`torch.Tensor`): The sine part of the rotary embedding.
-        position_ids (`torch.Tensor`):
-            The position indices of the tokens corresponding to the query and key tensors. For example, this can be
-            used to pass offsetted position ids when working with a KV-cache.
-        unsqueeze_dim (`int`, *optional*, defaults to 1):
-            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
-            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
-            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
-            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
-            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
-            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
-    Returns:
-        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
-    """
-    cos = cos.unsqueeze(unsqueeze_dim)
-    sin = sin.unsqueeze(unsqueeze_dim)
+#     Args:
+#         q (`torch.Tensor`): The query tensor.
+#         k (`torch.Tensor`): The key tensor.
+#         cos (`torch.Tensor`): The cosine part of the rotary embedding.
+#         sin (`torch.Tensor`): The sine part of the rotary embedding.
+#         position_ids (`torch.Tensor`):
+#             The position indices of the tokens corresponding to the query and key tensors. For example, this can be
+#             used to pass offsetted position ids when working with a KV-cache.
+#         unsqueeze_dim (`int`, *optional*, defaults to 1):
+#             The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
+#             sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
+#             that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim].
+#             Then, if q and k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
+#             cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
+#             the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
+#     Returns:
+#         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
+#     """
+#     cos = cos.unsqueeze(unsqueeze_dim)
+#     sin = sin.unsqueeze(unsqueeze_dim)
 
-    b, h, s, d = q.shape
-    q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
+#     b, h, s, d = q.shape
+#     q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
 
-    b, h, s, d = k.shape
-    k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
+#     b, h, s, d = k.shape
+#     k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
 
-    # out1.copy_(x1 * cos - x2 * sin)
-    # out2.copy_(x2 * cos + x1 * sin)
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
+#     # out1.copy_(x1 * cos - x2 * sin)
+#     # out2.copy_(x2 * cos + x1 * sin)
+#     q_embed = (q * cos) + (rotate_half(q) * sin)
+#     k_embed = (k * cos) + (rotate_half(k) * sin)
+#     return q_embed, k_embed
 
 
 def none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d):
@@ -72,8 +70,7 @@ def none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, p
 
 
 def test():
-    device_ = torch.device(get_idle_device())
-    torch.cuda.set_device(device_)
+    device_ = torch.device(infer_device())
     dtype = torch.float16
     if MUXI_CUDA:
         dtype = torch.float32
@@ -107,7 +104,7 @@ def test():
             line_vals=['fused', 'none-fused', 'rotary'],
             line_names=['fused', 'none-fused', 'rotary'],
             ylabel='ms',
-            plot_name=f"fused_rotary_emb_and_fa(batchSize={1}, seqlen:{seq_len}, num_heads:{heads}, dim:{dim})",
+            plot_name=f'fused_rotary_emb_and_fa(batchSize={1}, seqlen={seq_len}, num_heads={heads}, dim={dim})',
             args={'SeqLen': seq_len},
         ))
 
@@ -117,19 +114,26 @@ def test():
         rep = 200
 
         if 'fused' in provider:
-            fn = lambda: fused_rotary_and_fa(query, key, value, cos, sin)
+            ms = triton.testing.do_bench(lambda: fused_rotary_and_fa(query, key, value, cos, sin),
+                                         warmup=warmup,
+                                         rep=rep)
 
         if 'none-fused' in provider:
-            fn = lambda: none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d)
+            ms = triton.testing.do_bench(
+                lambda: none_fused_rotary_and_fa(seq_len, heads, dim, query, key, value, cos, sin, position_ids_1d),
+                warmup=warmup,
+                rep=rep)
         if 'rotary' in provider:
-            fn = lambda: apply_rotary_pos_emb(
+            ms = triton.testing.do_bench(lambda: apply_rotary_pos_emb(
                 query.view(1, seq_len, heads, dim),
                 key.view(1, seq_len, heads, dim),
                 cos.view(1, seq_len, dim),
                 sin.view(1, seq_len, dim),
                 2,
-            )
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ),
+                                         warmup=warmup,
+                                         rep=rep)
+
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

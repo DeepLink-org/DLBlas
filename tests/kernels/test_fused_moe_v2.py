@@ -6,9 +6,12 @@ import torch
 
 from dlblas.kernels.fused_moe_v2 import fused_moe
 from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blocked_fp8
+from dlblas.utils.device_utils import infer_device
+
+DEVICE = infer_device()
 
 
-def _make_A(M, K, group_size, out_dtype, device='cuda'):
+def _make_A(M, K, group_size, out_dtype, device=DEVICE):
     quant_A = torch.rand(M, K // group_size, group_size, dtype=torch.float32, device=device)
     # -1 ~ 1
     quant_A = quant_A * 2 - 1
@@ -29,7 +32,7 @@ def _make_A(M, K, group_size, out_dtype, device='cuda'):
     return A.to(torch.bfloat16), quant_A, scale
 
 
-def _make_B(E, N, K, group_size, out_dtype, device='cuda'):
+def _make_B(E, N, K, group_size, out_dtype, device=DEVICE):
     quant_B = torch.rand(E,
                          N // group_size,
                          group_size,
@@ -91,10 +94,10 @@ def test_fused_moe(
     w1, w1_quant, w1_scale = _make_B(local_e, 2 * n, k, group_size=group_size, out_dtype=quant_dtype)
     w2, w2_quant, w2_scale = _make_B(local_e, k, n, group_size=group_size, out_dtype=quant_dtype)
 
-    score = torch.randn((m, e), device='cuda', dtype=dtype)
-    e_map = torch.arange(e, device='cuda', dtype=torch.int32)
+    score = torch.randn((m, e), device=DEVICE, dtype=dtype)
+    e_map = torch.arange(e, device=DEVICE, dtype=torch.int32)
     e_map[e_map >= local_e] = -1
-    score = torch.rand(m, e, dtype=dtype, device='cuda')
+    score = torch.rand(m, e, dtype=dtype, device=DEVICE)
     routing_weights = torch.softmax(score, dim=-1, dtype=torch.float32)
     topk_weight, topk_idx = torch.topk(routing_weights, topk, dim=-1)
     topk_weight[topk_idx < local_e] = 0.0

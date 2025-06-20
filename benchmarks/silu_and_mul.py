@@ -7,6 +7,9 @@ import torch
 import triton
 
 from dlblas.kernels.activation import silu_and_mul
+from dlblas.utils.device_utils import infer_device
+
+DEVICE = infer_device()
 
 
 class TestSiluAndMul:
@@ -21,7 +24,7 @@ class TestSiluAndMul:
 
     @pytest.fixture
     def x(self, seqlen, feat_size):
-        yield torch.rand(seqlen, feat_size, dtype=torch.float16, device='cuda')
+        yield torch.rand(seqlen, feat_size, dtype=torch.float16, device=DEVICE)
 
     @pytest.fixture
     def gt(self, x):
@@ -48,7 +51,7 @@ def _test_silu_and_mul(x):
 def test():
     seqlen = 256
     feat_size = 4096
-    x = torch.rand(seqlen, feat_size, dtype=torch.float16, device='cuda')
+    x = torch.rand(seqlen, feat_size, dtype=torch.float16, device=DEVICE)
 
     gt = _gt(x)
     tt = _test_silu_and_mul(x)
@@ -69,17 +72,14 @@ def test():
         ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device='cuda'):
+    def bench_fn(op, provider):
         warmup = 100
         rep = 200
 
         if 'triton' in provider:
-            # fn = lambda: test_paged_attention(conti_q, blocked_kv, block_offsets, start_loc, seq_lens, history_lens, feat_dim_v)
-            fn = lambda: silu_and_mul(x)
+            ms = triton.testing.do_bench(lambda: silu_and_mul(x), warmup=warmup, rep=rep)
         if 'pytorch' in provider:
-            fn = lambda: _gt(x)
-
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ms = triton.testing.do_bench(lambda: _gt(x), warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

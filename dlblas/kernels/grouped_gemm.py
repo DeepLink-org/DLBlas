@@ -3,7 +3,9 @@ import torch
 import triton
 import triton.language as tl
 
-DEVICE = 'cuda'
+from dlblas.utils.device_utils import infer_device
+
+DEVICE = infer_device()
 
 
 @triton.autotune(
@@ -38,7 +40,6 @@ def grouped_matmul_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
-    pt = False
     tile_idx = tl.program_id(0)
     last_problem_end = 0
     for g in range(group_size):
@@ -65,7 +66,6 @@ def grouped_matmul_kernel(
             tile_n_idx = tile_idx_in_gemm % num_n_tiles
 
             # do regular gemm here
-            num = tl.cdiv(k, BLOCK_SIZE_K)
             offs_am = tile_m_idx * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_bn = tile_n_idx * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
             offs_k = tl.arange(0, BLOCK_SIZE_K)
@@ -129,8 +129,7 @@ def grouped_gemm(group_A, group_B):
     d_g_sizes = torch.tensor(g_sizes, dtype=torch.int32, device=DEVICE)
     d_g_lds = torch.tensor(g_lds, dtype=torch.int32, device=DEVICE)
     # we use a fixed number of CTA, and it's auto-tunable
-    grid = lambda META: (META['NUM_SM'], )
-    grouped_matmul_kernel[grid](
+    grouped_matmul_kernel[lambda META: (META['NUM_SM'], )](
         d_a_ptrs,
         d_b_ptrs,
         d_c_ptrs,

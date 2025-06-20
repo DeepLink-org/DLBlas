@@ -2,9 +2,10 @@
 import torch
 import torch.nn.functional as F
 import triton
-from einops import rearrange, repeat
+from einops import rearrange
 
 import dlblas
+from dlblas.utils.device_utils import infer_device
 
 
 def torch_layernorm_gated(x_ref, weight_ref, bias_ref, z_ref, group_size):
@@ -17,7 +18,6 @@ def torch_layernorm_gated(x_ref, weight_ref, bias_ref, z_ref, group_size):
 
 def torch_rmsnorm_gated(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_before_gate=True, upcast=True):
     dtype = x.dtype
-    N = x.shape[-1]
     weight = weight.float()
     bias = bias.float() if bias is not None else None
     if upcast:
@@ -40,7 +40,7 @@ def torch_rmsnorm_gated(x, weight, bias, z=None, eps=1e-6, group_size=None, norm
 
 
 def benchmark():
-    device_ = 'cuda'
+    device_ = infer_device()
     group_size = 64
     # set seed
     torch.random.manual_seed(0)
@@ -99,7 +99,7 @@ def benchmark():
             line_names=['Triton', 'PyTorch'],
             styles=[('red', '-'), ('blue', '-'), ('green', '-'), ('orange', '-')],
             ylabel='ms',
-            plot_name=f"norm-seqLen:{seqlen}",
+            plot_name=f'norm-seqLen={seqlen}',
             args={
                 'group_size': group_size,
                 'seqlen': seqlen,
@@ -119,23 +119,28 @@ def benchmark():
         bias = torch.randn(d, dtype=wtype, device=device_, requires_grad=True)
         is_rmsnorm = (kernel == 'rmsnorm_gated')
         if 'triton' in provider:
-            fn = lambda: dlblas.layernorm_gated(
-                x, weight, bias, z=z, eps=1e-5, group_size=group_size, norm_before_gate=True, is_rms_norm=is_rmsnorm)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ms = triton.testing.do_bench(lambda: dlblas.layernorm_gated(
+                x, weight, bias, z=z, eps=1e-5, group_size=group_size, norm_before_gate=True, is_rms_norm=is_rmsnorm),
+                                         warmup=warmup,
+                                         rep=rep)
 
         if 'pytorch' in provider:
             if is_rmsnorm:
-                fn = lambda: torch_rmsnorm_gated(x_pt,
-                                                 weight_pt,
-                                                 bias_pt,
-                                                 z=z_pt,
-                                                 eps=1e-5,
-                                                 group_size=group_size,
-                                                 norm_before_gate=True,
-                                                 upcast=False)
+                ms = triton.testing.do_bench(lambda: torch_rmsnorm_gated(x_pt,
+                                                                         weight_pt,
+                                                                         bias_pt,
+                                                                         z=z_pt,
+                                                                         eps=1e-5,
+                                                                         group_size=group_size,
+                                                                         norm_before_gate=True,
+                                                                         upcast=False),
+                                             warmup=warmup,
+                                             rep=rep)
             else:
-                fn = lambda: torch_layernorm_gated(x, weight, bias, z, group_size)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+                ms = triton.testing.do_bench(lambda: torch_layernorm_gated(x, weight, bias, z, group_size),
+                                             warmup=warmup,
+                                             rep=rep)
+
         return ms
 
     bench_layernorm_gated.run(show_plots=True, print_data=True)

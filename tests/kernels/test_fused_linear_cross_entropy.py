@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from dlblas.kernels.fused_linear_cross_entropy import LigerFusedLinearCrossEntropyFunction
 from dlblas.transformers.functional import liger_fused_linear_cross_entropy
 from dlblas.transformers.fused_linear_cross_entropy import LigerFusedLinearCrossEntropyLoss
-from dlblas.utils.utils import infer_device
+from dlblas.utils.device_utils import infer_device
 from tests.utils import assert_verbose_allclose, set_seed
 
 device = infer_device()

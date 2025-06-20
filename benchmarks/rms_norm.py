@@ -6,6 +6,7 @@ import torch
 import triton
 
 from dlblas.kernels.rms_norm import rms_norm
+from dlblas.utils.device_utils import infer_device
 
 
 def _gt(input, weight, eps):
@@ -22,8 +23,9 @@ def test_rms_norm(input, weight, eps):
 
 def test():
     dtype = torch.float16
-    input = torch.rand(4, 8, dtype=dtype, device='cuda')
-    weight = torch.rand(8, dtype=dtype, device='cuda')
+    device = infer_device()
+    input = torch.rand(4, 8, dtype=dtype, device=device)
+    weight = torch.rand(8, dtype=dtype, device=device)
     eps = 1e-6
 
     gt = _gt(input, weight, eps)
@@ -45,16 +47,14 @@ def test():
         ))
 
     @triton.testing.perf_report(configs)
-    def bench_fn(op, provider, device='cuda'):
+    def bench_fn(op, provider):
         warmup = 100
         rep = 200
 
         if 'triton' in provider:
-            fn = lambda: rms_norm(input, weight, eps)
+            ms = triton.testing.do_bench(lambda: rms_norm(input, weight, eps), warmup=warmup, rep=rep)
         if 'pytorch' in provider:
-            fn = lambda: _gt(input, weight, eps)
-
-        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            ms = triton.testing.do_bench(lambda: _gt(input, weight, eps), warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)

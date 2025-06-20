@@ -1,11 +1,10 @@
 # Copyright (c) 2025, DeepLink.
 import torch
 import triton
-from einops import einsum, rearrange, repeat
+from einops import einsum
 
-import dlblas
 from dlblas.kernels.selective_scan import SelectiveScan
-from dlblas.utils.device_utils import get_idle_device
+from dlblas.utils.device_utils import infer_device
 
 
 # credit: https://github.com/johnma2006/mamba-minimal/blob/master/model.py#L275
@@ -32,7 +31,7 @@ def ref_selective_scan(u, delta, A, B, C, initial_state):
         output: shape (b, l, d_in)
 
     Official Implementation:
-        selective_scan_ref(), https://github.com/state-spaces/mamba/blob/main/mamba_ssm/ops/selective_scan_interface.py#L86
+        selective_scan_ref(), https://github.com/state-spaces/mamba/blob/main/mamba_ssm/ops/selective_scan_interface.py#L86  # noqa
         Note: I refactored some parts out of `selective_scan_ref` out, so the functionality doesn't match exactly.
 
     """
@@ -66,8 +65,7 @@ def ref_selective_scan(u, delta, A, B, C, initial_state):
     return y.to(original_dtype), x
 
 
-device_ = torch.device(get_idle_device())
-torch.cuda.set_device(device_)
+device_ = torch.device(infer_device())
 
 
 def test():
@@ -76,14 +74,13 @@ def test():
     D = 512
     K = 16
     dtype = torch.float32
-    A = (-(torch.rand(D, K, dtype=dtype)).exp().cuda()).requires_grad_(True)
-    x = torch.randn(B, T, D, dtype=dtype).cuda().requires_grad_(True)
-    delta = torch.randn(B, T, D, dtype=dtype).sigmoid().cuda().requires_grad_(True)
-    B2 = torch.randn(B, T, K, dtype=dtype).cuda().requires_grad_(True)
-    C = torch.randn(B, T, K, dtype=dtype).cuda().requires_grad_(True)
-    D2 = torch.randn(D, dtype=dtype).cuda().requires_grad_(True)
+    A = (-(torch.rand(D, K, dtype=dtype)).exp().to(device_)).requires_grad_(True)
+    x = torch.randn(B, T, D, dtype=dtype).to(device_).requires_grad_(True)
+    delta = torch.randn(B, T, D, dtype=dtype).sigmoid().to(device_).requires_grad_(True)
+    B2 = torch.randn(B, T, K, dtype=dtype).to(device_).requires_grad_(True)
+    C = torch.randn(B, T, K, dtype=dtype).to(device_).requires_grad_(True)
 
-    initial_state = torch.randn(B, D, K, dtype=dtype).cuda().requires_grad_(False)
+    initial_state = torch.randn(B, D, K, dtype=dtype).to(device_).requires_grad_(False)
 
     tri, tri_final = SelectiveScan.apply(x, delta, A, B2, C, initial_state)
     do = torch.randn_like(tri)
@@ -131,7 +128,7 @@ def test():
             line_names=['Triton', 'PyTorch'],
             styles=[('red', '-'), ('blue', '-'), ('green', '-'), ('orange', '-')],
             ylabel='ms',
-            plot_name=f"selective_scan-B:{B}-T:{T}-D:{D}-K:{K}",
+            plot_name=f"selective_scan-B={B}-T={T}-D={D}-K={K}",
             args={},
         ))
 
@@ -141,25 +138,25 @@ def test():
         rep = 200
         if 'triton' in provider:
             if 'fwd' == op:
-                fn = lambda: SelectiveScan.apply(x, delta, A, B2, C, initial_state)
-                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+                ms = triton.testing.do_bench(lambda: SelectiveScan.apply(x, delta, A, B2, C, initial_state),
+                                             warmup=warmup,
+                                             rep=rep)
             elif 'bwd' == op:
-                tri, tri_final = SelectiveScan.apply(x, delta, A, B2, C, initial_state)
+                tri, _ = SelectiveScan.apply(x, delta, A, B2, C, initial_state)
                 do = torch.randn_like(tri)
-                bwd_fn = lambda: tri.backward(do, retain_graph=True)
-                ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
+                ms = triton.testing.do_bench(lambda: tri.backward(do, retain_graph=True), warmup=warmup, rep=rep)
             else:
                 raise Exception()
 
         if 'pytorch' in provider:
             if 'fwd' == op:
-                fn = lambda: ref_selective_scan(x, delta, A, B2, C, initial_state)
-                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+                ms = triton.testing.do_bench(lambda: ref_selective_scan(x, delta, A, B2, C, initial_state),
+                                             warmup=warmup,
+                                             rep=rep)
             elif 'bwd' == op:
-                tri, tri_final = ref_selective_scan(x, delta, A, B2, C, initial_state)
+                tri, _ = ref_selective_scan(x, delta, A, B2, C, initial_state)
                 do = torch.randn_like(tri)
-                bwd_fn = lambda: tri.backward(do, retain_graph=True)
-                ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
+                ms = triton.testing.do_bench(lambda: tri.backward(do, retain_graph=True), warmup=warmup, rep=rep)
             else:
                 raise Exception()
         return ms

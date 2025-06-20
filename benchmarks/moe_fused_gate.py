@@ -4,6 +4,7 @@ import triton
 
 import dlblas
 from dlblas.kernels.moe import biased_grouped_topk
+from dlblas.utils.device_utils import infer_device
 
 
 def biased_grouped_topk_org(scores, bias, num_expert_group, topk_group, topk):
@@ -39,7 +40,7 @@ configs = [(sq, ) for sq in seq_length_range]
     ))
 def benchmark(seq_length, provider):
     dtype = torch.bfloat16
-    device = torch.device('cuda')
+    device = infer_device()
     num_experts, num_expert_group, topk_group, topk = 256, 8, 4, 8
 
     scores = torch.randn((seq_length, num_experts), device=device, dtype=dtype)
