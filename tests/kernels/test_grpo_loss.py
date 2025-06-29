@@ -7,6 +7,11 @@ from typing import Callable, Optional, List
 from dlblas.kernels.grpo_loss import GRPOLoss
 
 
+KL = 0
+UNBIAS = 1
+MSE = 2
+
+
 def benchmark_with_event(
     target_fn: Callable[[None], None],
     warmup_iters: int = 10,
@@ -75,6 +80,12 @@ def benchmark_with_event(
 
 
 def reference_forward(_logprobs, _old_logprobs, _advantages, _ref_logprobs, kl_type=1, kl_coef=1.0, _loss_factor = 1.0, clip = 0.2):
+    kl_type = {
+        'kl': KL,
+        'unbias': UNBIAS,
+        'mse': MSE
+    }.get(kl_type, None)
+
     logprobs_diff = _logprobs - _old_logprobs
     ratio = torch.exp(logprobs_diff)
     pg_losses = -_advantages.unsqueeze(1) * ratio
@@ -99,7 +110,7 @@ def reference_forward(_logprobs, _old_logprobs, _advantages, _ref_logprobs, kl_t
     return loss
 
 
-def reference_backward(log_probs,  ref_loss):
+def reference_backward(log_probs, ref_loss):
     ref_loss.backward(ref_loss)
     ref_logp = log_probs.grad
     return ref_logp
@@ -128,7 +139,7 @@ class TestGRPOLoss:
         out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
 
         loss_factor = kl_coef = 1.0
-        kl_type = "unbias"
+        kl_type = "mse"
         clip = 0.2
 
         lat_tri_loss = benchmark_with_event(
@@ -144,24 +155,23 @@ class TestGRPOLoss:
 
         lat_out_logp = benchmark_with_event(
             lambda: grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
-                        out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T),
+                        out_logprobs, advantages, kl_type, clip, B, T, V, BLOCK_SIZE_T),
             flush_l2=True,
             warmup_iters=0,
             benchmark_iters=1,
         )
 
         out_logp = grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
-                        out_logprobs, advantages, clip, B, T, V, BLOCK_SIZE_T)
+                        out_logprobs, advantages, kl_type, clip, B, T, V, BLOCK_SIZE_T)
 
         lat_ref_loss = benchmark_with_event(
             lambda: reference_forward(log_probs, log_probs1, advantages,
-                    log_probs2, 1, kl_coef, loss_factor, clip),
+                    log_probs2, kl_type, kl_coef, loss_factor, clip),
             flush_l2=True,
         )
 
         ref_loss = reference_forward(log_probs, log_probs1, advantages,
-                    log_probs2, 1, kl_coef, loss_factor, clip)
-
+                        log_probs2, kl_type, kl_coef, loss_factor, clip)
         lat_ref_logp = benchmark_with_event(
             lambda: reference_backward(log_probs, ref_loss),
             flush_l2=True,

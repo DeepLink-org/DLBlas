@@ -1,7 +1,8 @@
 # Copyright (c) 2025, DeepLink.
 import triton
 import triton.language as tl
-import torch.nn as nn
+import torch
+
 
 if triton.__version__ >= "3.0.0":
     from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
@@ -53,6 +54,7 @@ def grpo_loss_fwd_kernel(
                       1.0 + clip)
     pg_losses2 = -adv_expand * ratio_clamp
     pg_loss_max = tl.maximum(pg_losses, pg_losses2)
+
     pg_loss = tl.sum(pg_loss_max)
     loss = pg_loss * loss_factor
 
@@ -61,6 +63,8 @@ def grpo_loss_fwd_kernel(
                           offs_ref_dim1[:, None] * V +
                           offs_probs_dim2[None, :])
 
+    # init empty variable occupation
+    kl_penalty_loss = tl.zeros((T,), dtype=tl.float32)
     if kl_type == 0:
         kl = d_ref_log_probs - d_log_probs
         kl_penalty_loss = kl_coef * kl
@@ -91,6 +95,7 @@ def grpo_loss_bwd_kernel(
     REF_LOGP,
     OUT_LOGP,
     ADVANTAGES,
+    KL_TYPE: tl.constexpr,
     CLIP: tl.constexpr,
     BETA: tl.constexpr,
     B: tl.constexpr,
@@ -99,7 +104,6 @@ def grpo_loss_bwd_kernel(
 ):
     # current index
     pid = tl.program_id(axis=0)
-
     offs_probs_dim1 = pid * T + tl.arange(0, T)
     offs_probs_dim2 = tl.arange(0, V)
     d_log_probs = tl.load(LOGP +
@@ -112,11 +116,11 @@ def grpo_loss_bwd_kernel(
                           offs_probs_dim1[:, None] * V +
                           offs_probs_dim2[None, :])
 
-    log_probs_diff = d_log_probs - d_log_probs_old
-    log_probs_diff1 = d_log_probs_ref - d_log_probs
-    exp = tl_exp(log_probs_diff)
-    exp1 = tl_exp(log_probs_diff1)
-    clamp = tl.clamp(exp, 0.8, 1.2)
+    log_probs_diff_new = d_log_probs - d_log_probs_old
+    log_probs_diff_ref = d_log_probs_ref - d_log_probs
+    exp_new = tl_exp(log_probs_diff_new)
+    exp_ref = tl_exp(log_probs_diff_ref)
+    clamp = tl.clamp(exp_new, 1.0 - CLIP, 1.0 + CLIP)
 
     adv_off = tl.arange(0, T)
     d_advantages = tl.load(ADVANTAGES + adv_off)
@@ -125,52 +129,64 @@ def grpo_loss_bwd_kernel(
     # load data and calculate
     loss_off = tl.arange(0, T)
     d_loss = tl.load(DLOSS + loss_off).to(tl.float32)
-    d_loss = tl.expand_dims(d_loss, 1)
-    loss_expand = tl.broadcast_to(d_loss, (T, V))
-    neg2 = -loss_expand
-    mul7 = loss_expand * exp1
-    add1 = neg2 + mul7
-    neg3 = -add1
+
+    # empty occupation for loss_calc
+    loss_calc = tl.zeros((T, V), dtype=tl.float32)
+
+    # 3 situation for kl_type
+    if KL_TYPE == 0:
+        d_loss = tl.expand_dims(d_loss, 1)
+        loss_calc = tl.broadcast_to(d_loss, (T, V))
+    elif KL_TYPE == 1:
+        d_loss = tl.expand_dims(d_loss, 1)
+        loss_expand = tl.broadcast_to(d_loss, (T, V))
+        loss_calc = loss_expand * exp_ref - loss_expand
+    elif KL_TYPE == 2:
+        d_loss = tl.expand_dims(d_loss, 1)
+        loss_expand = tl.broadcast_to(d_loss, (T, V))
+
+        # deal with kl_type == 2
+        # different calculate method
+        loss_calc = loss_expand * log_probs_diff_ref
+    else:
+        assert False
 
     sum_loss = tl.sum(d_loss)
     sum_loss = tl.broadcast_to(sum_loss, (T, V))
 
     zeros = tl.zeros((T, V), tl.float32)
-    neg = -adv_expand
-    mul = neg * exp
-    mul1 = neg * clamp
-    where = tl.where(mul == mul1, sum_loss / 2, sum_loss)
-    gt = tl.where(mul > mul1, zeros, where)
-    lt = tl.where(mul < mul1, zeros, where)
+    ratio_left = -adv_expand * exp_new
+    ratio_right = -adv_expand * clamp
+    where = tl.where(ratio_left == ratio_right, sum_loss / 2, sum_loss)
+    gt = tl.where(ratio_left > ratio_right, zeros, where)
+    lt = tl.where(ratio_left < ratio_right, zeros, where)
 
-    mul9 = gt * neg
-    mul10 = gt * clamp
-    sum4 = tl.sum(mul10, axis=1)
-    where2 = tl.where(exp >= 0.8 and exp <= 1.2, mul9, zeros)
+    ratio_sum = tl.sum(gt * clamp, axis=1)
+    where_exp = tl.where(exp_new >= 1 - CLIP and exp_new <= 1 + CLIP, -gt * adv_expand, zeros)
+    ratio_expand = tl.expand_dims(-ratio_sum, 1)
+    exp_sum = tl.sum(lt * exp_new, axis=1)
 
-    neg4 = -sum4
-    neg4_expand = tl.expand_dims(neg4, 1)
-    mul11 = -lt * adv_expand
-    mul12 = lt * exp
-    sum5 = tl.sum(mul12, axis=1)
+    exp_expand = tl.expand_dims(-exp_sum, 1)
+    grad3 = ratio_expand + exp_expand
+    exp_mul = (where_exp - lt * adv_expand) * exp_new
+    grad1 = exp_mul - loss_calc
 
-    add2 = where2 + mul11
-    neg5 = -sum5
-    neg5_expand = tl.expand_dims(neg5, 1)
-    add3 = neg4_expand + neg5_expand
-    mul13 = add2 * exp
-    neg6 = -mul13
-    add4 = neg3 + mul13
-    add5 = add1 + neg6
+    # calculate loss gradients
+    if KL_TYPE == 2:
+        grad2 = -exp_mul
+    elif KL_TYPE == 0 or KL_TYPE == 1:
+        grad2 = loss_calc - exp_mul
+    else:
+        assert False
 
     # output loss value
     tl.store(OUT_LOGP +
              offs_probs_dim1[:, None] * V +
              offs_probs_dim2[None, :],
-             add4)
+             grad1)
 
 
-class GRPOLoss(nn.Module):
+class GRPOLoss(torch.autograd.Function):
     def __init__(self) -> None:
         super().__init__()
 
@@ -213,6 +229,7 @@ class GRPOLoss(nn.Module):
         ref_logprobs,
         out_logprobs,
         advantages,
+        kl_type,
         clip,
         B,
         T,
@@ -223,7 +240,13 @@ class GRPOLoss(nn.Module):
             ref_logprobs = log_probs.detach()
         beta = 1.0
 
+        kl_type = {
+            'kl': KL,
+            'unbias': UNBIAS,
+            'mse': MSE
+        }.get(kl_type, None)
+
         grid = lambda META: (T // BLOCK_SIZE_T,)
         grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_logprobs,
-                                    out_logprobs, advantages, clip, beta, B, T, V)
+                                    out_logprobs, advantages, kl_type, clip, beta, B, T, V)
         return out_logprobs
