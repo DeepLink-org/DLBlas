@@ -122,6 +122,40 @@ def triton_grpo_loss(
     )
 
 
+def all_close(name, tensor1, tensor2, rtol, atol):
+    # 确保张量在相同设备上
+    if tensor1.device != tensor2.device:
+        tensor2 = tensor2.to(tensor1.device)
+
+    # 计算各项差异指标
+    abs_diff = torch.abs(tensor1 - tensor2)
+    rel_diff = abs_diff / (torch.abs(tensor2) + 1e-8)  # 防止除以0
+
+    max_abs_diff = abs_diff.max().item()
+    max_rel_diff = rel_diff.max().item()
+    abs_diff_mean = abs_diff.mean().item()
+    rel_diff_mean = rel_diff.mean().item()
+
+    # 计算通过比例
+    abs_pass = (abs_diff <= atol)
+    rel_pass = (rel_diff <= rtol)
+    pass_mask = (abs_pass | rel_pass)
+    pass_rate = pass_mask.float().mean().item() * 100
+
+    # 使用torch.allclose判断是否通过
+    is_close = torch.allclose(tensor1, tensor2, rtol=rtol, atol=atol)
+
+    # 输出结果
+    print(f"\n===== {name} 比较结果 =====")
+    print(f"张量形状: {tensor1.shape} (原始), {tensor2.shape} (参考)")
+    print(f"最大绝对误差: {max_abs_diff:.4e} | 最大相对误差: {max_rel_diff:.4e}")
+    print(f"平均绝对误差: {abs_diff_mean:.4e} | 平均相对误差: {rel_diff_mean:.4e}")
+    print(f"精度通过率: {pass_rate:.2f}% ({pass_mask.sum()}/{pass_mask.numel()} 元素)")
+    print(f"符合精度要求(rtol={rtol}, atol={atol}): {'是' if is_close else '否'}")
+
+    return is_close
+
+
 def grpo_loss_kernel(kl_type="unbias"):
     B = 8
     T = 32
@@ -176,8 +210,8 @@ def grpo_loss_kernel(kl_type="unbias"):
         benchmark_iters=1,
     )
 
-    assert torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
-    assert torch.allclose(log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4)
+    assert all_close("forward", tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
+    assert all_close("backward", log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4)
 
     print('forward accuracy: ', torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4))
     print('backward accuracy: ', torch.allclose(log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4))
