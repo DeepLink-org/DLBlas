@@ -112,15 +112,13 @@ def torch_grpo_loss( _logprobs, _old_logprobs, _advantages, _ref_logprobs,
 
 def triton_grpo_loss(
     log_probs, log_probs1, log_probs2,
-    advantages, kl_type, kl_coef, loss_factor, clip,
-    B, T, V, BLOCK_SIZE_T
+    advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T
 ):
     assert log_probs is not None and log_probs1 is not None and log_probs2 is not None
 
     return GRPOLoss.apply(
         log_probs, log_probs1, log_probs2,
-        advantages, kl_type, kl_coef, loss_factor, clip,
-        B, T, V, BLOCK_SIZE_T
+        advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T
     )
 
 
@@ -149,14 +147,12 @@ def grpo_loss_kernel(kl_type="unbias"):
 
     lat_tri_loss = benchmark_with_event(
         lambda: triton_grpo_loss(log_probs, log_probs1, log_probs2,
-                        advantages, kl_type, kl_coef, loss_factor, clip,
-                        B, T, V, BLOCK_SIZE_T),
+                        advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T),
         flush_l2=True,
     )
 
     tri_loss = triton_grpo_loss(log_probs, log_probs1, log_probs2,
-                        advantages, kl_type, kl_coef, loss_factor, clip,
-                        B, T, V, BLOCK_SIZE_T)
+                        advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T)
 
     lat_out_logp = benchmark_with_event(
         lambda: tri_loss.backward(tri_loss),

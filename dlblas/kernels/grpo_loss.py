@@ -25,7 +25,6 @@ def grpo_loss_fwd_kernel(
     loss_factor,
     clip,
     out_loss,
-    B: tl.constexpr,
     T: tl.constexpr,
     V: tl.constexpr,
     BLOCK_SIZE_T: tl.constexpr,
@@ -209,11 +208,9 @@ class GRPOLoss(torch.autograd.Function):
         kl_coef,
         loss_factor,
         clip,
-        B,
-        T,
-        V,
         BLOCK_SIZE_T,
     ):
+        T, V = log_probs.shape
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
         loss = torch.zeros((T,), dtype=torch.float32, device='cuda', requires_grad=True)
@@ -227,10 +224,10 @@ class GRPOLoss(torch.autograd.Function):
         grid = lambda META: (T // BLOCK_SIZE_T,)
         grpo_loss_fwd_kernel[grid](log_probs, old_logprobs,
                             ref_log_probs, advantages, kl_type, kl_coef,
-                            loss_factor, clip, loss, B, T, V, BLOCK_SIZE_T)
+                            loss_factor, clip, loss, T, V, BLOCK_SIZE_T)
 
         ctx.save_for_backward(log_probs, old_logprobs, ref_log_probs, advantages)
-        ctx.infos = (kl_type, kl_coef, loss_factor, clip, B, T, V, BLOCK_SIZE_T)
+        ctx.infos = (kl_type, kl_coef, loss_factor, clip, T, V, BLOCK_SIZE_T)
         return loss
 
     @staticmethod
@@ -240,7 +237,7 @@ class GRPOLoss(torch.autograd.Function):
     ):
         loss = args[0]
         log_probs, old_logprobs, ref_log_probs, advantages = ctx.saved_tensors
-        kl_type, kl_coef, loss_factor, clip, B, T, V, BLOCK_SIZE_T = ctx.infos
+        kl_type, kl_coef, loss_factor, clip, T, V, BLOCK_SIZE_T = ctx.infos
 
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
