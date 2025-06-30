@@ -94,11 +94,11 @@ def grpo_loss_bwd_kernel(
     OLD_LOGP,
     REF_LOGP,
     OUT_LOGP,
+    OUT_LOGP1,
+    OUT_LOGP2,
     ADVANTAGES,
     KL_TYPE: tl.constexpr,
     CLIP: tl.constexpr,
-    BETA: tl.constexpr,
-    B: tl.constexpr,
     T: tl.constexpr,
     V: tl.constexpr,
 ):
@@ -184,6 +184,14 @@ def grpo_loss_bwd_kernel(
              offs_probs_dim1[:, None] * V +
              offs_probs_dim2[None, :],
              grad1)
+    tl.store(OUT_LOGP1 +
+             offs_probs_dim1[:, None] * V +
+             offs_probs_dim2[None, :],
+             grad2)
+    tl.store(OUT_LOGP2 +
+             offs_probs_dim1[:, None] * V +
+             offs_probs_dim2[None, :],
+             grad3)
 
 
 class GRPOLoss(torch.autograd.Function):
@@ -237,8 +245,10 @@ class GRPOLoss(torch.autograd.Function):
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
         out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        out_logprobs1 = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        out_logprobs2 = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
 
         grid = lambda META: (T // BLOCK_SIZE_T,)
-        grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_log_probs,
-                                    out_logprobs, advantages, kl_type, clip, loss_factor, B, T, V)
-        return out_logprobs, None, None, None, None, None, None, None, None, None, None, None
+        grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_log_probs, out_logprobs,
+                                    out_logprobs1, out_logprobs2, advantages, kl_type, clip, T, V)
+        return out_logprobs, out_logprobs1, out_logprobs2, None, None, None, None, None, None, None, None, None
