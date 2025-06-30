@@ -190,8 +190,9 @@ class GRPOLoss(torch.autograd.Function):
     def __init__(self) -> None:
         super().__init__()
 
+    @staticmethod
     def forward(
-        self,
+        ctx,
         log_probs,
         old_logprobs,
         ref_log_probs,
@@ -200,7 +201,6 @@ class GRPOLoss(torch.autograd.Function):
         kl_coef,
         loss_factor,
         clip,
-        loss,
         B,
         T,
         V,
@@ -208,6 +208,7 @@ class GRPOLoss(torch.autograd.Function):
     ):
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
+        loss = torch.zeros((T,), dtype=torch.float32, device='cuda', requires_grad=True)
 
         kl_type = {
             'kl': KL,
@@ -219,34 +220,25 @@ class GRPOLoss(torch.autograd.Function):
         grpo_loss_fwd_kernel[grid](log_probs, old_logprobs,
                             ref_log_probs, advantages, kl_type, kl_coef,
                             loss_factor, clip, loss, B, T, V, BLOCK_SIZE_T)
+
+        ctx.save_for_backward(log_probs, old_logprobs, ref_log_probs, advantages)
+        ctx.infos = (kl_type, kl_coef, loss_factor, clip, B, T, V, BLOCK_SIZE_T)
         return loss
 
+    @staticmethod
     def backward(
-        self,
-        loss,
-        log_probs,
-        old_logprobs,
-        ref_logprobs,
-        out_logprobs,
-        advantages,
-        kl_type,
-        clip,
-        B,
-        T,
-        V,
-        BLOCK_SIZE_T,
+        ctx,
+        *args,
     ):
-        if ref_logprobs is None:
-            ref_logprobs = log_probs.detach()
-        beta = 1.0
+        loss = args[0]
+        log_probs, old_logprobs, ref_log_probs, advantages = ctx.saved_tensors
+        kl_type, kl_coef, loss_factor, clip, B, T, V, BLOCK_SIZE_T = ctx.infos
 
-        kl_type = {
-            'kl': KL,
-            'unbias': UNBIAS,
-            'mse': MSE
-        }.get(kl_type, None)
+        if ref_log_probs is None:
+            ref_log_probs = log_probs.detach()
+        out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
 
         grid = lambda META: (T // BLOCK_SIZE_T,)
-        grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_logprobs,
-                                    out_logprobs, advantages, kl_type, clip, beta, B, T, V)
-        return out_logprobs
+        grpo_loss_bwd_kernel[grid](loss, log_probs, old_logprobs, ref_log_probs,
+                                    out_logprobs, advantages, kl_type, clip, loss_factor, B, T, V)
+        return out_logprobs, None, None, None, None, None, None, None, None, None, None, None

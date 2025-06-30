@@ -1,5 +1,4 @@
 # Copyright (c) 2025, DeepLink.
-import pytest
 import torch
 import os
 from typing import Callable, Optional, List
@@ -79,7 +78,8 @@ def benchmark_with_event(
     return torch.tensor(latencies).median().item() * 1000
 
 
-def reference_forward(_logprobs, _old_logprobs, _advantages, _ref_logprobs, kl_type=1, kl_coef=1.0, _loss_factor = 1.0, clip = 0.2):
+def torch_grpo_loss( _logprobs, _old_logprobs, _advantages, _ref_logprobs,
+        kl_type=1, kl_coef=1.0, _loss_factor = 1.0, clip = 0.2):
     kl_type = {
         'kl': KL,
         'unbias': UNBIAS,
@@ -110,82 +110,91 @@ def reference_forward(_logprobs, _old_logprobs, _advantages, _ref_logprobs, kl_t
     return loss
 
 
-def reference_backward(log_probs, ref_loss):
-    ref_loss.backward(ref_loss)
-    ref_logp = log_probs.grad
-    return ref_logp
+def triton_grpo_loss(
+    log_probs, log_probs1, log_probs2,
+    advantages, kl_type, kl_coef, loss_factor, clip,
+    B, T, V, BLOCK_SIZE_T
+):
+    assert log_probs is not None and log_probs1 is not None and log_probs2 is not None
+
+    return GRPOLoss.apply(
+        log_probs, log_probs1, log_probs2,
+        advantages, kl_type, kl_coef, loss_factor, clip,
+        B, T, V, BLOCK_SIZE_T
+    )
+
+
+def grpo_loss_kernel(kl_type="unbias"):
+    B = 8
+    T = 32
+    H = 256
+    V = 1024
+    BLOCK_SIZE_T = 32
+
+    torch.cuda.set_device('cuda:0')
+    torch.manual_seed(42)
+
+    advantages = torch.randn((T,), dtype=torch.float32, device='cuda', requires_grad=True)
+    log_probs = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+    log_probs1 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+    log_probs2 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+
+    std_advantages = torch.tensor(advantages.detach(), requires_grad=True)
+    std_log_probs = torch.tensor(log_probs.detach(), requires_grad=True)
+    std_log_probs1 = torch.tensor(log_probs1.detach(), requires_grad=True)
+    std_log_probs2 = torch.tensor(log_probs2.detach(), requires_grad=True)
+
+    loss_factor = kl_coef = 1.0
+    clip = 0.2
+
+    lat_tri_loss = benchmark_with_event(
+        lambda: triton_grpo_loss(log_probs, log_probs1, log_probs2,
+                        advantages, kl_type, kl_coef, loss_factor, clip,
+                        B, T, V, BLOCK_SIZE_T),
+        flush_l2=True,
+    )
+
+    tri_loss = triton_grpo_loss(log_probs, log_probs1, log_probs2,
+                        advantages, kl_type, kl_coef, loss_factor, clip,
+                        B, T, V, BLOCK_SIZE_T)
+
+    lat_out_logp = benchmark_with_event(
+        lambda: tri_loss.backward(tri_loss),
+        flush_l2=True,
+        warmup_iters=0,
+        benchmark_iters=1,
+    )
+
+    lat_ref_loss = benchmark_with_event(
+        lambda: torch_grpo_loss(std_log_probs, std_log_probs1, std_advantages,
+                std_log_probs2, kl_type, kl_coef, loss_factor, clip),
+        flush_l2=True,
+    )
+
+    ref_loss = torch_grpo_loss(std_log_probs, std_log_probs1, std_advantages,
+                std_log_probs2, kl_type, kl_coef, loss_factor, clip)
+    lat_ref_logp = benchmark_with_event(
+        lambda: ref_loss.backward(ref_loss),
+        flush_l2=True,
+        warmup_iters=0,
+        benchmark_iters=1,
+    )
+
+    assert torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
+    assert torch.allclose(log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4)
+
+    print('forward accuracy: ', torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4))
+    print('backward accuracy: ', torch.allclose(log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4))
+
+    print('tri_loss latency: ', lat_tri_loss)
+    print('ref_loss latency: ', lat_ref_loss)
+    print('tri_logp latency: ', lat_out_logp)
+    print('ref_logp latency: ', lat_ref_logp)
 
 
 class TestGRPOLoss:
 
     def test_grpo_loss(self):
-
-        grpo = GRPOLoss()
-
-        B = 8
-        T = 32
-        H = 256
-        V = 1024
-        BLOCK_SIZE_T = 32
-
-        torch.cuda.set_device('cuda:0')
-        torch.manual_seed(42)
-
-        loss = torch.zeros((T,), dtype=torch.float32, device='cuda', requires_grad=True)
-        advantages = torch.randn((T,), dtype=torch.float32, device='cuda', requires_grad=True)
-        log_probs = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-        log_probs1 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-        log_probs2 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-        out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-
-        loss_factor = kl_coef = 1.0
-        kl_type = "mse"
-        clip = 0.2
-
-        lat_tri_loss = benchmark_with_event(
-            lambda: grpo.forward(log_probs, log_probs1, log_probs2,
-                            advantages, kl_type, kl_coef, loss_factor, clip,
-                            loss, B, T, V, BLOCK_SIZE_T),
-            flush_l2=True,
-        )
-
-        tri_loss = grpo.forward(log_probs, log_probs1, log_probs2,
-                            advantages, kl_type, kl_coef, loss_factor, clip,
-                            loss, B, T, V, BLOCK_SIZE_T)
-
-        lat_out_logp = benchmark_with_event(
-            lambda: grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
-                        out_logprobs, advantages, kl_type, clip, B, T, V, BLOCK_SIZE_T),
-            flush_l2=True,
-            warmup_iters=0,
-            benchmark_iters=1,
-        )
-
-        out_logp = grpo.backward(tri_loss, log_probs, log_probs1, log_probs2,
-                        out_logprobs, advantages, kl_type, clip, B, T, V, BLOCK_SIZE_T)
-
-        lat_ref_loss = benchmark_with_event(
-            lambda: reference_forward(log_probs, log_probs1, advantages,
-                    log_probs2, kl_type, kl_coef, loss_factor, clip),
-            flush_l2=True,
-        )
-
-        ref_loss = reference_forward(log_probs, log_probs1, advantages,
-                        log_probs2, kl_type, kl_coef, loss_factor, clip)
-        lat_ref_logp = benchmark_with_event(
-            lambda: reference_backward(log_probs, ref_loss),
-            flush_l2=True,
-            warmup_iters=0,
-            benchmark_iters=1,
-        )
-
-        assert torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
-        assert torch.allclose(out_logp, log_probs.grad, rtol=1e-2, atol=1e-4)
-
-        print('forward accuracy: ', torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4))
-        print('backward accuracy: ', torch.allclose(out_logp, log_probs.grad, rtol=1e-2, atol=1e-4))
-
-        print('tri_loss latency: ', lat_tri_loss)
-        print('ref_loss latency: ', lat_ref_loss)
-        print('tri_logp latency: ', lat_out_logp)
-        print('ref_logp latency: ', lat_ref_logp)
+        grpo_loss_kernel("kl")
+        grpo_loss_kernel("unbias")
+        grpo_loss_kernel("mse")
