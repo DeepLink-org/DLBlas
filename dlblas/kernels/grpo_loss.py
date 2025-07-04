@@ -220,7 +220,7 @@ class GRPOLoss(torch.autograd.Function):
         T, V = log_probs.shape
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
-        loss = torch.zeros((T,), dtype=torch.float32, device='cuda', requires_grad=True)
+        loss = torch.empty((T,), dtype=torch.float32, device='cuda', requires_grad=True)
 
         kl_type = {
             'kl': KL,
@@ -228,7 +228,7 @@ class GRPOLoss(torch.autograd.Function):
             'mse': MSE
         }.get(kl_type, None)
 
-        loss_max = torch.zeros((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        loss_max = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
         grid = lambda META: (T // BLOCK_SIZE_T,)
         ctx.exeKernel.grpo_loss_fwd_kernel[grid](log_probs, old_logprobs,
                             ref_log_probs, advantages, kl_type, kl_coef,
