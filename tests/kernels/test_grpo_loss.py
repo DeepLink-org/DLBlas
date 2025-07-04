@@ -161,7 +161,7 @@ def grpo_loss_kernel(kl_type="unbias"):
     T = 32
     H = 256
     V = 1024
-    BLOCK_SIZE_T = 32
+    BLOCK_SIZE_T = 8
 
     torch.cuda.set_device('cuda:0')
     torch.manual_seed(42)
