@@ -42,12 +42,16 @@ def get_buffer_common(
     num_rdma_bytes = max(
         Buffer.get_low_latency_rdma_size_hint(num_max_dispatch_tokens_per_rank, hidden, group.size(), num_experts),
         num_rdma_bytes)
+    if os.getenv('DEEPEP_FIX_BUFFER_INIT_BUG', 'False').lower() == 'true':
+        num_qps_per_rank_ = max(num_experts // group.size(), Buffer.num_sms // 2)
+    else:
+        num_qps_per_rank_ = num_experts // group.size()
     _buffer_common = Buffer(
         group,
         num_nvl_bytes=num_nvl_bytes,
         num_rdma_bytes=num_rdma_bytes,
         low_latency_mode=True,
-        num_qps_per_rank=max(num_experts // group.size(), Buffer.num_sms // 2),
+        num_qps_per_rank=num_qps_per_rank_,
     )
     return _buffer_common
 
