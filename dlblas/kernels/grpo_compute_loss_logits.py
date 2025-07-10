@@ -8,75 +8,120 @@ from torch.cuda.amp import autocast
 import triton
 import triton.language as tl
 #reference:  https://github.com/unslothai/unsloth-zoo/blob/main/unsloth_zoo/rl_replacements.py
+
+@triton.jit
+def _update_logsumexp(chunk, m, s):
+    chunk_m = tl.max(chunk, 0)
+    new_m = tl.maximum(m, chunk_m)
+    s_rescaled = s * tl.exp(m - new_m)
+    chunk_s = tl.sum(tl.exp(chunk - new_m), 0)
+    s = s_rescaled + chunk_s
+    m = new_m
+    return m, s
+
 @triton.jit
 def grpo_loss_kernel(
-    # 输入指针
+    # Pointers
     new_logits_ptr, ref_logits_ptr, old_logits_ptr,
     input_ids_ptr, advantages_ptr, mask_ptr,
-    # 预计算的 logsumexp 指针
-    lse_new_ptr, lse_ref_ptr, lse_old_ptr,
-    # 输出指针
-    loss_ptr, kl_ptr,
-    # 常量参数
-    BL: tl.constexpr,
-    V: tl.constexpr,  # [MODIFIED] V 必须作为 constexpr 显式传入
-    BLOCK_M: tl.constexpr,
-    beta: tl.constexpr, delta: tl.constexpr,
-    epsilon_low: tl.constexpr, epsilon_high: tl.constexpr,
-    TEMPERATURE: tl.constexpr,
+    loss_i_ptr, kl_i_ptr,
+    # Dimensions
+    BL, V,
+    # Hyperparameters
+    beta: float,
+    epsilon_low: float,
+    epsilon_high: float,
+    delta: float,
+    temperature: float,
+    # Meta-parameters
+    BLOCK_SIZE_V: tl.constexpr,
+    HAS_DELTA: tl.constexpr, # 
 ):
-    pid = tl.program_id(0)
-    row0 = pid * BLOCK_M
-    offs_t = row0 + tl.arange(0, BLOCK_M)
-    m_t = offs_t < BL
+   
+    pid = tl.program_id(axis=0)
+    mask = tl.load(mask_ptr + pid)
+    if not mask:
+        tl.store(loss_i_ptr + pid, 0.0)
+        tl.store(kl_i_ptr + pid, 0.0)
+        return
 
-    ids = tl.load(input_ids_ptr + offs_t, mask=m_t, other=0)
-    ids = tl.where(ids >= 0, ids, 0)
+    new_ptr = new_logits_ptr + pid * V
+    ref_ptr = ref_logits_ptr + pid * V
+    old_ptr = old_logits_ptr + pid * V
 
-    # [REMOVED] 不再从指针推断 V，因为它不可靠
-    # V = new_logits_ptr.shape[1]
+    # --- 1. 串行化 LogSumExp 计算 (包含温度缩放) ---
+    # new_logits
+    m_val, s_val = -float('inf'), 0.0
+    for v_start in range(0, V, BLOCK_SIZE_V):
+        offsets = v_start + tl.arange(0, BLOCK_SIZE_V)
+        v_mask = offsets < V
+        chunk = tl.load(new_ptr + offsets, mask=v_mask, other=-float('inf'))
+        chunk = chunk / temperature # 应用温度
+        m_val, s_val = _update_logsumexp(chunk, m_val, s_val)
+    lse_new = m_val + tl.log(s_val)
 
-    # 只加载目标 token 的 logit
-    new_x = tl.load(new_logits_ptr + offs_t * V + ids, mask=m_t, other=-float('inf'))
-    ref_x = tl.load(ref_logits_ptr + offs_t * V + ids, mask=m_t, other=-float('inf'))
-    old_x = tl.load(old_logits_ptr + offs_t * V + ids, mask=m_t, other=-float('inf'))
+    # ref_logits
+    m_val, s_val = -float('inf'), 0.0
+    for v_start in range(0, V, BLOCK_SIZE_V):
+        offsets = v_start + tl.arange(0, BLOCK_SIZE_V)
+        v_mask = offsets < V
+        chunk = tl.load(ref_ptr + offsets, mask=v_mask, other=-float('inf'))
+        chunk = chunk / temperature # 应用温度
+        m_val, s_val = _update_logsumexp(chunk, m_val, s_val)
+    lse_ref = m_val + tl.log(s_val)
 
-    if TEMPERATURE != 1.0:
-        inv_temp = 1.0 / TEMPERATURE
-        new_x, ref_x, old_x = new_x * inv_temp, ref_x * inv_temp, old_x * inv_temp
+    # old_logits
+    m_val, s_val = -float('inf'), 0.0
+    for v_start in range(0, V, BLOCK_SIZE_V):
+        offsets = v_start + tl.arange(0, BLOCK_SIZE_V)
+        v_mask = offsets < V
+        chunk = tl.load(old_ptr + offsets, mask=v_mask, other=-float('inf'))
+        chunk = chunk / temperature # 应用温度
+        m_val, s_val = _update_logsumexp(chunk, m_val, s_val)
+    lse_old = m_val + tl.log(s_val)
 
-    # 直接加载预先计算好的 logsumexp 值
-    lse_new = tl.load(lse_new_ptr + offs_t, mask=m_t, other=0.0)
-    lse_ref = tl.load(lse_ref_ptr + offs_t, mask=m_t, other=0.0)
-    lse_old = tl.load(lse_old_ptr + offs_t, mask=m_t, other=0.0)
+    # --- 2. Gather 并计算 Log-Probabilities  ---
+    input_ids = tl.load(input_ids_ptr + pid)
+    new_x = (tl.load(new_ptr + input_ids)) / temperature
+    ref_x = (tl.load(ref_ptr + input_ids)) / temperature
+    old_x = (tl.load(old_ptr + input_ids)) / temperature
 
-    # 后续逻辑保持不变
-    new_lp, ref_lp, old_lp = new_x - lse_new, ref_x - lse_ref, old_x - lse_old
+    new_lp = new_x - lse_new
+    ref_lp = ref_x - lse_ref
+    old_lp = old_x - lse_old
 
-    tmp_kl = tl.exp(ref_lp - new_lp) - (ref_lp - new_lp) - 1.0
-    kl_i = tl.where(beta != 0.0, tmp_kl, 0.0)
+    # --- 3. 计算 KL 散度 ---
+    kl_i = 0.0
+    if beta != 0.0:
+        # kl(p_ref || p_new) = sum(p_ref * (log(p_ref) - log(p_new)))
+        # 在单点采样下近似为 exp(ref_lp - new_lp) - (ref_lp - new_lp) - 1.0
+        kl_i = tl.exp(ref_lp - new_lp) - (ref_lp - new_lp) - 1.0
 
-    coef1 = tl.exp(new_lp - old_lp)
-    coef2 = tl.minimum(tl.maximum(coef1, 1.0 - epsilon_low), 1.0 + epsilon_high)
+   
+    advantages = tl.load(advantages_ptr + pid)
     
-    adv = tl.load(advantages_ptr + offs_t, mask=m_t, other=0.0)
-
-    if delta != -1.0:
-        loss1 = tl.minimum(coef1, delta) * adv
-    else:
-        loss1 = coef1 * adv
-    loss2 = coef2 * adv
+   
+    coef1 = tl.exp(new_lp - old_lp)
+    
+    # loss1 是带 delta 裁剪的损失项
+    loss1_coef = coef1
+    if HAS_DELTA:
+        loss1_coef = tl.minimum(coef1, delta) 
+    loss1 = loss1_coef * advantages
+    
+    
+    coef2 = tl.clamp(coef1, 1.0 - epsilon_low, 1.0 + epsilon_high)
+    loss2 = coef2 * advantages
+    
+    # 最终的 per-token loss
     loss_i = -tl.minimum(loss1, loss2)
-
     if beta != 0.0:
         loss_i += beta * kl_i
 
-    mask_val = tl.load(mask_ptr + offs_t, mask=m_t, other=0.0)
-    loss_i_masked = loss_i * mask_val
-    kl_i_masked = kl_i * mask_val
+    # --- 4. 写回结果 ---
+    tl.store(loss_i_ptr + pid, loss_i)
+    tl.store(kl_i_ptr + pid, kl_i)
 
-    tl.store(loss_ptr + offs_t, loss_i_masked, mask=m_t)
-    tl.store(kl_ptr + offs_t, kl_i_masked, mask=m_t)
 
 
 def grpo_compute_loss_torch(
@@ -84,7 +129,7 @@ def grpo_compute_loss_torch(
     beta=0.1, loss_type="grpo", epsilon_low=0.2, epsilon_high=0.2,
     max_completion_length=8192, delta=None, temperature=1.0,
 ):
-    # PyTorch 参考实现保持不变
+    
     new_logits, ref_logits, old_logits = new_logits.to(torch.float32), ref_logits.to(torch.float32), old_logits.to(torch.float32)
 
     if temperature != 1.0:
@@ -125,54 +170,72 @@ def grpo_compute_loss_torch(
 
     return loss, completion_length, mean_kl, masked_loss_i, kl_i * mask_float
 
-
 def grpo_loss_triton(
-    new_logits, ref_logits, old_logits, input_ids, advantages, mask,
-    beta=0.1, loss_type="grpo", epsilon_low=0.2, epsilon_high=0.2,
-    max_completion_length=8192, delta=None, temperature=1.0,
+    new_logits: torch.Tensor,
+    ref_logits: torch.Tensor,
+    old_logits: torch.Tensor,
+    input_ids: torch.Tensor,
+    advantages: torch.Tensor,
+    mask: torch.Tensor,
+    beta: float = 0.1,
+    loss_type: str = "grpo",
+    epsilon_low: float = 0.2,
+    epsilon_high: float = 0.2,
+    max_completion_length: int = 8192,
+    delta: float = None,
+    temperature: float = 1.0,
 ):
+ 
+    device = new_logits.device
+    
+    
+    new_logits, ref_logits, old_logits, advantages = new_logits.to(torch.float32), ref_logits.to(torch.float32), old_logits.to(torch.float32), advantages.to(torch.float32)
+
     BL, V = new_logits.shape
-    BLOCK_M = 64
-    grid = ((BL + BLOCK_M - 1) // BLOCK_M, )
     
-    loss_i = torch.empty(BL, device=new_logits.device, dtype=torch.float32)
-    kl_i = torch.empty(BL, device=new_logits.device, dtype=torch.float32)
+    loss_i = torch.empty_like(advantages, device=device)
+    kl_i = torch.empty_like(advantages, device=device)
 
-    delta_kernel = delta if delta is not None else -1.0
+    grid = (BL,)
+    BLOCK_SIZE_V = 1024 # 可调超参数
 
-    # 计算 logsumexp
-    new_logits_scaled = new_logits.to(torch.float32)
-    ref_logits_scaled = ref_logits.to(torch.float32)
-    old_logits_scaled = old_logits.to(torch.float32)
-    
-    if temperature != 1.0:
-        new_logits_scaled, ref_logits_scaled, old_logits_scaled = new_logits_scaled / temperature, ref_logits_scaled / temperature, old_logits_scaled / temperature
-    
-    lse_new = torch.logsumexp(new_logits_scaled, dim=-1)
-    lse_ref = torch.logsumexp(ref_logits_scaled, dim=-1)
-    lse_old = torch.logsumexp(old_logits_scaled, dim=-1)
-
-    grpo_loss_kernel[grid](
-        new_logits, ref_logits, old_logits, input_ids, advantages, mask,
-        lse_new, lse_ref, lse_old,
+   
+    HAS_DELTA = (delta is not None)
+   
+    delta_val = delta if HAS_DELTA else 0.0 
+    grpo_kernel[grid](
+        new_logits, ref_logits, old_logits,
+        input_ids, advantages, mask,
         loss_i, kl_i,
-        BL=BL,
-        V=V,  # [MODIFIED] 将 V 显式传入内核
-        BLOCK_M=BLOCK_M,
-        beta=beta, epsilon_low=epsilon_low, epsilon_high=epsilon_high, delta=delta_kernel,
-        TEMPERATURE=temperature,
+        BL, V,
+        beta=beta,
+        epsilon_low=epsilon_low,
+        epsilon_high=epsilon_high,
+        delta=delta_val,
+        temperature=temperature,
+        BLOCK_SIZE_V=BLOCK_SIZE_V,
+        HAS_DELTA=HAS_DELTA,
     )
 
+  
     mask_float = mask.to(torch.float32)
+    masked_loss_i = loss_i * mask_float
+    masked_kl_i = kl_i * mask_float # PyTorch版本返回的是掩码后的KL
+
+   
     if loss_type == "grpo" or loss_type == "bnpo":
-        loss_aggregated = loss_i.sum() / mask_float.sum().clamp(min=1.0)
+        # .clamp(min=1.0) 防止除以零
+        loss = masked_loss_i.sum() / mask_float.sum().clamp(min=1.0)
     elif loss_type == "dr_grpo":
-        loss_aggregated = loss_i.sum() / (loss_i.size(0) * max_completion_length)
+        # .size(0) 是批次大小 BL
+        loss = masked_loss_i.sum() / (loss_i.size(0) * max_completion_length)
     else:
         raise ValueError(f"Unknown loss type: {loss_type}")
 
-    with torch.inference_mode():
-        completion_length = mask_float.sum()
-        mean_kl = kl_i.sum() / mask_float.sum().clamp(min=1.0)
+   
+    completion_length = mask_float.sum()
+    mean_kl = masked_kl_i.sum() / completion_length.clamp(min=1.0)
 
-    return loss_aggregated, completion_length, mean_kl, loss_i, kl_i
+
+    return loss, completion_length, mean_kl, masked_loss_i, masked_kl_i
+
