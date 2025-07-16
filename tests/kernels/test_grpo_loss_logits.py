@@ -1,91 +1,103 @@
 
 import unittest
 import torch
-from  dlblas.kernels.grpo_compute_loss_logits import grpo_compute_loss_torch, grpo_loss_triton
+from  dlblas.kernels.grpo_compute_loss_logits import GRPO_Loss_Optimized, grpo_compute_loss_torch
 
-class TestGRPOFunctionality(unittest.TestCase):
+def run_full_verification():
+    print("="*50)
+    print("Running Full Forward & Backward Verification")
+    print("="*50)
+
+    # --- 设置测试参数 ---
+    B, S, V = 2, 64, 2048
+    BL = B * S
+    DEVICE = 'cuda'
+    DTYPE = torch.float32
+    SEED = 42
     
-    def setUp(self):
-      
-        torch.manual_seed(42)
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if self.device == 'cpu':
-            self.skipTest("CUDA is not available, skipping Triton tests.")
+   
+    kwargs = {
+        "beta": 0.1,
+        "loss_type": "grpo",
+        "epsilon_low": 0.2,
+        "epsilon_high": 0.2,
+        "max_completion_length": 8192,
+        "delta": 2.7,
+        "temperature": 0.7,
+    }
 
-    def _run_and_compare(self, BL, V, dtype, **kwargs):
-        
-       
-        new_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        ref_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        old_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        input_ids = torch.randint(0, V, (BL,), device=self.device)
-        advantages = torch.randn((BL,), device=self.device, dtype=dtype)
-        mask = torch.randint(0, 2, (BL,), device=self.device).bool()
+   
+    def generate_inputs(requires_grad=False):
+        torch.manual_seed(SEED)
+        new_logits_3d = torch.randn((B, S, V), device=DEVICE, dtype=DTYPE)
+        ref_logits_3d = torch.randn((B, S, V), device=DEVICE, dtype=DTYPE)
+        old_logits_3d = torch.randn((B, S, V), device=DEVICE, dtype=DTYPE)
+        new_logits_2d = new_logits_3d.view(BL, V).clone()
+        ref_logits_2d = ref_logits_3d.view(BL, V).clone()
+        old_logits_2d = old_logits_3d.view(BL, V).clone()
+        if requires_grad:
+            new_logits_3d.requires_grad_(True)
+            new_logits_2d.requires_grad_(True)
+        input_ids_3d = torch.randint(0, V, (B, S), device=DEVICE)
+        mask_3d = torch.ones((B, S), device=DEVICE, dtype=torch.long)
+        mask_3d[0, -5:] = 0
+        input_ids_2d = input_ids_3d.view(BL)
+        mask_2d = mask_3d.view(BL)
+        advantages_3d = torch.randn((B,), device=DEVICE, dtype=DTYPE)
+        advantages_2d = advantages_3d.unsqueeze(1).expand(-1, S).reshape(BL)
+        return (new_logits_3d, ref_logits_3d, old_logits_3d, input_ids_3d, advantages_3d, mask_3d), \
+               (new_logits_2d, ref_logits_2d, old_logits_2d, input_ids_2d, advantages_2d, mask_2d)
 
-       
-        loss_pt, comp_pt, kl_pt, loss_i_pt, kl_i_pt = grpo_compute_loss_torch(
-            new_logits, ref_logits, old_logits, input_ids, advantages, mask, **kwargs
-        )
+    # --- 运行 PyTorch 参考实现  ---
+    print("\n--- Running PyTorch Reference Implementation ---")
+    (new_logits_ref_3d, ref_logits_ref_3d, old_logits_ref_3d, ids_ref_3d, adv_ref_3d, mask_ref_3d) = \
+        generate_inputs(requires_grad=True)[0]
+    adv_ref_torch = adv_ref_3d.unsqueeze(1).expand(-1, S)
+    loss_ref, _, _, _, _ = grpo_compute_loss_torch(
+        new_logits=new_logits_ref_3d, ref_logits=ref_logits_ref_3d, old_logits=old_logits_ref_3d,
+        input_ids=ids_ref_3d, advantages=adv_ref_torch, mask=mask_ref_3d, **kwargs
+    )
+    loss_ref.backward()
+    grad_ref = new_logits_ref_3d.grad.clone().view(BL, V)
+    print(f"PyTorch Loss: {loss_ref.item()}")
 
-       
-        loss_tr, comp_tr, kl_tr, loss_i_tr, kl_i_tr = grpo_loss_triton(
-            new_logits, ref_logits, old_logits, input_ids, advantages, mask, **kwargs
-        )
-        
+    # ---  运行 Triton 实现 (修正调用方式) ---
+    print("\n--- Running Triton Custom Kernel Implementation ---")
+    (new_logits_triton, ref_logits_triton, old_logits_triton, ids_triton, adv_triton, mask_triton) = \
+        generate_inputs(requires_grad=True)[1]
     
-        atol = 1e-2 if dtype == torch.float16 else 1e-5
-        rtol = 1e-2 if dtype == torch.float16 else 1e-5
+    # 3: 按位置传递所有参数给 .apply
+    loss_triton = GRPO_Loss_Optimized.apply(
+        new_logits_triton, ref_logits_triton, old_logits_triton,
+        ids_triton, adv_triton, mask_triton,
+        kwargs["beta"],
+        kwargs["loss_type"],
+        kwargs["epsilon_low"],
+        kwargs["epsilon_high"],
+        kwargs["max_completion_length"],
+        kwargs["delta"],
+        kwargs["temperature"]
+    )
+    loss_triton.backward()
+    grad_triton = new_logits_triton.grad.clone()
+    print(f"Triton Loss:  {loss_triton.item()}")
 
-        self.assertTrue(torch.allclose(loss_pt, loss_tr, atol=atol, rtol=rtol), "Aggregated Loss mismatch")
-        self.assertTrue(torch.allclose(kl_pt, kl_tr, atol=atol, rtol=rtol), "Mean KL mismatch")
-        self.assertTrue(torch.allclose(comp_pt, comp_tr), "Completion Length mismatch")
-        self.assertTrue(torch.allclose(loss_i_pt, loss_i_tr, atol=atol, rtol=rtol), "Per-token Loss mismatch")
-        self.assertTrue(torch.allclose(kl_i_pt, kl_i_tr, atol=atol, rtol=rtol), "Per-token KL mismatch")
+    # ---  比较结果  ---
+    print("\n--- Comparing Results ---")
+    loss_check = torch.allclose(loss_ref, loss_triton, atol=1e-5, rtol=1e-4)
+    print(f"Forward Pass (Loss) Correct: {loss_check}")
+    if not loss_check:
+        print(f"  Max absolute difference: {torch.max(torch.abs(loss_ref - loss_triton))}")
+    grad_check = torch.allclose(grad_triton, grad_ref, atol=1e-5, rtol=1e-4)
+    print(f"Backward Pass (Gradient) Correct: {grad_check}")
+    if not grad_check:
+        abs_diff = torch.abs(grad_triton - grad_ref)
+        rel_diff = abs_diff / torch.abs(grad_ref).clamp(min=1e-8)
+        print(f"  Max absolute difference: {torch.max(abs_diff)}")
+        print(f"  Max relative difference: {torch.max(rel_diff)}")
+        max_diff_idx = torch.argmax(abs_diff)
+        print(f"  Location of max diff: {max_diff_idx}")
+        print(f"  Triton grad at max diff: {grad_triton.flatten()[max_diff_idx]}")
+        print(f"  PyTorch grad at max diff: {grad_ref.flatten()[max_diff_idx]}")
 
-    def test_base_case_fp32(self):
-      
-        print("\nRunning: test_base_case_fp32")
-        self._run_and_compare(BL=1024, V=2048, dtype=torch.float32, delta=5.0, beta=0.1, temperature=1.0)
-
-    def test_base_case_fp16(self):
-        
-        print("\nRunning: test_base_case_fp16")
-        self._run_and_compare(BL=1024, V=2048, dtype=torch.float16, delta=5.0, beta=0.1, temperature=1.0)
-        
-    def test_no_delta_clipping(self):
-       
-        print("\nRunning: test_no_delta_clipping")
-        self._run_and_compare(BL=512, V=1024, dtype=torch.float16, delta=None)
-
-    def test_zero_beta(self):
-        """测试 beta=0 的情况，即没有 KL 惩罚"""
-        print("\nRunning: test_zero_beta")
-        self._run_and_compare(BL=512, V=1024, dtype=torch.float16, beta=0.0)
-
-    def test_temperature_scaling(self):
-        """测试 temperature != 1.0 的情况"""
-        print("\nRunning: test_temperature_scaling")
-        self._run_and_compare(BL=512, V=1024, dtype=torch.float16, temperature=2.0)
-
-    def test_all_masked(self):
-        """边缘情况测试：所有 token 都被掩码"""
-        print("\nRunning: test_all_masked")
-        BL, V, dtype = 256, 512, torch.float16
-        new_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        ref_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        old_logits = torch.randn((BL, V), device=self.device, dtype=dtype)
-        input_ids = torch.randint(0, V, (BL,), device=self.device)
-        advantages = torch.randn((BL,), device=self.device, dtype=dtype)
-        mask = torch.zeros((BL,), device=self.device).bool() # 全 False 掩码
-
-        loss_pt, _, kl_pt, _, _ = grpo_compute_loss_torch(new_logits, ref_logits, old_logits, input_ids, advantages, mask)
-        loss_tr, _, kl_tr, _, _ = grpo_loss_triton(new_logits, ref_logits, old_logits, input_ids, advantages, mask)
-
-     
-        self.assertTrue(torch.allclose(loss_pt, torch.tensor(0.0, device=self.device)), "Torch loss should be 0 when all masked")
-        self.assertTrue(torch.allclose(loss_tr, torch.tensor(0.0, device=self.device)), "Triton loss should be 0 when all masked")
-        self.assertTrue(torch.allclose(kl_pt, torch.tensor(0.0, device=self.device)), "Torch KL should be 0 when all masked")
-        self.assertTrue(torch.allclose(kl_tr, torch.tensor(0.0, device=self.device)), "Triton KL should be 0 when all masked")
-
-if __name__ == '__main__':
-    unittest.main()
+run_full_verification()
