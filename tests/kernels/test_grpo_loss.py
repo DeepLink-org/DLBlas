@@ -11,73 +11,6 @@ UNBIAS = 1
 MSE = 2
 
 
-def benchmark_with_event(
-    target_fn: Callable[[None], None],
-    warmup_iters: int = 10,
-    benchmark_iters: int = 20,
-    profile_ranks: Optional[List[int]] = None,
-    flush_l2: bool = False,
-    cuda_graph: bool = False,
-) -> float:
-    if cuda_graph:
-        target_fn()
-        g = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(g):
-            target_fn()
-        target_fn = lambda: g.replay()
-
-    if "BENCHMARK_ITERS" in os.environ:
-        benchmark_iters = int(os.environ["BENCHMARK_ITERS"])
-
-    rank = 0  # dist.get_rank() if dist.is_initialized() else 0
-    profile_ranks = profile_ranks or [0]
-
-    if flush_l2:
-        cache = torch.empty(int(256e6 // 4), dtype=torch.int, device="cuda")
-
-    for _ in range(warmup_iters):
-        target_fn()
-
-    torch.cuda.synchronize()
-
-    begin_events = [
-        torch.cuda.Event(enable_timing=True) for _ in range(benchmark_iters)
-    ]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(benchmark_iters)]
-
-    if rank in profile_ranks:
-        try:
-            from trace_handler import trace_handler
-        except ImportError:
-            trace_handler = None
-
-        if "NO_TRACE" in os.environ:
-            trace_handler = None
-
-        prof = torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA,
-            ],
-            on_trace_ready=trace_handler,
-        )
-    else:
-        prof = nullcontext()
-
-    with prof:
-        torch.cuda._sleep(int(2e7))
-        for i in range(benchmark_iters):
-            if flush_l2:
-                cache.zero_()
-            begin_events[i].record()
-            target_fn()
-            end_events[i].record()
-        torch.cuda.synchronize()
-
-    latencies = [b.elapsed_time(e) for b, e in zip(begin_events, end_events)]
-    return torch.tensor(latencies).median().item() * 1000
-
-
 def torch_grpo_loss( _logprobs, _old_logprobs, _advantages, _ref_logprobs,
         kl_type=1, kl_coef=1.0, _loss_factor = 1.0, clip = 0.2):
     kl_type = {
@@ -178,48 +111,17 @@ def grpo_loss_kernel(kl_type="unbias"):
 
     loss_factor = kl_coef = 1.0
     clip = 0.2
-
-    lat_tri_loss = benchmark_with_event(
-        lambda: triton_grpo_loss(log_probs, log_probs1, log_probs2,
-                        advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T),
-        flush_l2=True,
-    )
-
     tri_loss = triton_grpo_loss(log_probs, log_probs1, log_probs2,
                         advantages, kl_type, kl_coef, loss_factor, clip, BLOCK_SIZE_T)
-
-    lat_out_logp = benchmark_with_event(
-        lambda: tri_loss.backward(tri_loss),
-        flush_l2=True,
-        warmup_iters=0,
-        benchmark_iters=1,
-    )
-
-    lat_ref_loss = benchmark_with_event(
-        lambda: torch_grpo_loss(std_log_probs, std_log_probs1, std_advantages,
-                std_log_probs2, kl_type, kl_coef, loss_factor, clip),
-        flush_l2=True,
-    )
-
+    tri_loss.backward(tri_loss)
     ref_loss = torch_grpo_loss(std_log_probs, std_log_probs1, std_advantages,
                 std_log_probs2, kl_type, kl_coef, loss_factor, clip)
-    lat_ref_logp = benchmark_with_event(
-        lambda: ref_loss.backward(ref_loss),
-        flush_l2=True,
-        warmup_iters=0,
-        benchmark_iters=1,
-    )
-
+    ref_loss.backward(ref_loss)
     assert all_close("forward", tri_loss, ref_loss, rtol=1e-2, atol=1e-4)
     assert all_close("backward", log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4)
 
     print('forward accuracy: ', torch.allclose(tri_loss, ref_loss, rtol=1e-2, atol=1e-4))
     print('backward accuracy: ', torch.allclose(log_probs.grad, std_log_probs.grad, rtol=1e-2, atol=1e-4))
-
-    print('tri_loss latency: ', lat_tri_loss)
-    print('ref_loss latency: ', lat_ref_loss)
-    print('tri_logp latency: ', lat_out_logp)
-    print('ref_logp latency: ', lat_ref_logp)
 
 
 class TestGRPOLoss:
