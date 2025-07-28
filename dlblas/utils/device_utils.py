@@ -43,17 +43,20 @@ def is_muxi():
 
 def is_cuda():
     try:
-        torch.cuda.is_available()
-        return True
+        return torch.cuda.is_available()
     except Exception:
         return False
 
 
 def is_npu():
     try:
-        import torch_npu  # noqa: F401
-        torch.npu.is_available()
-        return True
+        return torch.npu.is_available()
+    except Exception:
+        return False
+    
+def is_tesla():
+    try:
+        return 'Tesla' in torch.cuda.get_device_name(0)
     except Exception:
         return False
 
