@@ -1,5 +1,6 @@
 import torch
 import enum
+from typing import Tuple
 
 import triton
 import triton.language as tl
@@ -15,10 +16,11 @@ def lightning_attention_prefill_forward_torch(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    slope_rate: torch.Tensor,
     past_key_value: torch.Tensor,
-    BLOCK_SIZE=64
-) -> torch.Tensor:
+    slope_rate: torch.Tensor,
+    BLOCK_SIZE=64,
+    in_place=True
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention prefill.
     modify from: https://github.com/MiniMax-AI/MiniMax-M1/blob/main/modeling_minimax_m1.py
@@ -34,6 +36,7 @@ def lightning_attention_prefill_forward_torch(
 
     Returns:
         output: Attention output tensor [B, H, N, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     b, h, n, d = q.shape
     e = v.shape[-1]
@@ -73,7 +76,11 @@ def lightning_attention_prefill_forward_torch(
         output[:, :, si:ei] = qkv_none_diag + qkv_diag
         block_decay = torch.exp(-s * m)
         kv = block_decay * kv + torch.matmul((ki * k_decay[:, -m:]).transpose(-1, -2).to(vi.dtype), vi)
-    return output, kv
+    if in_place:
+        past_key_value.copy_(kv)
+        return output, past_key_value
+    else:
+        return output, kv
 
 @triton.jit
 def _fwd_loop_kernel(
@@ -178,11 +185,11 @@ def lightning_attention_prefill_forward_triton_loop(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    slope_rate: torch.Tensor,
     past_key_value: torch.Tensor,
+    slope_rate: torch.Tensor,
     BLOCK_SIZE=64,
     BLOCK_MODEL=32
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention prefill.
     modify from: https://github.com/OpenNLPLab/lightning-attention/blob/main/lightning_attn/ops/triton/lightning_attn2.py
@@ -198,6 +205,7 @@ def lightning_attention_prefill_forward_triton_loop(
         
     Returns:
         output: Attention output tensor [B, H, N, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     q = q.contiguous()
     k = k.contiguous()
@@ -248,7 +256,8 @@ def lightning_attention_decode_forward_torch(
     v: torch.Tensor,
     past_key_value: torch.Tensor,
     slope_rate: torch.Tensor,
-) -> torch.Tensor:
+    in_place=True
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention decoding.
     modify from: https://github.com/MiniMax-AI/MiniMax-M1/blob/main/modeling_minimax_m1.py
@@ -262,6 +271,7 @@ def lightning_attention_decode_forward_torch(
         
     Returns:
         output: Attention output tensor [B, H, 1, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     assert q.ndim == 4
     B, H, _, D = q.shape
@@ -278,7 +288,11 @@ def lightning_attention_decode_forward_torch(
     ) + s * kv
     qkv = torch.einsum("... n d, ... d e -> ... n e", q, kv.to(q.dtype))
     past_key_value.copy_(kv)
-    return qkv
+    if in_place:
+        past_key_value.copy_(kv)
+        return qkv, past_key_value
+    else:
+        return qkv, kv
 
 @triton.jit
 def _lightningattn_attn_decode_kernel(
@@ -355,7 +369,7 @@ def lightning_attention_decode_forward_triton(
     past_key_value: torch.Tensor,
     slope_rate: torch.Tensor,
     BLOCK_SIZE: int = 128,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention decoding using Triton kernels.
     modify from: https://github.com/vllm-project/vllm/vllm/model_executor/layers/lightning_attn.py
@@ -370,6 +384,7 @@ def lightning_attention_decode_forward_triton(
         
     Returns:
         output: Attention output tensor [B, H, 1, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     assert q.ndim == 4
     B, H, _, D = q.shape
@@ -410,18 +425,18 @@ def lightning_attention_decode_forward_triton(
         cache_e_stride,
         BLOCK_SIZE=BLOCK_SIZE,
     )
-    return o
+    return o, past_key_value
 
 
 def lightning_attention_prefill_forward(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    slope_rate: torch.Tensor,
     past_key_value: torch.Tensor,
+    slope_rate: torch.Tensor,
     BLOCK_SIZE=64,
     BackendType: int = BackendType.TORCH,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Args:
         q: Query tensor of shape [B, H, N, D]
@@ -434,11 +449,12 @@ def lightning_attention_prefill_forward(
         
     Returns:
         output: Attention output tensor [B, H, N, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     if BackendType == BackendType.TRITON:
-        return lightning_attention_prefill_forward_triton_loop(q, k, v, slope_rate, past_key_value, BLOCK_SIZE)
+        return lightning_attention_prefill_forward_triton_loop(q, k, v, past_key_value, slope_rate, BLOCK_SIZE)
     else:
-        return lightning_attention_prefill_forward_torch(q, k, v, slope_rate, past_key_value)
+        return lightning_attention_prefill_forward_torch(q, k, v, past_key_value, slope_rate,)
 
 
 def lightning_attention_decode_forward(
@@ -449,19 +465,20 @@ def lightning_attention_decode_forward(
     slope_rate: torch.Tensor,
     BLOCK_SIZE: int = 128,
     BackendType: int = BackendType.TORCH,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Args:
         q: Query tensor of shape [B, H, 1, D]
         k: Key tensor of shape [B, H, 1, D]
         v: Value tensor of shape [B, H, 1, E]
-        kv_caches: Key-value cache tensor
+        kv_caches: Key-value cache tensor [B, H, D, E]
         slope_rate: Decay rate tensor
         BLOCK_SIZE: Size of blocks for processing in triton
         BackendType: torch or triton
         
     Returns:
         output: Attention output tensor [B, H, 1, E]
+        kv_caches: Key-value cache tensor [B, H, D, E]
     """
     if BackendType == BackendType.TRITON:
         return lightning_attention_decode_forward_triton(q, k, v, past_key_value, slope_rate, BLOCK_SIZE)
