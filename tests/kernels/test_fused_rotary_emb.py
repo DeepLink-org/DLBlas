@@ -3,9 +3,10 @@
 import pytest
 import torch
 from torch import nn
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.fused_rotary_emb import fused_rotary_emb
 
+device_ = infer_device()
 
 class DummyRotaryEmbedding(nn.Module):
 
@@ -91,19 +92,19 @@ class TestFusedRotaryEmb:
 
     @pytest.fixture
     def q(self, batch_size, seq_len, q_num_heads, head_dim, dtype):
-        yield torch.rand(batch_size, seq_len, q_num_heads, head_dim, dtype=dtype).to('cuda')
+        yield torch.rand(batch_size, seq_len, q_num_heads, head_dim, dtype=dtype).to(device=device_)
 
     @pytest.fixture
     def k(self, batch_size, seq_len, k_num_heads, head_dim, dtype):
-        yield torch.rand(batch_size, seq_len, k_num_heads, head_dim, dtype=dtype).to('cuda')
+        yield torch.rand(batch_size, seq_len, k_num_heads, head_dim, dtype=dtype).to(device=device_)
 
     @pytest.fixture
     def position_ids(self, batch_size, seq_len):
-        yield torch.randint(0, seq_len + 100, (batch_size, seq_len)).cuda()
+        yield torch.randint(0, seq_len + 100, (batch_size, seq_len)).to(device=device_)
 
     @pytest.fixture
     def rotary_emb(self, head_dim):
-        yield DummyLinearScalingRotaryEmbedding(head_dim, scaling_factor=1.0).to('cuda')
+        yield DummyLinearScalingRotaryEmbedding(head_dim, scaling_factor=1.0).to(device=device_)
 
     @pytest.fixture
     def gt(self, q, k, position_ids, rotary_emb):

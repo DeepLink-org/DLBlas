@@ -2,8 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-from torch.cuda.amp import autocast
-
 
 import triton
 import triton.language as tl

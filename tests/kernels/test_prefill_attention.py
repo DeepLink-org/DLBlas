@@ -4,9 +4,10 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.prefill_attention import context_attention_fwd
 
+device_ = infer_device()
 
 class TestPrefillAttention(unittest.TestCase):
 
@@ -14,7 +15,7 @@ class TestPrefillAttention(unittest.TestCase):
         xq = xq.view(bs, seqlen, num_head, head_dim)
         xk = xk.view(bs, seqlen, num_head, head_dim)
         xv = xv.view(bs, seqlen, num_head, head_dim)
-        mask = (torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).cuda())
+        mask = (torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).to(device_))
         mask[mask == 0.0] = -100000000.0
         mask = mask.repeat(bs, num_head, 1, 1)
         keys = xk
@@ -31,15 +32,15 @@ class TestPrefillAttention(unittest.TestCase):
         Z, H, N_CTX, D_HEAD = 4, 6, 1024, 128
         dtype = torch.float16
         Z = 3
-        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.1, std=0.2)
-        k = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.4, std=0.2)
-        v = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
-        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
+        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.1, std=0.2)
+        k = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.4, std=0.2)
+        v = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
+        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
 
         max_input_len = N_CTX
         Z = 4
-        b_start_loc = torch.zeros((Z, ), dtype=torch.int32, device='cuda')
-        b_seq_len = torch.ones((Z, ), dtype=torch.int32, device='cuda')
+        b_start_loc = torch.zeros((Z, ), dtype=torch.int32, device=device_)
+        b_seq_len = torch.ones((Z, ), dtype=torch.int32, device=device_)
 
         b_seq_len[0] = 512
         b_seq_len[1] = 1024

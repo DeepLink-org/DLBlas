@@ -2,14 +2,14 @@
 import torch
 import os
 from typing import Callable, Optional, List
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.grpo_loss import GRPOLoss
 
 
 KL = 0
 UNBIAS = 1
 MSE = 2
-
+device_ = infer_device()
 
 def torch_grpo_loss( _logprobs, _old_logprobs, _advantages, _ref_logprobs,
         kl_type=1, kl_coef=1.0, _loss_factor = 1.0, clip = 0.2):
@@ -95,14 +95,12 @@ def grpo_loss_kernel(kl_type="unbias"):
     H = 256
     V = 1024
     BLOCK_SIZE_T = 8
-
-    torch.cuda.set_device('cuda:0')
     torch.manual_seed(42)
 
-    advantages = torch.randn((T,), dtype=torch.float32, device='cuda', requires_grad=True)
-    log_probs = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-    log_probs1 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-    log_probs2 = torch.randn((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+    advantages = torch.randn((T,), dtype=torch.float32, device=device_, requires_grad=True)
+    log_probs = torch.randn((T, V), dtype=torch.float32, device=device_, requires_grad=True)
+    log_probs1 = torch.randn((T, V), dtype=torch.float32, device=device_, requires_grad=True)
+    log_probs2 = torch.randn((T, V), dtype=torch.float32, device=device_, requires_grad=True)
 
     std_advantages = torch.tensor(advantages.detach(), requires_grad=True)
     std_log_probs = torch.tensor(log_probs.detach(), requires_grad=True)

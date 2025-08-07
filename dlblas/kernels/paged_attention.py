@@ -250,7 +250,7 @@ def _reduce_split_kernel(
 
 def _get_convert_pv(nv_capability):
     """lazy load convert_pv."""
-    if nv_capability[0] >= 8:
+    if False: #nv_capability[0] >= 8:
 
         @triton.jit
         def convert_pv(p, v):
@@ -456,7 +456,7 @@ def paged_attention_fwd(
     """
     global _convert_pv
     if _convert_pv is None:
-        nv_cap = torch.cuda.get_device_capability()
+        nv_cap = None #torch.cuda.get_device_capability()
         _convert_pv = _get_convert_pv(nv_cap)
 
     if window_size is None:

@@ -2,13 +2,11 @@
 import triton
 import triton.language as tl
 import torch
+from dlblas.utils.device_utils import infer_device
+from dlblas.utils.utils import get_tl_exp
 
-
-if triton.__version__ >= "3.0.0":
-    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
-else:
-    from triton.language.math import fast_expf as tl_exp
-
+tl_exp = get_tl_exp()
+device_ = infer_device()
 
 KL = 0
 UNBIAS = 1
@@ -220,7 +218,7 @@ class GRPOLoss(torch.autograd.Function):
         T, V = log_probs.shape
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
-        loss = torch.empty((T,), dtype=torch.float32, device='cuda', requires_grad=True)
+        loss = torch.empty((T,), dtype=torch.float32, device=device_, requires_grad=True)
 
         kl_type = {
             'kl': KL,
@@ -228,7 +226,7 @@ class GRPOLoss(torch.autograd.Function):
             'mse': MSE
         }.get(kl_type, None)
 
-        loss_max = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        loss_max = torch.empty((T, V), dtype=torch.float32, device=device_, requires_grad=True)
         grid = lambda META: (T // BLOCK_SIZE_T,)
         ctx.exeKernel.grpo_loss_fwd_kernel[grid](log_probs, old_logprobs,
                             ref_log_probs, advantages, kl_type, kl_coef,
@@ -252,9 +250,9 @@ class GRPOLoss(torch.autograd.Function):
 
         if ref_log_probs is None:
             ref_log_probs = log_probs.detach()
-        out_logprobs = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-        out_logprobs1 = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
-        out_logprobs2 = torch.empty((T, V), dtype=torch.float32, device='cuda', requires_grad=True)
+        out_logprobs = torch.empty((T, V), dtype=torch.float32, device=device_, requires_grad=True)
+        out_logprobs1 = torch.empty((T, V), dtype=torch.float32, device=device_, requires_grad=True)
+        out_logprobs2 = torch.empty((T, V), dtype=torch.float32, device=device_, requires_grad=True)
 
         grid = lambda META: (T // BLOCK_SIZE_T,)
         ctx.exeKernel.grpo_loss_bwd_kernel[grid](loss.sum(), loss, log_probs, old_logprobs, ref_log_probs, out_logprobs,

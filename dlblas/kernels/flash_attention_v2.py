@@ -7,13 +7,10 @@ import triton.language as tl
 
 from dlblas.utils import ChoiceSpace, SymVar, Tensor, register_dlblas_op
 from dlblas.utils.device_utils import is_cuda, is_muxi
+from dlblas.utils.utils import get_tl_exp, get_tl_log
 
-if triton.__version__ >= '3.0.0':
-    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
-    from triton.language.extra.cuda.libdevice import fast_logf as tl_log
-else:
-    from triton.language.math import fast_expf as tl_exp
-    from triton.language.math import fast_logf as tl_log
+tl_exp = get_tl_exp()
+tl_log = get_tl_log()
 
 MUXI_CUDA = is_muxi() or is_cuda()
 if MUXI_CUDA:

@@ -2,9 +2,10 @@
 # https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_rms_norm.py
 import pytest
 import torch
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.rms_norm import rms_norm
 
+device_ = infer_device()
 
 class TestRMSNorm:
 
@@ -14,11 +15,11 @@ class TestRMSNorm:
 
     @pytest.fixture(scope='class')
     def input(self, dtype):
-        yield torch.rand(4, 8, dtype=dtype, device='cuda')
+        yield torch.rand(4, 8, dtype=dtype, device=device_)
 
     @pytest.fixture(scope='class')
     def weight(self, dtype):
-        yield torch.rand(8, dtype=dtype, device='cuda')
+        yield torch.rand(8, dtype=dtype, device=device_)
 
     @pytest.fixture(scope='class')
     def eps(self):

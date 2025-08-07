@@ -5,9 +5,43 @@ import sys
 from typing import Any, Callable, Dict, Optional, Union
 
 import torch
+import triton
 from packaging.version import Version
 
-from dlblas.utils.device_utils import infer_device
+from dlblas.utils.device_utils import infer_device, is_npu
+
+def get_tl_exp():
+    if is_npu():
+        from triton.language.math import exp as tl_exp
+    elif triton.__version__ >= "3.0.0":
+        from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
+    else:
+        from triton.language.math import fast_expf as tl_exp
+    return tl_exp
+
+def get_tl_log():
+    if is_npu():
+        from triton.language.math import log as tl_log
+    elif triton.__version__ >= "3.0.0":
+        from triton.language.extra.cuda.libdevice import fast_logf as tl_log
+    else:
+        from triton.language.math import fast_logf as tl_log
+    return tl_log
+
+
+def get_tl_tanh():
+    if is_npu():
+        from triton.language.extra.ascend.libdevice import tanh
+    if triton.__version__ >= '3.0.0':
+        try:
+            # typical import path with dispatch available
+            from triton.language.extra.libdevice import tanh
+        except ModuleNotFoundError:
+            # for working with NGC containers
+            from triton.language.extra.cuda.libdevice import tanh
+    else:
+        from triton.language.math import tanh
+    return tanh
 
 
 def round_up(x: int, y: int) -> int:

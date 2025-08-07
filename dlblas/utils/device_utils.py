@@ -61,6 +61,7 @@ def is_tesla():
         return False
 
 
+@functools.lru_cache
 def infer_device():
     """
     Get current device name based on available devices

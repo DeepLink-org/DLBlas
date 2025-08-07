@@ -3,18 +3,10 @@ from typing import Optional
 import torch
 import triton
 import triton.language as tl
-
+from dlblas.utils.utils import get_tl_tanh
 from dlblas.kernels.element_mul import element_mul_kernel
 
-if triton.__version__ >= '3.0.0':
-    try:
-        # typical import path with dispatch available
-        from triton.language.extra.libdevice import tanh
-    except ModuleNotFoundError:
-        # for working with NGC containers
-        from triton.language.extra.cuda.libdevice import tanh
-else:
-    from triton.language.math import tanh
+tanh = get_tl_tanh()
 
 
 @triton.jit
