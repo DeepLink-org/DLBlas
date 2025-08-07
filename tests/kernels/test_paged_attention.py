@@ -3,9 +3,10 @@ import math
 
 import pytest
 import torch
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.paged_attention import paged_attention_fwd
 
+device_ = infer_device()
 
 def _conti_input(data, seq_lens):
     data = [x[:l] for x, l in zip(data, seq_lens)]
@@ -20,9 +21,9 @@ def _make_bias(seq_lens, history_lens, neg_val):
     seq_ranges = [torch.arange(max_seq_len) for _ in seq_lens]
     for r, l in zip(seq_ranges, seq_lens):
         r[l:] = -max_full_len
-    seq_ranges = torch.stack(seq_ranges, dim=0).cuda()
+    seq_ranges = torch.stack(seq_ranges, dim=0).to(device_)
     kv_ranges = [torch.arange(max_full_len) for _ in full_seq_lens]
-    kv_ranges = torch.stack(kv_ranges, 0).cuda()
+    kv_ranges = torch.stack(kv_ranges, 0).to(device_)
     mask = kv_ranges[:, None, :] - seq_ranges[:, :, None] > history_lens[:, None, None]
     return mask.float() * neg_val
 
@@ -140,7 +141,7 @@ class TestPagedAttention:
 
     @pytest.fixture
     def seq_lens(self, request):
-        yield torch.tensor(request.param, device='cuda')
+        yield torch.tensor(request.param, device=device_)
 
     @pytest.fixture
     def start_loc(self, seq_lens):
@@ -150,14 +151,14 @@ class TestPagedAttention:
 
     @pytest.fixture
     def history_lens(self, request):
-        yield torch.tensor(request.param, device='cuda')
+        yield torch.tensor(request.param, device=device_)
 
     @pytest.fixture
     def batched_q(self, seq_lens, num_heads_q, feat_dim, dtype):
         torch.manual_seed(123)
         batch_size = len(seq_lens)
         max_seq_len = seq_lens.max().item()
-        inputs = torch.rand(batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device='cuda')
+        inputs = torch.rand(batch_size, max_seq_len, num_heads_q, feat_dim, dtype=dtype, device=device_)
         yield inputs
 
     @pytest.fixture
@@ -166,8 +167,8 @@ class TestPagedAttention:
         batch_size = len(seq_lens)
         full_seq_lens = seq_lens + history_lens
         max_seq_len = full_seq_lens.max().item()
-        k = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device='cuda')
-        v = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device='cuda')
+        k = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim, dtype=dtype, device=device_)
+        v = torch.rand(batch_size, max_seq_len, num_heads_k, feat_dim_v, dtype=dtype, device=device_)
         yield k, v
 
     @pytest.fixture
@@ -187,7 +188,7 @@ class TestPagedAttention:
             len_o = o.size(0)
             no[:len_o] = o
 
-        yield new_offset.cuda()
+        yield new_offset.to(device_)
 
     @pytest.fixture
     def conti_kv(self, batched_kv, seq_lens, history_lens):

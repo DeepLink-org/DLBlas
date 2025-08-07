@@ -4,13 +4,10 @@ import triton
 import triton.language as tl
 
 from dlblas.utils.device_utils import is_muxi, is_tesla
-
-if triton.__version__ >= '3.0.0':
-    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
-else:
-    from triton.language.math import fast_expf as tl_exp
+from dlblas.utils.utils import get_tl_exp
 
 TESLA = is_tesla or is_muxi()
+tl_exp = get_tl_exp()
 
 
 @triton.jit

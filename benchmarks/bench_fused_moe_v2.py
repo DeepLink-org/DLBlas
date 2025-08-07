@@ -9,7 +9,7 @@ from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blo
 from dlblas.utils.device_utils import infer_device
 
 
-def _make_A(M, K, group_size, out_dtype, device='npu'):
+def _make_A(M, K, group_size, out_dtype, device):
     quant_A = torch.rand(M, K // group_size, group_size, dtype=torch.float32, device=device)
     # -1 ~ 1
     quant_A = quant_A * 2 - 1
@@ -30,7 +30,7 @@ def _make_A(M, K, group_size, out_dtype, device='npu'):
     return A.to(torch.bfloat16), quant_A, scale
 
 
-def _make_B(E, N, K, group_size, out_dtype, device='npu'):
+def _make_B(E, N, K, group_size, out_dtype, device):
     quant_B = torch.rand(E,
                          N // group_size,
                          group_size,

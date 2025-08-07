@@ -4,12 +4,9 @@ import triton.language as tl
 import triton.language.core as tlc
 
 from dlblas.utils import SymVar, Tensor, register_dlblas_op
+from dlblas.utils.utils import get_tl_exp
 
-if triton.__version__ >= '3.0.0':
-    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
-else:
-    from triton.language.math import fast_expf as tl_exp
-
+tl_exp = get_tl_exp()
 
 @triton.autotune(
     configs=[triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w) for BS in [2, 4] for s in [1] for w in [1, 2]],

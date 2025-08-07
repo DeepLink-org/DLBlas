@@ -4,9 +4,10 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-
+from dlblas.utils.device_utils import infer_device
 from dlblas.kernels.context_flashattention_nopad import context_attention_fwd, context_attention_fwd_no_prompt_cache
 
+device_ = infer_device()
 
 class TestContentFlashAttention(unittest.TestCase):
 
@@ -16,7 +17,7 @@ class TestContentFlashAttention(unittest.TestCase):
         xk = torch.cat([kv, kv_rope], dim=2).view(bs, seqlen, 1, -1)
         xv = kv.view(bs, seqlen, 1, -1)
 
-        mask = torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).cuda()
+        mask = torch.tril(torch.ones(seqlen, seqlen), diagonal=0).unsqueeze(0).unsqueeze(0).to(device=device_)
         mask[mask == 0.0] = -100000000.0
         mask = mask.repeat(bs, num_head, 1, 1)
         keys = xk
@@ -36,29 +37,29 @@ class TestContentFlashAttention(unittest.TestCase):
         Z, H, N_CTX, D_HEAD, ROPE_HEAD = 1, 6, 500, 128, 64
         dtype = torch.float16
         Z = 1
-        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
-        q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
+        q = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
+        q_rope = torch.empty((Z * N_CTX, H, ROPE_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
 
-        kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
-        kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device='cuda').normal_(mean=0.3, std=0.2)
+        kv = torch.empty((Z * N_CTX, 1, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
+        kv_rope = torch.empty((Z * N_CTX, 1, ROPE_HEAD), dtype=dtype, device=device_).normal_(mean=0.3, std=0.2)
 
-        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.7, std=0.2)
-        o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device='cuda').normal_(mean=0.7, std=0.2)
+        o = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.7, std=0.2)
+        o1 = torch.empty((Z * N_CTX, H, D_HEAD), dtype=dtype, device=device_).normal_(mean=0.7, std=0.2)
 
-        req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device='cuda')
+        req_to_token_indexs = torch.zeros((10, Z * N_CTX), dtype=torch.int32, device=device_)
         max_input_len = N_CTX
         Z = 1
-        b_start_loc = torch.zeros((Z, ), dtype=torch.int32, device='cuda')
-        b_seq_len = torch.ones((Z, ), dtype=torch.int32, device='cuda')
-        b_req_idx = torch.ones((Z, ), dtype=torch.int32, device='cuda')
-        b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device='cuda')
+        b_start_loc = torch.zeros((Z, ), dtype=torch.int32, device=device_)
+        b_seq_len = torch.ones((Z, ), dtype=torch.int32, device=device_)
+        b_req_idx = torch.ones((Z, ), dtype=torch.int32, device=device_)
+        b_prompt_cache_len = torch.zeros(1, dtype=torch.int32, device=device_)
         b_prompt_cache_len[0] = 0
         prompt_cache_len = 0
 
         b_seq_len[0] = N_CTX
         b_req_idx[0] = 0
         req_to_token_indexs[0][:prompt_cache_len + N_CTX] = torch.tensor(np.arange(prompt_cache_len + N_CTX),
-                                                                         dtype=torch.int32).cuda()
+                                                                         dtype=torch.int32, device=device_)
 
         softmax_scale = 1 / math.sqrt(D_HEAD + ROPE_HEAD)
 

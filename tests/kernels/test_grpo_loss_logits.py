@@ -2,6 +2,7 @@
 import unittest
 import torch
 from  dlblas.kernels.grpo_compute_loss_logits import GRPO_Loss_Optimized, grpo_compute_loss_torch
+from dlblas.utils.device_utils import infer_device
 
 def run_full_verification():
     print("="*50)
@@ -11,7 +12,7 @@ def run_full_verification():
     # --- 设置测试参数 ---
     B, S, V = 2, 64, 2048
     BL = B * S
-    DEVICE = 'cuda'
+    DEVICE = infer_device()
     DTYPE = torch.float32
     SEED = 42
     
