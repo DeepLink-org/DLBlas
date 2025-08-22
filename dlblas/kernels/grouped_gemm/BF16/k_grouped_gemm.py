@@ -341,7 +341,9 @@ def k_grouped_gemm_TMA(A: Tensor,
         )
     # print(f"best config {k_grouped_gemm_kernel.best_config}", flush = True)
     return C
-
-cuda_arch = torch.cuda.get_device_capability()
+import torch_npu
+cuda_arch = torch_npu.npu.get_device_capability()
+if cuda_arch is None:
+    cuda_arch = (9, 0)
 k_grouped_gemm = k_grouped_gemm_TMA if cuda_arch[0] >= 9 else k_grouped_gemm_general
 # k_grouped_gemm = k_grouped_gemm_general

@@ -48,7 +48,7 @@ def call(gates: torch.Tensor, masks: torch.Tensor, k: int):
     locations = torch.empty((k, s, e), dtype=torch.int64, device=gates.device)
     res = torch.empty((e, ), dtype=gates.dtype, device=logits.device)
     ce = torch.empty_like(res)
-    with torch.cuda.device(gates.device):
+    with torch.npu.device(gates.device):
         _topk_gating_fwd_part2[(e, )](
             gates,
             masks,
@@ -76,7 +76,7 @@ def bench_fn(gates: torch.Tensor, masks: torch.Tensor, k: int):
 # register
 name = '_topk_gating_fwd_part2'
 for dtype in [torch.float16, torch.float32]:
-    for device in ['cuda']:
+    for device in ['npu']:
         seqLen, experts = SymVar('seqLen'), SymVar('experts')
         k = SymVar('k')
         # we dont' actually allocate tensor

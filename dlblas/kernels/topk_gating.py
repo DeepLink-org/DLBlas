@@ -101,7 +101,7 @@ def topk_fwd_triton(gates: torch.Tensor, masks, locations, capacity):
     stride_se_s, _ = gates.stride()
     stride_ks_k, _ = gate_ks.stride()
     stride_kse_k, stride_kse_s, _ = masks.stride()
-    with torch.cuda.device(gates.device):
+    with torch.npu.device(gates.device):
         _topk_gating_fwd_part3[(s, )](
             gates,
             locations,
@@ -202,7 +202,7 @@ def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clam
     add_1_ks = torch.empty((k, s), dtype=gates_se.dtype, device=gates_se.device)
     stride_ks_k, _ = add_1_ks.stride()
     assert e == triton.next_power_of_2(e)
-    with torch.cuda.device(gates_se.device):
+    with torch.npu.device(gates_se.device):
         _topk_gating_bwd_kernel_0[lambda META: (triton.cdiv(s, META['BLOCK_S']), )](gates_ks,
                                                                                     denom_s,
                                                                                     clamp_denom_s,
@@ -223,7 +223,7 @@ def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clam
     gates_grad = torch.empty([s, e], dtype=gates_se.dtype, device=gates_se.device)
     stride_se_s, _ = gates_grad.stride()
     stride_kse_k, stride_kse_s, _ = masks_kse.stride()
-    with torch.cuda.device(gates_se.device):
+    with torch.npu.device(gates_se.device):
         _topk_gating_bwd_kernel_1[lambda META: (triton.cdiv(s, META['BLOCK_S']), )](ce,
                                                                                     masks_kse,
                                                                                     grad_l_aux,
@@ -305,7 +305,7 @@ def bench_fn(logits: torch.Tensor,
 # register
 name = 'topk_gating'
 for dtype in [torch.float16, torch.float32]:
-    for device in ['cuda']:
+    for device in ['npu']:
         seqLen, experts = SymVar('seqLen'), SymVar('experts')
         k = SymVar('k')
         capacity_factor = SymVar('capacity_factor')
