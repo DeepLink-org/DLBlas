@@ -277,7 +277,7 @@ def silu_and_mul_masked_post_quant_fwd(
     masked_m: torch.Tensor,
 ):
     assert input.is_contiguous()
-    assert output.dtype == torch.float8_e4m3fn
+    # assert output.dtype == torch.float8_e4m3fn
     assert output.is_contiguous()
     assert len(input.shape) == 3
     assert input.shape[0] == masked_m.shape[0]
@@ -299,9 +299,9 @@ def silu_and_mul_masked_post_quant_fwd(
         BLOCK_NUM_PER_EXPERT,
         expert_num,
     )
-    finfo = torch.finfo(torch.float8_e4m3fn)
+    finfo = torch.finfo(output.dtype)
     fp8_max = finfo.max
-    fp8_min = -fp8_max
+    fp8_min = finfo.min
     _silu_and_mul_post_quant_kernel[grid](
         input,
         *input.stride(),
