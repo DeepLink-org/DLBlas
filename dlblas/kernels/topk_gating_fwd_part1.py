@@ -58,7 +58,7 @@ def call(logits: torch.Tensor, k: int):
     gates = torch.empty_like(logits)
     masks = torch.empty((k, s, e), dtype=torch.int64, device=logits.device)
     fill_value = torch.finfo(logits.dtype).min
-    with torch.npu.device(gates.device):
+    with torch.cuda.device(gates.device):
         _topk_gating_kernel_part1[lambda META: (triton.cdiv(s, META['BLOCK_S']), )](
             logits,
             masks,

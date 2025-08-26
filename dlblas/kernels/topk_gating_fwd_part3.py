@@ -129,7 +129,7 @@ def rearrange_opt(gates, masks, locations, k, capacity):
     stride_se_s, _ = gates.stride()
     stride_ks_k, _ = gate_ks.stride()
     stride_kse_k, stride_kse_s, _ = masks.stride()
-    with torch.npu.device(gates.device):
+    with torch.cuda.device(gates.device):
         _topk_gating_fwd_part3_rearrange_opt[(s, )](
             gates,
             locations,
@@ -165,7 +165,7 @@ def topk_gating_fwd_part3(gates, masks, locations, k, capacity):
     stride_sec_s, stride_sec_e, _ = combine_weights.stride()
     stride_kse_k, stride_kse_s, _ = masks.stride()
     min_value = torch.finfo(gates.dtype).eps
-    with torch.npu.device(gates.device):
+    with torch.cuda.device(gates.device):
         _topk_gating_fwd_part3[(s, )](
             gates,
             gates_all,
@@ -204,7 +204,7 @@ def bench_fn(gates, masks, locations, k, capacity, enable_token_rearrange_opt):
 # register
 name = '_topk_gating_fwd_part3'
 for dtype in [torch.float16, torch.float32]:
-    for device in ['npu']:
+    for device in ['cuda']:
         seqLen, experts = SymVar('seqLen'), SymVar('experts')
         k, capacity = SymVar('k'), SymVar('capacity')
         # we dont' actually allocate tensor
