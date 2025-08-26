@@ -39,7 +39,7 @@ def benchmark_silu_mul_quant():
         device="npu", 
         dtype=torch.float16
     )
-    output = torch.empty_like(input[:, :, :hidden_size], dtype=torch.float16)
+    output = torch.empty_like(input[:, :, :hidden_size], dtype=torch.bfloat16)
     output_scale = torch.empty(expert_num, token_per_expert, hidden_size//quant_group, dtype=torch.float32, device="npu")
     masked_m = torch.full((expert_num,), token_per_expert, device="npu", dtype=torch.int32)
 
