@@ -59,3 +59,7 @@ tags
 
 *egg-info
 .pytest*
+# ascend
+extra-info/
+fusion_result.json
+kernel_meta/

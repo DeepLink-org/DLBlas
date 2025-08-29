@@ -30,6 +30,17 @@ def get_device_props(device=None):
     )
     return out
 
+@functools.lru_cache
+def get_number_cores():
+    if is_cuda():
+        return torch.cuda.get_device_properties("cuda").multi_processor_count
+    elif is_npu():
+        import triton.runtime.driver as driver
+        device = torch.npu.current_device()
+        return driver.active.utils.get_device_properties(device)["num_aicore"]
+    else:
+        raise RuntimeError("Please implement this function.")
+
 
 def is_mlu_592():
     target = triton.runtime.driver.active.get_current_target()
