@@ -2,14 +2,6 @@
 import importlib.util
 import os
 
-# Manually import the specific submodules you need
-try:
-    # Import grouped_gemm subpackage
-    from .grouped_gemm.BF16 import *
-    
-except ImportError as e:
-    print(f"Warning: Could not import submodules: {e}")
-
 def import_all_modules_from_folder(folder_path):
     """
     dynamically import all Python modules under this folder

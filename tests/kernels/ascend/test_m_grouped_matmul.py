@@ -7,7 +7,7 @@ from dlblas.kernels.ascend.m_grouped_gemm import m_grouped_gemm
 device_ = infer_device()
 
 def torch_grouped_matmul(a, b, size_per_group, trans_b):
-    assert trans_b == False
+    b = torch.transpose(b, 1, 2).contiguous() if trans_b else b
     return torch.ops.npu.npu_grouped_matmul(
         [a],
         [b],
@@ -34,12 +34,11 @@ def generate_random_list(length, total_sum):
     lst[-1] += diff
     return lst
 
-@pytest.mark.parametrize(
-['N', 'K'],
+@pytest.mark.parametrize(['N', 'K'],
 [(4096, 4096), (512, 512), (768*2, 2048), (2048, 768), (1536*2, 4096), (4096, 1536)])
 @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float16])
 @pytest.mark.parametrize('groups', [128])
-@pytest.mark.parametrize('trans_b', [False])
+@pytest.mark.parametrize('trans_b', [True, False])
 def test_m_grouped_gemm(groups, N, K, dtype, trans_b):
     batch_sizes = torch.Tensor(generate_random_list(groups, groups*1280)).to(device_).to(torch.int64)
     M = batch_sizes.sum().item()
