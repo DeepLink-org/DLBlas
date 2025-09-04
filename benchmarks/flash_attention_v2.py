@@ -11,24 +11,24 @@ MUXI_CUDA = is_muxi() or is_cuda()
 
 def test():
     device_ = torch.device(infer_device())
-    dtype = torch.float16
-    if MUXI_CUDA:
-        dtype = torch.float32
+    dtype = torch.bfloat16
+    # if MUXI_CUDA:
+    #     dtype = torch.float32
 
-    seq_len, heads, dim = 25600, 32, 64
+    seq_len, heads, dim = 25600, 32, 96  #if dim=96,using hdim96 kernel
     query = torch.rand([1, seq_len, heads, dim], dtype=dtype, device=device_)
     key = torch.rand([1, seq_len, heads, dim], dtype=dtype, device=device_)
     value = torch.rand([1, seq_len, heads, dim], dtype=dtype, device=device_)
 
     tt_out, _, _ = flash_attention_v2(query, key, value)
     ref_out = F.scaled_dot_product_attention(
-        query.permute(0, 2, 1, 3).cpu(),
-        key.permute(0, 2, 1, 3).cpu(),
-        value.permute(0, 2, 1, 3).cpu(),
+        query.permute(0, 2, 1, 3),
+        key.permute(0, 2, 1, 3),
+        value.permute(0, 2, 1, 3),
     ).permute(0, 2, 1, 3)
 
     print('TEST: ')
-    tt_out = tt_out.cpu()
+    tt_out = tt_out
     print('max abs diff: ', torch.max(abs(tt_out - ref_out)))
     assert torch.allclose(tt_out, ref_out, atol=1e-2, rtol=0)
 
@@ -55,9 +55,9 @@ def test():
 
         if 'torch' in provider:
             ms = triton.testing.do_bench(lambda: F.scaled_dot_product_attention(
-                query.permute(0, 2, 1, 3).cpu(),
-                key.permute(0, 2, 1, 3).cpu(),
-                value.permute(0, 2, 1, 3).cpu(),
+                query.permute(0, 2, 1, 3),
+                key.permute(0, 2, 1, 3),
+                value.permute(0, 2, 1, 3),
             ).permute(0, 2, 1, 3),
                                          warmup=warmup,
                                          rep=rep)
