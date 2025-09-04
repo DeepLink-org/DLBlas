@@ -65,13 +65,11 @@ def k_grouped_gemm_kernel(
             for kk in tl.range(0, tl.cdiv(tokens, BLOCK_K)):
                 a_ptrs = a_ptrs_base + kk * BLOCK_K * M
                 b_ptrs = b_ptrs_base + kk * BLOCK_K * N
-                a = tl.load(a_ptrs, 
-                            mask=(offs_k[:, None] < group_end - kk * BLOCK_K) and msk_m[None, :],
-                            other=0.0)
+                a = tl.load(a_ptrs, mask=(offs_k[:, None] < group_end - kk * BLOCK_K) and msk_m[None, :], other=0.0)
                 aa = tl.trans(a)
-                b = tl.load(b_ptrs, 
-                            mask=(offs_k[:, None] < group_end - kk * BLOCK_K) and msk_n[None, :],
-                            other=0.0)
+                tl.compile_hint(aa, "dot_pad_only_k")
+                b = tl.load(b_ptrs, mask=(offs_k[:, None] < group_end - kk * BLOCK_K) and msk_n[None, :], other=0.0)
+                tl.compile_hint(b, "dot_pad_only_k")
                 accumulator = tl.dot(aa, b, acc=accumulator)
 
             c = accumulator.to(C.dtype.element_ty)

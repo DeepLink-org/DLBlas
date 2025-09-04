@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 from dlblas.utils.op_helper import grouped_lanuch_diagonal
 from dlblas.utils.device_utils import get_number_cores
-
+# import triton.language.extra.deeplink as dl
 
 def get_autotune_config():
     return [
@@ -13,11 +13,13 @@ def get_autotune_config():
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
         triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 8}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 9}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 4}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 5}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 8}),
+        triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 9}),
     ]
 
 @triton.autotune(configs=get_autotune_config(), key=['N', 'K'])
@@ -45,6 +47,7 @@ def m_grouped_gemm_bKmajor_kernel(
     group_start = 0
     group_end = 0
     # group_size_m = tl.load(group_size_ptr + tl.arange(0, num_groups)).to(tl.int32)
+    # should use tl.static_range on NV
     for group_idx in range(num_groups):
         # m = tl.extract_slice(group_size_m, [group_idx], [1], [1])
         m = tl.load(group_size_ptr + group_idx).to(tl.int32)
@@ -118,7 +121,9 @@ def m_grouped_gemm_bNmajor_kernel(
     last_count = 0
     group_start = 0
     group_end = 0
+    group_idx = 0
     # group_size_m = tl.load(group_size_ptr + tl.arange(0, num_groups)).to(tl.int32)
+    # should use tl.static_range on NV
     for group_idx in range(num_groups):
         # m = tl.extract_slice(group_size_m, [group_idx], [1], [1])
         m = tl.load(group_size_ptr + group_idx).to(tl.int32)
@@ -134,7 +139,7 @@ def m_grouped_gemm_bNmajor_kernel(
             offs_ak = tl.arange(0, BLOCK_K)
             offs_bk = (group_idx * K) + tl.arange(0, BLOCK_K)
             a_ptrs_base = A + (offs_am[:, None]*K + offs_ak[None, :])
-            b_ptrs_base = B + (offs_bk[:, None]*strideBK + offs_bn[None, :]) * strideBN
+            b_ptrs_base = B + (offs_bk[:, None]*strideBK + offs_bn[None, :])
             msk_m = offs_am < group_end
             msk_n = offs_bn < N
             accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
@@ -168,7 +173,6 @@ def m_grouped_gemm_bNmajor_kernel(
         group_start = group_end
 
 
-@torch.library.custom_op("moe::m_grouped_gemm", mutates_args=())
 def m_grouped_gemm(A: Tensor, B: Tensor, size_per_group: torch.Tensor, trans_b: bool = False) -> Tensor:
     assert A.dim() == 2
     assert B.dim() == 3
@@ -197,4 +201,5 @@ def m_grouped_gemm(A: Tensor, B: Tensor, size_per_group: torch.Tensor, trans_b: 
         strideBN,
         strideBK,
     )
+    # print(f"m_grouped_gemm_kernel best config {m_grouped_gemm_kernel.best_config}", flush = True)
     return C

@@ -52,19 +52,21 @@ def is_muxi():
     return target.backend == 'maca'
 
 
+@functools.lru_cache
 def is_cuda():
     try:
         return torch.cuda.is_available()
     except Exception:
         return False
 
-
+@functools.lru_cache
 def is_npu():
     try:
         return torch.npu.is_available()
     except Exception:
         return False
-    
+
+@functools.lru_cache
 def is_tesla():
     try:
         return 'Tesla' in torch.cuda.get_device_name(0)

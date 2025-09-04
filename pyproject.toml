@@ -25,5 +25,5 @@ Homepage="https://github.com/DeepLink-org/dlBLAS"
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["benchmarks", "csrc", "examples", "tests*"]
+exclude = ["benchmarks", "csrc", "examples"]
 namespaces = false
