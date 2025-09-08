@@ -1,8 +1,8 @@
 ## Overall Design
 
-dlBLAS is dedicated to leveraging the latest technologies to achieve the ultimate performance of operators. For example, EP_MoE utilizes cutting-edge industry technologies such as DeepEP and DeepGemm to implement highly efficient MoE modules.
+DLBlas is dedicated to leveraging the latest technologies to achieve the ultimate performance of operators. For example, EP_MoE utilizes cutting-edge industry technologies such as DeepEP and DeepGemm to implement highly efficient MoE modules.
 
-dlBLAS is meant to be an operator library for Triton-based operators. As such, kernel developers register their kernels to the library and users ask for a operator by giving operator name and input tensors.
+DLBlas is meant to be an operator library for Triton-based operators. As such, kernel developers register their kernels to the library and users ask for a operator by giving operator name and input tensors.
 
 it improves over Triton's autotuner in the following ways:
 
@@ -16,7 +16,7 @@ it improves over Triton's autotuner in the following ways:
 ## Install
 
 ```
-cd dlBLAS
+cd DLBlas
 python setup.py install
 ```
 ## Getting Started
