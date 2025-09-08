@@ -1,0 +1,89 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _fused_pointwise(
+    x_ptr,
+    output_ptr,
+    multiplier_ptr,
+    total_elements,
+    D, H, W, C,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_elements
+    
+    # Load input values
+    x_val = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    
+    # Compute channel indices
+    stride_C = D * H * W
+    total_per_batch = C * stride_C
+    idx_in_batch = offsets % total_per_batch
+    channel_index = idx_in_batch // stride_C
+    
+    # Load multiplier values
+    multiplier_val = tl.load(multiplier_ptr + channel_index, mask=mask, other=0.0)
+    
+    # Fused operations: LeakyReLU -> multiply -> LeakyReLU
+    leaky1 = tl.where(x_val >= 0, x_val, 0.2 * x_val)
+    temp = leaky1 * multiplier_val
+    leaky2 = tl.where(temp >= 0, temp, 0.2 * temp)
+    
+    # Store results
+    tl.store(output_ptr + offsets, leaky2, mask=mask)
+
+def fused_pointwise(x, multiplier):
+    multiplier_1d = multiplier.squeeze()
+    if not multiplier_1d.is_contiguous():
+        multiplier_1d = multiplier_1d.contiguous()
+        
+    B, C, D, H, W = x.shape
+    total_elements = x.numel()
+    output = torch.empty_like(x)
+    
+    if total_elements == 0:
+        return output
+        
+    grid = lambda meta: (triton.cdiv(total_elements, meta['BLOCK_SIZE']),)
+    _fused_pointwise[grid](
+        x, output, multiplier_1d,
+        total_elements,
+        D, H, W, C,
+        BLOCK_SIZE=1024
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape))
+        self.max_pool = nn.MaxPool3d(kernel_size=2)
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x.contiguous()
+        x = fused_pointwise(x, self.multiplier)
+        x = self.max_pool(x)
+        return x
+
+batch_size = 16
+in_channels = 16
+out_channels = 32
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+multiplier_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, multiplier_shape]

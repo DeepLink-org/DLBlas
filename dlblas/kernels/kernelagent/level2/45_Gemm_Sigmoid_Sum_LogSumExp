@@ -1,0 +1,116 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def linear_sigmoid_sum_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    output_ptr,
+    input_size: tl.constexpr,
+    hidden_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    P2: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    col_idx = tl.arange(0, BLOCK_SIZE)
+    mask_col = col_idx < hidden_size
+
+    # Load input row with power-of-two block and masking
+    k_idx = tl.arange(0, P2)
+    mask_k = k_idx < input_size
+    x_vals = tl.load(x_ptr + row_idx * input_size + k_idx, mask=mask_k, other=0.0)
+
+    # Load weight block with 2D masking
+    w_offsets = col_idx[:, None] * input_size + k_idx[None, :]
+    w = tl.load(w_ptr + w_offsets, 
+                mask=mask_col[:, None] & mask_k[None, :], 
+                other=0.0)
+
+    # Compute linear transformation
+    acc = tl.sum(x_vals[None, :] * w, axis=1) 
+    bias = tl.load(b_ptr + col_idx, mask=mask_col, other=0.0)
+    acc += bias
+    
+    # Apply sigmoid and sum valid columns
+    sigmoid = 1.0 / (1.0 + tl.exp(-acc))
+    sigmoid = tl.where(mask_col, sigmoid, 0.0)
+    row_sum = tl.sum(sigmoid)
+    
+    tl.store(output_ptr + row_idx, row_sum)
+
+@triton.jit
+def logsumexp_kernel(
+    input_ptr,
+    output_ptr,
+    n_elements: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Load data with masking
+    x = tl.load(input_ptr + offsets, mask=mask, other=float('-inf'))
+    
+    # Stable logsumexp computation
+    max_val = tl.max(x, axis=0)
+    safe_x = tl.where(mask, x - max_val, float('-inf'))
+    exp_vals = tl.exp(safe_x)
+    sum_exp = tl.sum(exp_vals, axis=0)
+    result = tl.log(sum_exp) + max_val
+    
+    if pid == 0:
+        tl.store(output_ptr, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(ModelNew, self).__init__()
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, output_size)
+    
+    def forward(self, x):
+        x = x.contiguous()
+        s_sum = torch.empty(x.size(0), device=x.device, dtype=torch.float32)
+        
+        # Compute power-of-two for input dimension
+        P2 = triton.next_power_of_2(x.size(1))
+        
+        grid = (x.size(0),)
+        linear_sigmoid_sum_kernel[grid](
+            x,
+            self.linear1.weight,
+            self.linear1.bias,
+            s_sum,
+            x.size(1),
+            self.linear1.weight.size(0),
+            BLOCK_SIZE=triton.next_power_of_2(self.linear1.weight.size(0)),
+            P2=P2
+        )
+        
+        output = torch.empty(1, device=x.device, dtype=torch.float32)
+        n_elements = s_sum.numel()
+        BLOCK_SIZE_LSE = triton.next_power_of_2(n_elements)
+        
+        logsumexp_kernel[(1,)](
+            s_sum,
+            output,
+            n_elements,
+            BLOCK_SIZE=BLOCK_SIZE_LSE
+        )
+        
+        return output[0]
+
+batch_size = 128
+input_size = 10
+hidden_size = 20
+output_size = 5
+
+def get_inputs():
+    return [torch.randn(batch_size, input_size)]
+
+def get_init_inputs():
+    return [input_size, hidden_size, output_size]

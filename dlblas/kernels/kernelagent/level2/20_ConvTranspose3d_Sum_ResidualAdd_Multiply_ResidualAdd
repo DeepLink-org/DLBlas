@@ -1,0 +1,86 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE': 128, 'VEC_SIZE': 4}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 256, 'VEC_SIZE': 4}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 512, 'VEC_SIZE': 4}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 1024, 'VEC_SIZE': 4}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 128, 'VEC_SIZE': 2}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 256, 'VEC_SIZE': 2}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 512, 'VEC_SIZE': 2}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 1024, 'VEC_SIZE': 2}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 128, 'VEC_SIZE': 1}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 256, 'VEC_SIZE': 1}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 512, 'VEC_SIZE': 1}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 1024, 'VEC_SIZE': 1}, num_warps=4),
+    ],
+    key=['total_elements'],
+)
+@triton.jit
+def _fused_residual_bias(
+    conv_output_ptr,
+    bias_ptr,
+    output_ptr,
+    total_elements,
+    out_channels,
+    depth_out,
+    height_out,
+    width_out,
+    BLOCK_SIZE: tl.constexpr,
+    VEC_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    spatial_size = depth_out * height_out * width_out
+    
+    block_start = pid * BLOCK_SIZE * VEC_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)[:, None] * VEC_SIZE + tl.arange(0, VEC_SIZE)[None, :]
+    offsets_flat = tl.reshape(offsets, (BLOCK_SIZE * VEC_SIZE,))
+    mask_flat = offsets_flat < total_elements
+    
+    conv_vals = tl.load(conv_output_ptr + offsets_flat, mask=mask_flat, other=0.0)
+    channel_indices = (offsets_flat // spatial_size) % out_channels
+    bias_vals = tl.load(bias_ptr + channel_indices, mask=mask_flat, other=0.0)
+    
+    result = conv_vals * (2.0 * conv_vals + bias_vals + 1.0)
+    tl.store(output_ptr + offsets_flat, result, mask=mask_flat)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+    
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        batch_size, out_channels, depth_out, height_out, width_out = x.shape
+        total_elements = batch_size * out_channels * depth_out * height_out * width_out
+        output = torch.empty_like(x)
+        bias_1d = self.bias.view(-1)
+        
+        grid = lambda meta: (triton.cdiv(total_elements, meta['BLOCK_SIZE'] * meta['VEC_SIZE']),)
+        _fused_residual_bias[grid](
+            x, bias_1d, output, 
+            total_elements, out_channels, 
+            depth_out, height_out, width_out
+        )
+        return output
+
+batch_size = 16
+in_channels = 32
+out_channels = 64
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+bias_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape]

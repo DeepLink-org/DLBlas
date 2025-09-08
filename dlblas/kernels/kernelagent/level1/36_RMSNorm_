@@ -1,0 +1,106 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _rms_norm_forward(
+    x_ptr,
+    output_ptr,
+    stride_b,
+    stride_f,
+    total_spatial,
+    num_features,
+    eps,
+    BLOCK_SIZE_SPATIAL: tl.constexpr,
+    BLOCK_SIZE_FEATURE: tl.constexpr
+):
+    pid_b = tl.program_id(0)
+    pid_spatial_block = tl.program_id(1)
+    
+    # Calculate spatial indices
+    spatial_idx = pid_spatial_block * BLOCK_SIZE_SPATIAL + tl.arange(0, BLOCK_SIZE_SPATIAL)
+    spatial_mask = spatial_idx < total_spatial
+    
+    # Base pointer for current batch
+    batch_base = x_ptr + pid_b * stride_b
+    
+    # Initialize sum of squares for spatial positions
+    sum_sq = tl.zeros((BLOCK_SIZE_SPATIAL,), dtype=tl.float32)
+    
+    # First pass: compute sum of squares in feature blocks
+    for feature_block in range(0, num_features, BLOCK_SIZE_FEATURE):
+        feature_idx = feature_block + tl.arange(0, BLOCK_SIZE_FEATURE)
+        feature_mask = feature_idx < num_features
+        
+        # Create mask for valid elements
+        full_mask = feature_mask[:, None] & spatial_mask[None, :]
+        
+        # Calculate pointers and load data
+        ptr = batch_base + feature_idx[:, None] * stride_f + spatial_idx[None, :]
+        vals = tl.load(ptr, mask=full_mask, other=0.0)
+        sq_vals = vals * vals
+        sum_sq += tl.sum(sq_vals, axis=0)
+
+    # Compute RMS for spatial positions
+    mean_sq = sum_sq / num_features
+    rms = tl.sqrt(mean_sq + eps)
+
+    # Second pass: normalize and store in feature blocks
+    for feature_block in range(0, num_features, BLOCK_SIZE_FEATURE):
+        feature_idx = feature_block + tl.arange(0, BLOCK_SIZE_FEATURE)
+        feature_mask = feature_idx < num_features
+        full_mask = feature_mask[:, None] & spatial_mask[None, :]
+        
+        # Load data
+        ptr = batch_base + feature_idx[:, None] * stride_f + spatial_idx[None, :]
+        vals = tl.load(ptr, mask=full_mask, other=0.0)
+        
+        # Normalize
+        normalized = vals / rms[None, :]
+        
+        # Store results
+        out_ptr = output_ptr + pid_b * stride_b + feature_idx[:, None] * stride_f + spatial_idx[None, :]
+        tl.store(out_ptr, normalized, mask=full_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, num_features: int, eps: float = 1e-5):
+        super(ModelNew, self).__init__()
+        self.num_features = num_features
+        self.eps = eps
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        batch_size, _, d1, d2 = x.shape
+        total_spatial = d1 * d2
+        
+        # Optimized block sizes: spatial block matches last dimension for contiguous access
+        BLOCK_SIZE_SPATIAL = 256  # Matches d2 for contiguous memory access
+        BLOCK_SIZE_FEATURE = 64   # Full feature dimension in single block
+        grid = (batch_size, triton.cdiv(total_spatial, BLOCK_SIZE_SPATIAL))
+        
+        _rms_norm_forward[grid](
+            x, output,
+            x.stride(0),
+            x.stride(1),
+            total_spatial,
+            self.num_features,
+            self.eps,
+            BLOCK_SIZE_SPATIAL=BLOCK_SIZE_SPATIAL,
+            BLOCK_SIZE_FEATURE=BLOCK_SIZE_FEATURE,
+            num_warps=8
+        )
+        return output
+
+batch_size = 16
+features = 64
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return [features]

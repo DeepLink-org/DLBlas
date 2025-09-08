@@ -1,0 +1,107 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 64}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 128}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 256, 'BLOCK_K': 64}, num_warps=8),
+    ],
+    key=['M', 'N', 'K'],
+)
+@triton.jit
+def _fwd_kernel(
+    x_ptr, w_ptr, bias_ptr, out_ptr,
+    M, N, K,
+    stride_xm, stride_xk,
+    stride_wn, stride_wk,
+    stride_bn,
+    stride_om, stride_on,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    # Calculate starting indices for blocks
+    m_start = pid_m * BLOCK_M
+    n_start = pid_n * BLOCK_N
+    
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    
+    # Loop over K dimension in blocks
+    for k_start in range(0, K, BLOCK_K):
+        k_offsets = k_start + tl.arange(0, BLOCK_K)
+        
+        # Load input block (M x K)
+        m_indices = tl.arange(0, BLOCK_M) + m_start
+        x_offsets = m_indices[:, None] * stride_xm + k_offsets[None, :]
+        x_mask = (m_indices[:, None] < M) & (k_offsets[None, :] < K)
+        x_block = tl.load(x_ptr + x_offsets, mask=x_mask, other=0.0)
+        
+        # Load weight block (N x K) and transpose to (K x N)
+        n_indices = tl.arange(0, BLOCK_N) + n_start
+        w_offsets = n_indices[:, None] * stride_wn + k_offsets[None, :]
+        w_mask = (n_indices[:, None] < N) & (k_offsets[None, :] < K)
+        w_block = tl.load(w_ptr + w_offsets, mask=w_mask, other=0.0)
+        w_block = tl.trans(w_block)
+        
+        # Matrix multiplication using tensor cores
+        acc += tl.dot(x_block, w_block, allow_tf32=True)
+    
+    # Add bias and apply ReLU
+    b_offsets = n_start + tl.arange(0, BLOCK_N)
+    b_mask = b_offsets < N
+    bias_block = tl.load(bias_ptr + b_offsets, mask=b_mask, other=0.0)
+    acc += bias_block[None, :]  # Broadcast across M dimension
+    acc = tl.maximum(acc, 0.0)
+    
+    # Store output block
+    m_indices = tl.arange(0, BLOCK_M) + m_start
+    n_indices = tl.arange(0, BLOCK_N) + n_start
+    out_offsets = m_indices[:, None] * stride_om + n_indices[None, :]
+    out_mask = (m_indices[:, None] < M) & (n_indices[None, :] < N)
+    tl.store(out_ptr + out_offsets, acc, mask=out_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features, bias=False)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+    
+    def forward(self, x):
+        M, K = x.shape
+        N = self.gemm.weight.shape[0]
+        x = x.contiguous()
+        weight = self.gemm.weight.contiguous()
+        bias = self.bias.contiguous()
+        output = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        
+        grid = lambda META: (
+            triton.cdiv(M, META['BLOCK_M']), 
+            triton.cdiv(N, META['BLOCK_N'])
+        )
+        _fwd_kernel[grid](
+            x, weight, bias, output,
+            M, N, K,
+            x.stride(0), x.stride(1),
+            weight.stride(0), weight.stride(1),
+            bias.stride(0),
+            output.stride(0), output.stride(1),
+        )
+        return output
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+bias_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, bias_shape]

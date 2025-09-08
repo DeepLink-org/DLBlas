@@ -1,0 +1,216 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def conv2d_kernel(
+    input_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    in_channels,
+    height,
+    width,
+    out_channels,
+    output_height,
+    output_width,
+    stride,
+    padding,
+    dilation,
+    kernel_size: tl.constexpr,
+    groups,
+    input_batch_stride,
+    input_channel_stride,
+    input_height_stride,
+    input_width_stride,
+    weight_outc_stride,
+    weight_inc_stride,
+    weight_kh_stride,
+    weight_kw_stride,
+    bias_stride,
+    output_batch_stride,
+    output_channel_stride,
+    output_height_stride,
+    output_width_stride,
+    BLOCK_SIZE: tl.constexpr,
+    IN_CHANNELS_PER_GROUP: tl.constexpr
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    
+    batch_index = pid0 // out_channels
+    oc_index = pid0 % out_channels
+    oh = pid1
+    ow_start = pid2 * BLOCK_SIZE
+    ow_offsets = ow_start + tl.arange(0, BLOCK_SIZE)
+    ow_mask = ow_offsets < output_width
+
+    group_index = oc_index // (out_channels // groups)
+    start_in_channel = group_index * IN_CHANNELS_PER_GROUP
+
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    # Precompute spatial indices and masks
+    for ic in tl.static_range(IN_CHANNELS_PER_GROUP):
+        for kh in tl.static_range(kernel_size):
+            ih = oh * stride - padding + kh * dilation
+            h_bound = (ih >= 0) & (ih < height)
+            base_input_offset = (
+                batch_index * input_batch_stride +
+                (start_in_channel + ic) * input_channel_stride +
+                ih * input_height_stride
+            )
+            
+            for kw in tl.static_range(kernel_size):
+                iw = ow_offsets * stride - padding + kw * dilation
+                w_bound = (iw >= 0) & (iw < width)
+                mask = h_bound & w_bound & ow_mask
+                
+                input_vals = tl.load(
+                    input_ptr + base_input_offset + iw * input_width_stride,
+                    mask=mask,
+                    other=0.0
+                )
+                
+                weight_offset = (
+                    oc_index * weight_outc_stride +
+                    ic * weight_inc_stride +
+                    kh * weight_kh_stride +
+                    kw * weight_kw_stride
+                )
+                weight_val = tl.load(weight_ptr + weight_offset)
+                acc += input_vals * weight_val
+
+    if bias_ptr is not None:
+        bias_val = tl.load(bias_ptr + oc_index * bias_stride)
+        acc += bias_val
+
+    output_offset = (
+        batch_index * output_batch_stride +
+        oc_index * output_channel_stride +
+        oh * output_height_stride
+    )
+    tl.store(
+        output_ptr + output_offset + ow_offsets * output_width_stride,
+        acc,
+        mask=ow_mask
+    )
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, 
+                 groups: int = 1, bias: bool = False):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        self.bias_flag = bias
+        
+        # Initialize weight tensor
+        self.weight = nn.Parameter(
+            torch.empty(out_channels, in_channels // groups, 
+                       kernel_size, kernel_size)
+        )
+        
+        # Initialize bias if needed
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Ensure contiguous memory layout
+        x = x.contiguous()
+        batch_size, _, height, width, depth = x.shape
+        
+        # Calculate output dimensions
+        height_out = (height + 2 * self.padding - 
+                     self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        width_out = (width + 2 * self.padding - 
+                    self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        
+        # Prepare output tensor
+        output = torch.empty(
+            batch_size, self.out_channels, height_out, width_out, depth,
+            device=x.device, dtype=x.dtype
+        )
+        
+        # Process each depth slice separately
+        for d in range(depth):
+            # Extract depth slice
+            input_slice = x[..., d].contiguous()
+            output_slice = output[..., d]
+            
+            # Get tensor strides
+            input_strides = input_slice.stride()
+            weight_strides = self.weight.stride()
+            output_strides = output_slice.stride()
+            
+            if self.bias is not None:
+                bias_strides = (self.bias.stride(0),)
+            else:
+                bias_strides = (0,)
+            
+            # Configure kernel launch grid
+            grid = (
+                batch_size * self.out_channels,
+                height_out,
+                triton.cdiv(width_out, 128)
+            )
+            
+            # Launch kernel for current depth slice
+            conv2d_kernel[grid](
+                input_slice, 
+                self.weight, 
+                self.bias if self.bias_flag else None,
+                output_slice,
+                self.in_channels,
+                height,
+                width,
+                self.out_channels,
+                height_out,
+                width_out,
+                self.stride,
+                self.padding,
+                self.dilation,
+                self.kernel_size,
+                self.groups,
+                input_strides[0], input_strides[1], input_strides[2], input_strides[3],
+                weight_strides[0], weight_strides[1], weight_strides[2], weight_strides[3],
+                bias_strides[0],
+                output_strides[0], output_strides[1], output_strides[2], output_strides[3],
+                BLOCK_SIZE=128,
+                IN_CHANNELS_PER_GROUP=self.in_channels // self.groups
+            )
+        
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = 3
+width = 256
+height = 256
+depth = 10
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width, depth)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

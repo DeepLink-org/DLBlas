@@ -1,0 +1,63 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _forward_kernel(
+    x_ptr,
+    weight_ptr,
+    output_ptr,
+    scaling_factor,
+    input_size: tl.constexpr,
+    hidden_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    tid = tl.arange(0, BLOCK_SIZE)
+    mask = tid < hidden_size
+
+    dot = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    for i in range(0, input_size):
+        x_val = tl.load(x_ptr + pid * input_size + i)
+        w_ptr = weight_ptr + tid * input_size + i
+        w_val = tl.load(w_ptr, mask=mask, other=0.0)
+        dot += x_val * w_val
+
+    total = tl.sum(dot, axis=0) * (scaling_factor / 2.0)
+    tl.store(output_ptr + pid, total, mask=True)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.weight = nn.Parameter(torch.randn(hidden_size, input_size))
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        batch = x.shape[0]
+        output = torch.empty((batch, 1), device=x.device, dtype=x.dtype)
+        
+        x = x.contiguous()
+        weight = self.weight.contiguous()
+        hidden_size = self.weight.shape[0]
+        BLOCK_SIZE = triton.next_power_of_2(hidden_size)
+        
+        grid = (batch,)
+        _forward_kernel[grid](
+            x, weight, output, self.scaling_factor,
+            input_size=self.weight.shape[1],
+            hidden_size=hidden_size,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+        return output
+
+batch_size = 128
+input_size = 10
+hidden_size = 20
+scaling_factor = 1.5
+
+def get_inputs():
+    return [torch.randn(batch_size, input_size)]
+
+def get_init_inputs():
+    return [input_size, hidden_size, scaling_factor]

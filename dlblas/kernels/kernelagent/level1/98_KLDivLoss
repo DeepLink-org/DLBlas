@@ -1,0 +1,61 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def kl_div_kernel(
+    log_predictions_ptr,
+    targets_ptr,
+    output_ptr,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = pid * n_cols
+    row_sum = 0.0
+    
+    for off in range(0, n_cols, BLOCK_SIZE):
+        col_offsets = off + tl.arange(0, BLOCK_SIZE)
+        mask = col_offsets < n_cols
+        
+        t = tl.load(targets_ptr + row_start + col_offsets, mask=mask, other=0.0)
+        log_p = tl.load(log_predictions_ptr + row_start + col_offsets, mask=mask, other=0.0)
+        
+        # Safe term calculation avoiding log(0) for targets
+        pos_mask = (t > 0.0) & mask
+        safe_t = tl.where(pos_mask, t, 1.0)
+        log_t = tl.log(safe_t)
+        term = tl.where(pos_mask, t * (log_t - log_p), 0.0)
+        
+        block_sum = tl.sum(term, axis=0)
+        row_sum += block_sum
+    
+    tl.store(output_ptr + pid, row_sum)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, predictions, targets):
+        predictions = predictions.contiguous()
+        targets = targets.contiguous()
+        log_predictions = torch.log(predictions)
+        
+        output = torch.empty(predictions.shape[0], device=predictions.device, dtype=torch.float32)
+        n_cols = predictions.shape[1]
+        grid = (predictions.shape[0],)
+        
+        kl_div_kernel[grid](log_predictions, targets, output, n_cols, BLOCK_SIZE=1024)
+        return output.mean()
+
+batch_size = 128
+input_shape = (4096,)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape).softmax(dim=-1), 
+            torch.randn(batch_size, *input_shape).softmax(dim=-1)]
+
+def get_init_inputs():
+    return []

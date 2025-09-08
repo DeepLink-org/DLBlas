@@ -1,0 +1,57 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_activation_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    x = tl.load(x_ptr + offsets, mask=mask)
+    # Swish: x * sigmoid(x)
+    sigmoid_x = tl.sigmoid(x)
+    x = x * sigmoid_x
+    # Divide by 2
+    x = x / 2.0
+    # Clamp between -1 and 1
+    x = tl.minimum(tl.maximum(x, -1.0), 1.0)
+    # Tanh activation implemented using exponentials
+    exp2x = tl.exp(2.0 * x)
+    tanh_x = (exp2x - 1.0) / (exp2x + 1.0)
+    # Final clamp between -1 and 1
+    tanh_x = tl.minimum(tl.maximum(tanh_x, -1.0), 1.0)
+    
+    tl.store(output_ptr + offsets, tanh_x, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features, bias=bias)
+
+    def forward(self, x):
+        x = self.gemm(x)
+        output = torch.empty_like(x)
+        n_elements = x.numel()
+        grid = (triton.cdiv(n_elements, 1024),)
+        _fused_activation_kernel[grid](
+            x, output, n_elements, BLOCK_SIZE=1024
+        )
+        return output
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]

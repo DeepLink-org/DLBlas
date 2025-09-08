@@ -1,0 +1,86 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_pointwise(
+    x_ptr,
+    bias_ptr,
+    scale_ptr,
+    output_ptr,
+    n_elements,
+    C: tl.constexpr,
+    H: tl.constexpr,
+    W: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid0 = tl.program_id(0)  # Batch*channel index
+    pid1 = tl.program_id(1)  # Spatial block index
+    
+    # Extract batch and channel indices
+    n_idx = pid0 // C
+    c_idx = pid0 % C
+    
+    # Load channel parameters once per block
+    bias_val = tl.load(bias_ptr + c_idx)
+    scale_val = tl.load(scale_ptr + c_idx)
+    
+    # Spatial offsets for this block
+    spatial_start = pid1 * BLOCK_SIZE
+    spatial_offsets = spatial_start + tl.arange(0, BLOCK_SIZE)
+    mask = spatial_offsets < (H * W)
+    
+    # Base pointer for current channel
+    base = n_idx * (C * H * W) + c_idx * (H * W)
+    x_vals = tl.load(x_ptr + base + spatial_offsets, mask=mask, other=0.0)
+    
+    # Fused operations
+    result = (x_vals + bias_val) * scale_val
+    result = tl.sigmoid(result)
+    
+    # Store results
+    tl.store(output_ptr + base + spatial_offsets, result, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, num_groups, bias_shape, scale_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.scale = nn.Parameter(torch.randn(scale_shape))
+        self.group_norm = nn.GroupNorm(num_groups, out_channels)
+
+    def forward(self, x):
+        x = self.conv(x)
+        N, C, H, W = x.shape
+        n_elements = N * C * H * W
+        
+        # Configure 2D grid
+        spatial_blocks = triton.cdiv(H * W, 1024)
+        grid = (N * C, spatial_blocks)
+        
+        # Fuse operations in Triton kernel
+        output = torch.empty_like(x)
+        _fused_pointwise[grid](
+            x, self.bias, self.scale, output,
+            n_elements, C, H, W,
+            BLOCK_SIZE=1024
+        )
+        
+        x = self.group_norm(output)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+num_groups = 8
+bias_shape = (out_channels, 1, 1)
+scale_shape = (out_channels, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, num_groups, bias_shape, scale_shape]

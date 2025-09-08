@@ -1,0 +1,75 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_forward_kernel(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    batch_size,
+    input_size,
+    hidden_size,
+    stride_xb,
+    stride_xs,
+    stride_wh,
+    stride_ws,
+    stride_bs,
+    stride_ob,
+):
+    row_idx = tl.program_id(0)
+    
+    if row_idx >= batch_size:
+        return
+
+    total = 0.0
+    for j in range(hidden_size):
+        dot = 0.0
+        for k in range(input_size):
+            x_val = tl.load(x_ptr + row_idx * stride_xb + k * stride_xs)
+            w_val = tl.load(weight_ptr + j * stride_wh + k * stride_ws)
+            dot += x_val * w_val
+        b_val = tl.load(bias_ptr + j * stride_bs)
+        z = dot + b_val
+        s = 1.0 / (1.0 + tl.exp(-z))
+        total += s
+
+    tl.store(output_ptr + row_idx * stride_ob, total)
+
+class ModelNew(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(ModelNew, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.linear = nn.Linear(input_size, hidden_size)
+    
+    def forward(self, x):
+        x = x.contiguous()
+        weight = self.linear.weight.contiguous()
+        bias = self.linear.bias.contiguous()
+        output = torch.empty(x.size(0), 1, device=x.device, dtype=x.dtype)
+        
+        batch_size = x.size(0)
+        grid = (batch_size,)
+        
+        _fused_forward_kernel[grid](
+            x, weight, bias, output,
+            batch_size, self.input_size, self.hidden_size,
+            x.stride(0), x.stride(1),
+            weight.stride(0), weight.stride(1),
+            bias.stride(0),
+            output.stride(0)
+        )
+        return output
+
+batch_size = 128
+input_size = 10
+hidden_size = 20
+
+def get_inputs():
+    return [torch.randn(batch_size, input_size)]
+
+def get_init_inputs():
+    return [input_size, hidden_size]

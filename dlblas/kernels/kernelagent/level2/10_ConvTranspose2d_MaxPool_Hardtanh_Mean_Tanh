@@ -1,0 +1,98 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+from triton.language.extra import libdevice
+
+@triton.jit
+def fused_hardtanh_mean_tanh_kernel(
+    input_ptr,
+    output_ptr,
+    hardtanh_min,
+    hardtanh_max,
+    num_channels,
+    input_batch_stride,
+    input_channel_stride,
+    input_height_stride,
+    input_width_stride,
+    n_elements_per_channel,
+    BLOCK_SIZE: tl.constexpr,
+    VEC_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    batch_idx = pid // num_channels
+    channel_idx = pid % num_channels
+    
+    base_ptr = input_ptr + batch_idx * input_batch_stride + channel_idx * input_channel_stride
+    thread_idx = tl.arange(0, BLOCK_SIZE)
+    vec_offsets = thread_idx * VEC_SIZE
+    vec_indices = vec_offsets[:, None] + tl.arange(0, VEC_SIZE)[None, :]
+    mask = vec_indices < n_elements_per_channel
+    
+    vec_ptrs = base_ptr + vec_indices
+    vec = tl.load(vec_ptrs, mask=mask, other=0.0)
+    clamped = tl.minimum(hardtanh_max, tl.maximum(hardtanh_min, vec))
+    thread_sum = tl.sum(clamped, axis=1)
+    
+    # Mask threads beyond actual vector count
+    n_vectors = tl.cdiv(n_elements_per_channel, VEC_SIZE)
+    thread_mask = thread_idx < n_vectors
+    thread_sum = tl.where(thread_mask, thread_sum, 0.0)
+    
+    channel_sum = tl.sum(thread_sum, axis=0)
+    mean_val = channel_sum / n_elements_per_channel
+    out = libdevice.tanh(mean_val)
+    tl.store(output_ptr + pid, out)
+
+def fused_hardtanh_mean_tanh(x, min_val, max_val):
+    B, C, H, W = x.shape
+    n_elements_per_channel = H * W
+    x = x.contiguous()
+    output = torch.empty((B * C,), device=x.device, dtype=x.dtype)
+    grid = (B * C,)
+    strides = x.stride()
+    
+    VEC_SIZE = 8
+    n_vectors = (n_elements_per_channel + VEC_SIZE - 1) // VEC_SIZE
+    BLOCK_SIZE = triton.next_power_of_2(n_vectors)
+    
+    fused_hardtanh_mean_tanh_kernel[grid](
+        x, output, min_val, max_val, C,
+        strides[0], strides[1], strides[2], strides[3],
+        n_elements_per_channel,
+        BLOCK_SIZE=BLOCK_SIZE,
+        VEC_SIZE=VEC_SIZE
+    )
+    return output.view(B, C, 1, 1)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.maxpool = nn.MaxPool2d(kernel_size=maxpool_kernel_size, stride=maxpool_stride)
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.maxpool(x)
+        x = fused_hardtanh_mean_tanh(x, self.hardtanh_min, self.hardtanh_max)
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+height, width = 16, 16
+kernel_size = 4
+stride = 2
+padding = 1
+maxpool_kernel_size = 2
+maxpool_stride = 2
+hardtanh_min = -1
+hardtanh_max = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, maxpool_kernel_size, maxpool_stride, hardtanh_min, hardtanh_max]

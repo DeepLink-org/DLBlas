@@ -1,0 +1,82 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _min_reduction_kernel(
+    x_ptr,
+    output_ptr,
+    reduction_dim: tl.constexpr,
+    reduction_size: tl.constexpr,
+    D0: tl.constexpr, D1: tl.constexpr, D2: tl.constexpr,
+    s0: tl.constexpr, s1: tl.constexpr, s2: tl.constexpr,
+    output_s0: tl.constexpr, output_s1: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    
+    r = tl.arange(0, BLOCK_R)
+    mask = r < reduction_size
+    
+    if reduction_dim == 0:
+        base_offset = pid0 * s1 + pid1 * s2
+        offsets = base_offset + r * s0
+    elif reduction_dim == 1:
+        base_offset = pid0 * s0 + pid1 * s2
+        offsets = base_offset + r * s1
+    else:  # reduction_dim == 2
+        base_offset = pid0 * s0 + pid1 * s1
+        offsets = base_offset + r * s2
+    
+    vec = tl.load(x_ptr + offsets, mask=mask, other=float('inf'), cache_modifier=".cg")
+    min_val = tl.min(vec, axis=0)
+    
+    output_offset = pid0 * output_s0 + pid1 * output_s1
+    tl.store(output_ptr + output_offset, min_val)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        reduction_size = x.shape[self.dim]
+        if reduction_size > 1024:
+            return torch.min(x, dim=self.dim)[0]
+            
+        output_shape = list(x.shape)
+        del output_shape[self.dim]
+        output = torch.empty(output_shape, device=x.device, dtype=x.dtype).contiguous()
+        
+        D0, D1, D2 = x.shape
+        s0, s1, s2 = x.stride()
+        output_s0, output_s1 = output.stride()
+        
+        BLOCK_R = triton.next_power_of_2(reduction_size)
+        num_warps = min(max(BLOCK_R // 64, 1), 8)
+        
+        grid = (output_shape[0], output_shape[1])
+        _min_reduction_kernel[grid](
+            x, output,
+            self.dim,
+            reduction_size,
+            D0, D1, D2,
+            s0, s1, s2,
+            output_s0, output_s1,
+            BLOCK_R=BLOCK_R,
+            num_warps=num_warps
+        )
+        return output
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [1]

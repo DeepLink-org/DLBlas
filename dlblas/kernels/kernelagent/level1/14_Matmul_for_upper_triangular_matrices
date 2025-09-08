@@ -1,0 +1,94 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 64}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 128}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=8),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_warps=4),
+    ],
+    key=['N'],
+)
+@triton.jit
+def triu_matmul_kernel(
+    A_ptr, B_ptr, C_ptr,
+    N, 
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    
+    i_start = pid0 * BLOCK_M
+    j_start = pid1 * BLOCK_N
+    
+    # Skip tiles entirely below diagonal
+    if j_start + BLOCK_N <= i_start:
+        return
+
+    offs_m = i_start + tl.arange(0, BLOCK_M)
+    offs_n = j_start + tl.arange(0, BLOCK_N)
+    c = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    
+    k_min = tl.maximum(i_start, 0)
+    k_max = tl.minimum(j_start + BLOCK_N, N)
+    for k_start in range(k_min, k_max, BLOCK_K):
+        offs_k = k_start + tl.arange(0, BLOCK_K)
+        
+        # Load A tile with masking for triangular structure
+        a_ptrs = A_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+        mask_a = (offs_k[None, :] >= offs_m[:, None]) & (offs_m[:, None] < N) & (offs_k[None, :] < N)
+        a = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        
+        # Load B tile with masking for triangular structure
+        b_ptrs = B_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+        mask_b = (offs_k[:, None] <= offs_n[None, :]) & (offs_k[:, None] < N) & (offs_n[None, :] < N)
+        b = tl.load(b_ptrs, mask=mask_b, other=0.0)
+        
+        # Accumulate matrix product with full FP32 precision
+        c += tl.dot(a, b, allow_tf32=False)
+    
+    # Store only upper triangular part
+    mask_out = (offs_m[:, None] <= offs_n[None, :]) & (offs_m[:, None] < N) & (offs_n[None, :] < N)
+    c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    tl.store(c_ptrs, c, mask=mask_out)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A, B):
+        assert A.is_contiguous() and B.is_contiguous()
+        N = A.size(0)
+        C = torch.empty_like(A)
+        
+        grid = lambda META: (
+            triton.cdiv(N, META['BLOCK_M']),
+            triton.cdiv(N, META['BLOCK_N']),
+        )
+        
+        triu_matmul_kernel[grid](
+            A, B, C,
+            N,
+            A.stride(0), A.stride(1),
+            B.stride(0), B.stride(1),
+            C.stride(0), C.stride(1),
+        )
+        return C
+
+N = 4096
+
+def get_inputs():
+    A = torch.triu(torch.randn(N, N, device='cuda'))
+    B = torch.triu(torch.randn(N, N, device='cuda'))
+    return [A, B]
+
+def get_init_inputs():
+    return []

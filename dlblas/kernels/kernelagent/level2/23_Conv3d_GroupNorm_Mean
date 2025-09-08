@@ -1,0 +1,94 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _partial_sum_kernel(
+    x_ptr,
+    partial_sums_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_blocks_per_batch = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    batch_id = pid // num_blocks_per_batch
+    block_idx = pid % num_blocks_per_batch
+    
+    batch_start = batch_id * n_elements
+    current_offset = block_idx * BLOCK_SIZE
+    offsets = current_offset + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    x_ptrs = x_ptr + batch_start + offsets
+    x_chunk = tl.load(x_ptrs, mask=mask, other=0.0)
+    
+    block_sum = tl.sum(x_chunk, axis=0)
+    partial_index = batch_id * num_blocks_per_batch + block_idx
+    tl.store(partial_sums_ptr + partial_index, block_sum)
+
+@triton.jit
+def _reduce_partial_sums_kernel(
+    partial_sums_ptr,
+    output_ptr,
+    num_blocks_per_batch,
+    n_elements,
+):
+    pid = tl.program_id(0)
+    total = 0.0
+    base = pid * num_blocks_per_batch
+    for i in range(0, num_blocks_per_batch):
+        total += tl.load(partial_sums_ptr + base + i)
+    mean = total / n_elements
+    tl.store(output_ptr + pid, mean)
+
+def triton_mean(x):
+    if x.numel() == 0:
+        return torch.zeros(x.shape[0], device=x.device, dtype=x.dtype)
+    
+    x_contig = x.contiguous().view(x.shape[0], -1)
+    batch_size, n_elements = x_contig.shape
+    
+    # Optimized block size for partial sums
+    BLOCK_SIZE = 4096
+    num_blocks_per_batch = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    total_blocks = batch_size * num_blocks_per_batch
+    
+    # Allocate buffer for partial sums
+    partial_sums = torch.empty(total_blocks, device=x.device, dtype=x.dtype)
+    
+    # First kernel: compute partial sums
+    grid1 = (total_blocks,)
+    _partial_sum_kernel[grid1](x_contig, partial_sums, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+    
+    # Second kernel: reduce partial sums to final means
+    output = torch.empty(batch_size, device=x.device, dtype=x.dtype)
+    grid2 = (batch_size,)
+    _reduce_partial_sums_kernel[grid2](partial_sums, output, num_blocks_per_batch, n_elements)
+    
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, num_groups):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.group_norm = nn.GroupNorm(num_groups, out_channels)
+    
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.group_norm(x)
+        x = triton_mean(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+D, H, W = 16, 32, 32
+kernel_size = 3
+num_groups = 8
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, num_groups]

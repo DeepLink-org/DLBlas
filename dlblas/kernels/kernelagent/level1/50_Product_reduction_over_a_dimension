@@ -1,0 +1,104 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def prod_reduction_kernel(
+    x_ptr,
+    output_ptr,
+    batch_size,
+    dim1,
+    dim2,
+    stride_xb,
+    stride_xi,
+    stride_xj,
+    stride_outb,
+    stride_outj,
+    BLOCK_SIZE: tl.constexpr
+):
+    # Calculate program ID and block indices
+    pid = tl.program_id(0)
+    num_blocks = tl.cdiv(dim2, BLOCK_SIZE)
+    batch_idx = pid // num_blocks
+    block_idx = pid % num_blocks
+
+    # Calculate column indices and mask
+    j_start = block_idx * BLOCK_SIZE
+    j_offsets = j_start + tl.arange(0, BLOCK_SIZE)
+    j_mask = j_offsets < dim2
+
+    # Get pointers for current batch
+    x_batch_ptr = x_ptr + batch_idx * stride_xb
+    out_batch_ptr = output_ptr + batch_idx * stride_outb
+
+    # Initialize accumulator with 1.0
+    acc = tl.full((BLOCK_SIZE,), 1.0, dtype=tl.float32)
+    
+    # Unroll factor for reduction dimension
+    UNROLL = 4
+    # Calculate end of unrolled section
+    unroll_end = dim1 - (dim1 % UNROLL)
+    
+    # Process unrolled chunks
+    for i in range(0, unroll_end, UNROLL):
+        # Load 4 consecutive rows
+        row0 = tl.load(x_batch_ptr + i * stride_xi + j_offsets, mask=j_mask, other=1.0)
+        row1 = tl.load(x_batch_ptr + (i+1)*stride_xi + j_offsets, mask=j_mask, other=1.0)
+        row2 = tl.load(x_batch_ptr + (i+2)*stride_xi + j_offsets, mask=j_mask, other=1.0)
+        row3 = tl.load(x_batch_ptr + (i+3)*stride_xi + j_offsets, mask=j_mask, other=1.0)
+        
+        # Multiply sequentially to preserve precision
+        acc = acc * row0
+        acc = acc * row1
+        acc = acc * row2
+        acc = acc * row3
+    
+    # Process remaining rows
+    for r in range(unroll_end, dim1):
+        row_val = tl.load(x_batch_ptr + r * stride_xi + j_offsets, mask=j_mask, other=1.0)
+        acc = acc * row_val
+
+    # Store results
+    tl.store(out_batch_ptr + j_offsets, acc, mask=j_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Fallback to PyTorch for non-CUDA, non-float32, or other dimensions
+        if self.dim != 1 or not x.is_cuda or x.dtype != torch.float32:
+            return torch.prod(x, dim=self.dim)
+        
+        batch_size, dim1, dim2 = x.shape
+        x = x.contiguous()
+        
+        # Create output tensor
+        output = torch.empty((batch_size, dim2), device=x.device, dtype=x.dtype)
+        
+        # Set block size and grid
+        BLOCK_SIZE = 256
+        grid = (batch_size * triton.cdiv(dim2, BLOCK_SIZE),)
+        
+        # Launch kernel
+        prod_reduction_kernel[grid](
+            x, output, batch_size, dim1, dim2,
+            x.stride(0), x.stride(1), x.stride(2),
+            output.stride(0), output.stride(1),
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+reduction_dim = 1
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [reduction_dim]

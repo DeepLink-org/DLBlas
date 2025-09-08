@@ -1,0 +1,88 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def pointwise_kernel(
+    x_ptr,
+    bias_ptr,
+    scaling_factor,
+    batch_size,
+    out_channels,
+    H,
+    W,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_bc = tl.program_id(0)
+    pid_block = tl.program_id(1)
+    
+    batch_idx = pid_bc // out_channels
+    channel_idx = pid_bc % out_channels
+    spatial_size = H * W
+    
+    start_idx = pid_block * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < spatial_size
+    
+    base = batch_idx * out_channels * spatial_size + channel_idx * spatial_size
+    x_ptrs = x_ptr + base + offsets
+    
+    x_vals = tl.load(x_ptrs, mask=mask, other=0.0)
+    bias_val = tl.load(bias_ptr + channel_idx)
+    
+    # Fused operations
+    x_vals = x_vals + bias_val
+    x_vals = tl.minimum(tl.maximum(x_vals, 0.0), 1.0)
+    x_vals = x_vals * scaling_factor
+    x_vals = tl.minimum(tl.maximum(x_vals, 0.0), 1.0)
+    x_vals = x_vals / scaling_factor
+    
+    tl.store(x_ptrs, x_vals, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        batch_size, out_channels, H, W = x.shape
+        spatial_size = H * W
+        
+        x = x.contiguous()
+        bias_1d = self.bias.view(-1).contiguous()
+        
+        BLOCK_SIZE = 1024
+        num_blocks = (spatial_size + BLOCK_SIZE - 1) // BLOCK_SIZE
+        grid = (batch_size * out_channels, num_blocks)
+        
+        pointwise_kernel[grid](
+            x, 
+            bias_1d, 
+            self.scaling_factor,
+            batch_size,
+            out_channels,
+            H, W,
+            BLOCK_SIZE
+        )
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+bias_shape = (out_channels, 1, 1)
+scaling_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor]

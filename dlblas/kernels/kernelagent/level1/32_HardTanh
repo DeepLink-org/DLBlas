@@ -1,0 +1,58 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import triton
+import triton.language as tl
+
+@triton.jit
+def hardtanh_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Load data with boundary check
+    x = tl.load(x_ptr + offsets, mask=mask)
+    # Apply HardTanh: clamp between -1.0 and 1.0
+    y = tl.minimum(tl.maximum(x, -1.0), 1.0)
+    # Store results
+    tl.store(output_ptr + offsets, y, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Skip kernel for non-CUDA or small tensors
+        if not x.is_cuda or x.numel() == 0:
+            return F.hardtanh(x, min_val=-1., max_val=1.)
+        
+        x_contig = x.contiguous()
+        output = torch.empty_like(x_contig)
+        n_elements = x_contig.numel()
+        
+        # Configure kernel grid
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        # Launch kernel with optimal block size
+        hardtanh_kernel[grid](
+            x_contig,
+            output,
+            n_elements,
+            BLOCK_SIZE=1024,
+        )
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim)
+    return [x]
+
+def get_init_inputs():
+    return []  # No special initialization inputs needed

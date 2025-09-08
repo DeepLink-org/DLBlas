@@ -1,0 +1,86 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _l1_normalize_kernel(
+    x_ptr,
+    output_ptr,
+    n_rows,
+    row_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= n_rows:
+        return
+    
+    row_start = pid * row_size
+    total = 0.0
+    # Vectorized accumulation (4 elements per thread)
+    for offset in range(0, row_size, BLOCK_SIZE * 4):
+        cols = offset + tl.arange(0, BLOCK_SIZE) * 4
+        mask1 = cols < row_size
+        mask2 = (cols + 1) < row_size
+        mask3 = (cols + 2) < row_size
+        mask4 = (cols + 3) < row_size
+        
+        vec1 = tl.load(x_ptr + row_start + cols, mask=mask1, other=0.0)
+        vec2 = tl.load(x_ptr + row_start + cols + 1, mask=mask2, other=0.0)
+        vec3 = tl.load(x_ptr + row_start + cols + 2, mask=mask3, other=0.0)
+        vec4 = tl.load(x_ptr + row_start + cols + 3, mask=mask4, other=0.0)
+        
+        abs_vec = tl.abs(vec1) + tl.abs(vec2) + tl.abs(vec3) + tl.abs(vec4)
+        total += tl.sum(abs_vec, axis=0)
+
+    # Vectorized normalization (4 elements per thread)
+    for offset in range(0, row_size, BLOCK_SIZE * 4):
+        cols = offset + tl.arange(0, BLOCK_SIZE) * 4
+        mask1 = cols < row_size
+        mask2 = (cols + 1) < row_size
+        mask3 = (cols + 2) < row_size
+        mask4 = (cols + 3) < row_size
+        
+        vec1 = tl.load(x_ptr + row_start + cols, mask=mask1, other=0.0)
+        vec2 = tl.load(x_ptr + row_start + cols + 1, mask=mask2, other=0.0)
+        vec3 = tl.load(x_ptr + row_start + cols + 2, mask=mask3, other=0.0)
+        vec4 = tl.load(x_ptr + row_start + cols + 3, mask=mask4, other=0.0)
+        
+        norm1 = vec1 / total
+        norm2 = vec2 / total
+        norm3 = vec3 / total
+        norm4 = vec4 / total
+        
+        tl.store(output_ptr + row_start + cols, norm1, mask=mask1)
+        tl.store(output_ptr + row_start + cols + 1, norm2, mask=mask2)
+        tl.store(output_ptr + row_start + cols + 2, norm3, mask=mask3)
+        tl.store(output_ptr + row_start + cols + 3, norm4, mask=mask4)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        n_rows = x.shape[0]
+        row_size = x.shape[1]
+        
+        BLOCK_SIZE = 256
+        grid = (n_rows,)
+        _l1_normalize_kernel[grid](
+            x, output, n_rows, row_size, 
+            BLOCK_SIZE=BLOCK_SIZE, num_warps=8
+        )
+        
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim)
+    return [x]
+
+def get_init_inputs():
+    return []

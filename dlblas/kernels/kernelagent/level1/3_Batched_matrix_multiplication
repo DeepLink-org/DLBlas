@@ -1,0 +1,111 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _bmm_kernel(
+    A_ptr, B_ptr, C_ptr,
+    m, n, k,
+    stride_Ab, stride_Am, stride_Ak,
+    stride_Bb, stride_Bk, stride_Bn,
+    stride_Cb, stride_Cm, stride_Cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    
+    # Compute pointers for A and B with correct row-major order
+    A_block_ptr = tl.make_block_ptr(
+        base=A_ptr + pid_batch * stride_Ab,
+        shape=(m, k),
+        strides=(stride_Am, stride_Ak),
+        offsets=(pid_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, BLOCK_K),
+        order=(0, 1)  # Corrected to row-major order
+    )
+    B_block_ptr = tl.make_block_ptr(
+        base=B_ptr + pid_batch * stride_Bb,
+        shape=(k, n),
+        strides=(stride_Bk, stride_Bn),
+        offsets=(0, pid_n * BLOCK_N),
+        block_shape=(BLOCK_K, BLOCK_N),
+        order=(0, 1)  # Corrected to row-major order
+    )
+    
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    
+    # Loop over K dimension with full FP32 precision
+    for ki in range(0, tl.cdiv(k, BLOCK_K)):
+        a = tl.load(A_block_ptr, boundary_check=(0, 1))
+        b = tl.load(B_block_ptr, boundary_check=(0, 1))
+        acc += tl.dot(a, b, allow_tf32=False)  # Disabled TF32 for accuracy
+        
+        # Update pointers for next block
+        A_block_ptr = tl.advance(A_block_ptr, (0, BLOCK_K))
+        B_block_ptr = tl.advance(B_block_ptr, (BLOCK_K, 0))
+    
+    # Create block pointer for C with row-major order
+    C_block_ptr = tl.make_block_ptr(
+        base=C_ptr + pid_batch * stride_Cb,
+        shape=(m, n),
+        strides=(stride_Cm, stride_Cn),
+        offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
+        block_shape=(BLOCK_M, BLOCK_N),
+        order=(0, 1)  # Corrected to row-major order
+    )
+    tl.store(C_block_ptr, acc, boundary_check=(0, 1))  # Removed redundant conversion
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        batch_size, m, k = A.shape
+        _, k_, n = B.shape
+        assert k == k_, "Incompatible dimensions"
+        
+        # Ensure contiguous tensors
+        A = A.contiguous()
+        B = B.contiguous()
+        
+        # Allocate output tensor
+        C = torch.empty((batch_size, m, n), device=A.device, dtype=A.dtype)
+        
+        # Kernel configuration
+        BLOCK_M = 64
+        BLOCK_N = 64
+        BLOCK_K = 32
+        
+        grid = (
+            batch_size, 
+            triton.cdiv(m, BLOCK_M), 
+            triton.cdiv(n, BLOCK_N)
+        )
+        
+        # Launch kernel
+        _bmm_kernel[grid](
+            A, B, C,
+            m, n, k,
+            A.stride(0), A.stride(1), A.stride(2),
+            B.stride(0), B.stride(1), B.stride(2),
+            C.stride(0), C.stride(1), C.stride(2),
+            BLOCK_M, BLOCK_N, BLOCK_K
+        )
+        return C
+
+batch_size = 128
+m = 128
+k = 256
+n = 512
+
+def get_inputs():
+    A = torch.randn(batch_size, m, k, device='cuda')
+    B = torch.randn(batch_size, k, n, device='cuda')
+    return [A, B]
+
+def get_init_inputs():
+    return []  # No special initialization inputs needed

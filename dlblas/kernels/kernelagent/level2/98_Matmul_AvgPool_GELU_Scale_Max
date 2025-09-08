@@ -1,0 +1,84 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _post_linear_kernel(
+    linear_out_ptr,
+    output_ptr,
+    out_features,
+    pool_kernel_size: tl.constexpr,
+    scale_factor,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid0 = tl.program_id(0)  # batch index
+    tid = tl.arange(0, BLOCK_SIZE)  # segment indices
+    
+    base_ptr = linear_out_ptr + pid0 * out_features
+    offsets = tid[:, None] * pool_kernel_size + tl.arange(0, pool_kernel_size)[None, :]
+    
+    # Create mask for valid elements
+    mask = offsets < out_features
+    vals = tl.load(base_ptr + offsets, mask=mask, other=0.0)
+    
+    # Compute segment averages
+    avg_val = tl.sum(vals, axis=1) / pool_kernel_size
+    
+    # Optimized GELU approximation
+    x = avg_val
+    gelu_val = x * 0.5 * (1.0 + tl.erf(x * 0.7071067811865476))
+    
+    # Scale and find max value
+    scaled_val = gelu_val * scale_factor
+    max_val = tl.max(scaled_val, axis=0)
+    
+    tl.store(output_ptr + pid0, max_val)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, pool_kernel_size, scale_factor):
+        super().__init__()
+        assert out_features % pool_kernel_size == 0, "out_features must be divisible by pool_kernel_size"
+        self.in_features = in_features
+        self.out_features = out_features
+        self.pool_kernel_size = pool_kernel_size
+        self.scale_factor = scale_factor
+        
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features))
+        
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        x = torch.nn.functional.linear(x, self.weight, self.bias)
+        x = x.contiguous()
+        output = torch.empty(x.size(0), device=x.device, dtype=x.dtype)
+        
+        grid = (x.size(0),)
+        num_segments = self.out_features // self.pool_kernel_size
+        
+        _post_linear_kernel[grid](
+            x, 
+            output,
+            self.out_features,
+            self.pool_kernel_size,
+            self.scale_factor,
+            BLOCK_SIZE=num_segments
+        )
+        return output
+
+batch_size = 128
+in_features = 512
+out_features = 256
+pool_kernel_size = 4
+scale_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, pool_kernel_size, scale_factor]

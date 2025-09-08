@@ -1,0 +1,91 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _linear_mish_mish_kernel(
+    x_ptr, w_ptr, b_ptr, output_ptr,
+    batch_size, in_features, out_features,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    row_offsets = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    col_offsets = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    row_mask = row_offsets < batch_size
+    col_mask = col_offsets < out_features
+    
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    
+    for k in range(0, in_features):
+        x_vals = tl.load(x_ptr + row_offsets * in_features + k, mask=row_mask, other=0.0)
+        w_vals = tl.load(w_ptr + col_offsets * in_features + k, mask=col_mask, other=0.0)
+        
+        x_vals = x_vals[:, None]
+        w_vals = w_vals[None, :]
+        acc += x_vals * w_vals
+    
+    bias_vals = tl.load(b_ptr + col_offsets, mask=col_mask, other=0.0)
+    acc += bias_vals[None, :]
+    
+    # First mish using exponential-based tanh
+    softplus1 = tl.log(1 + tl.exp(acc))
+    exp_neg1 = tl.exp(-2.0 * softplus1)
+    tanh1 = (1.0 - exp_neg1) / (1.0 + exp_neg1)
+    temp = acc * tanh1
+    
+    # Second mish using exponential-based tanh
+    softplus2 = tl.log(1 + tl.exp(temp))
+    exp_neg2 = tl.exp(-2.0 * softplus2)
+    tanh2 = (1.0 - exp_neg2) / (1.0 + exp_neg2)
+    temp = temp * tanh2
+    
+    output_offsets = row_offsets[:, None] * out_features + col_offsets[None, :]
+    tl.store(output_ptr + output_offsets, temp, mask=row_mask[:, None] & col_mask[None, :])
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+    
+    def forward(self, x):
+        x = x.contiguous()
+        weight = self.linear.weight.contiguous()
+        bias = self.linear.bias.contiguous()
+        batch_size, _ = x.shape
+        in_features = weight.shape[1]
+        out_features = weight.shape[0]
+        output = torch.empty((batch_size, out_features), device=x.device, dtype=x.dtype)
+        
+        if x.is_cuda:
+            BLOCK_SIZE_M = 64
+            BLOCK_SIZE_N = 16
+            
+            grid_m = (batch_size + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+            grid_n = (out_features + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+            grid = (grid_m, grid_n)
+            
+            _linear_mish_mish_kernel[grid](
+                x, weight, bias, output,
+                batch_size, in_features, out_features,
+                BLOCK_SIZE_M=BLOCK_SIZE_M, BLOCK_SIZE_N=BLOCK_SIZE_N
+            )
+        else:
+            output = self.linear(x)
+            output = torch.nn.functional.mish(output)
+            output = torch.nn.functional.mish(output)
+        
+        return output
+
+batch_size = 128
+in_features = 10
+out_features = 20
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]

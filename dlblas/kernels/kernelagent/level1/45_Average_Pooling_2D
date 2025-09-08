@@ -1,0 +1,103 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _avg_pool2d_kernel(
+    input_ptr,
+    output_ptr,
+    n, c, h, w,
+    out_h, out_w,
+    kernel_size: tl.constexpr,
+    stride: tl.constexpr,
+    padding: tl.constexpr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Calculate indices using standard math operations
+    bc_idx = offsets // (out_h * out_w)
+    spatial_idx = offsets % (out_h * out_w)
+    oh_idx = spatial_idx // out_w
+    ow_idx = spatial_idx % out_w
+    
+    # Compute window start positions
+    ih_start = oh_idx * stride - padding
+    iw_start = ow_idx * stride - padding
+    
+    total = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    count = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    
+    # Static unrolling for small kernel sizes
+    for kh in tl.static_range(0, kernel_size):
+        for kw in tl.static_range(0, kernel_size):
+            ih = ih_start + kh
+            iw = iw_start + kw
+            
+            within_bounds = (ih >= 0) & (ih < h) & (iw >= 0) & (iw < w) & mask
+            input_offset = bc_idx * (h * w) + ih * w + iw
+            val = tl.load(input_ptr + input_offset, mask=within_bounds, other=0.0)
+            
+            total += val
+            count += tl.where(within_bounds, 1.0, 0.0)
+    
+    # Compute average and store result
+    avg_val = tl.where(count > 0, total / count, 0.0)
+    tl.store(output_ptr + offsets, avg_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, kernel_size: int, stride: int = None, padding: int = 0):
+        super(ModelNew, self).__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride if stride is not None else kernel_size
+        self.padding = padding
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.is_cuda:
+            n, c, h, w = x.shape
+            out_h = (h + 2 * self.padding - self.kernel_size) // self.stride + 1
+            out_w = (w + 2 * self.padding - self.kernel_size) // self.stride + 1
+            
+            output = torch.empty((n, c, out_h, out_w), device=x.device, dtype=x.dtype)
+            n_elements = n * c * out_h * out_w
+            
+            if n_elements == 0:
+                return output
+                
+            grid = lambda meta: (triton.cdiv(n_elements, 256),)
+            _avg_pool2d_kernel[grid](
+                x, output,
+                n, c, h, w,
+                out_h, out_w,
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                n_elements,
+                BLOCK_SIZE=256
+            )
+            return output
+        else:
+            return torch.nn.functional.avg_pool2d(
+                x,
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding
+            )
+
+batch_size = 16
+channels = 64
+height = 256
+width = 256
+kernel_size = 3
+
+def get_inputs():
+    x = torch.randn(batch_size, channels, height, width, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return [kernel_size]

@@ -1,0 +1,99 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 64}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 128}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 32}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 32}, num_warps=4),
+        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 32, 'BLOCK_K': 128}, num_warps=4),
+    ],
+    key=['M', 'N', 'K'],
+)
+@triton.jit
+def matmul_kernel(
+    a_ptr, b_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    
+    mask_rm = rm < M
+    mask_rn = rn < N
+    
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    
+    for k_idx in range(0, tl.cdiv(K, BLOCK_K)):
+        k = k_idx * BLOCK_K
+        rk = k + tl.arange(0, BLOCK_K)
+        mask_rk = rk < K
+        
+        a = tl.load(
+            a_ptr + rm[:, None] * stride_am + rk[None, :] * stride_ak,
+            mask=mask_rm[:, None] & mask_rk[None, :],
+            other=0.0
+        )
+        b = tl.load(
+            b_ptr + rk[:, None] * stride_bk + rn[None, :] * stride_bn,
+            mask=mask_rk[:, None] & mask_rn[None, :],
+            other=0.0
+        )
+        
+        block = tl.dot(a, b, allow_tf32=False)
+        acc += block
+    
+    c_ptrs = c_ptr + rm[:, None] * stride_cm + rn[None, :] * stride_cn
+    tl.store(c_ptrs, acc, mask=mask_rm[:, None] & mask_rn[None, :])
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        K, M = A.shape
+        N, K_ = B.shape
+        assert K == K_, "K dimensions must match"
+        
+        C = torch.zeros((M, N), device=A.device, dtype=A.dtype)
+        
+        if A.is_cuda:
+            grid = lambda META: (
+                triton.cdiv(M, META['BLOCK_M']),
+                triton.cdiv(N, META['BLOCK_N'])
+            )
+            
+            matmul_kernel[grid](
+                A, B, C,
+                M, N, K,
+                A.stride(1), A.stride(0),
+                B.stride(1), B.stride(0),
+                C.stride(0), C.stride(1)
+            )
+            return C
+        else:
+            return torch.matmul(A.T, B.T)
+
+M = 1024
+K = 4096
+N = 2048
+
+def get_inputs():
+    A = torch.randn(K, M, device='cuda')
+    B = torch.randn(N, K, device='cuda')
+    return [A, B]
+
+def get_init_inputs():
+    return []

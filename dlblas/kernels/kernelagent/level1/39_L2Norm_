@@ -1,0 +1,60 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _l2_norm_kernel(
+    x_ptr,
+    output_ptr,
+    n_cols,
+    stride_row,
+    P2: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row_offset = pid * stride_row
+    col_offsets = tl.arange(0, P2)
+    mask = col_offsets < n_cols
+    offsets = row_offset + col_offsets
+    
+    # Load entire row in one vectorized operation
+    x_vals = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    # Compute sum of squares
+    x_sq = x_vals * x_vals
+    total = tl.sum(x_sq, axis=0)
+    # Compute reciprocal norm with epsilon for numerical stability
+    rnorm = 1.0 / tl.sqrt(total + 1e-8)
+    # Scale values and store
+    x_vals = x_vals * rnorm
+    tl.store(output_ptr + offsets, x_vals, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        batch_size, n_cols = x.shape
+        output = torch.empty_like(x)
+        
+        if n_cols == 0:
+            return output
+        
+        grid = (batch_size,)
+        stride_row = x.stride(0)
+        # Compute next power of two for vector size
+        P2 = int(2 ** math.ceil(math.log2(n_cols)))
+        # Launch kernel with fixed configuration
+        _l2_norm_kernel[grid](x, output, n_cols, stride_row, P2)
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []

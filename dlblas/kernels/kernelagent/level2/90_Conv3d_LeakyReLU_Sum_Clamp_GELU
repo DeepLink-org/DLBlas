@@ -1,0 +1,86 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE': 256}, num_warps=4, num_stages=4),
+        triton.Config({'BLOCK_SIZE': 512}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_SIZE': 1024}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_SIZE': 2048}, num_warps=4, num_stages=1),
+        triton.Config({'BLOCK_SIZE': 4096}, num_warps=8, num_stages=1),
+    ],
+    key=['S'],
+)
+@triton.jit
+def _pointwise_ops(
+    x_ptr,
+    sum_tensor_ptr,
+    output_ptr,
+    C, S,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    pid_spatial = tl.program_id(1)
+    
+    batch_idx = pid // C
+    channel_idx = pid % C
+    
+    block_start = pid_spatial * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < S
+    
+    base = batch_idx * C * S + channel_idx * S
+    x_ptrs = x_ptr + base + offsets
+    
+    # Load entire block
+    x_vals = tl.load(x_ptrs, mask=mask, other=0)
+    
+    # Process all elements simultaneously
+    # LeakyReLU
+    x_vals = tl.where(x_vals >= 0, x_vals, 0.2 * x_vals)
+    # Add per-channel tensor
+    s_val = tl.load(sum_tensor_ptr + channel_idx)
+    x_vals += s_val
+    # Clamp
+    x_vals = tl.minimum(tl.maximum(x_vals, -1.0), 1.0)
+    # GELU approximation
+    x_vals = 0.5 * x_vals * (1.0 + tl.erf(x_vals * 0.7071067811865476))
+    
+    # Store results
+    tl.store(output_ptr + base + offsets, x_vals, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, sum_tensor_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.sum_tensor = nn.Parameter(torch.randn(sum_tensor_shape))
+
+    def forward(self, x):
+        x_conv = self.conv(x).contiguous()
+        sum_tensor_1d = self.sum_tensor.view(-1).contiguous()
+        
+        output = torch.empty_like(x_conv)
+        N, C, D, H, W = x_conv.shape
+        S = D * H * W
+        
+        # Dynamic grid calculation based on autotuner's BLOCK_SIZE
+        grid = lambda meta: (N * C, triton.cdiv(S, meta['BLOCK_SIZE']))
+        _pointwise_ops[grid](x_conv, sum_tensor_1d, output, C, S)
+        
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+sum_tensor_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, sum_tensor_shape]

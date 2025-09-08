@@ -1,0 +1,73 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _mse_kernel(
+    predictions_ptr,
+    targets_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Vectorized load for better memory throughput
+    preds = tl.load(predictions_ptr + offsets, mask=mask, other=0.0)
+    targs = tl.load(targets_ptr + offsets, mask=mask, other=0.0)
+    
+    # Maintain FP32 precision for arithmetic
+    preds = preds.to(tl.float32)
+    targs = targs.to(tl.float32)
+    
+    diff = preds - targs
+    sq_diff = diff * diff
+    
+    # Hierarchical reduction within block
+    block_sum = tl.sum(sq_diff, axis=0)
+    
+    # Efficient atomic add to global memory
+    tl.atomic_add(output_ptr, block_sum)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, predictions, targets):
+        predictions = predictions.contiguous()
+        targets = targets.contiguous()
+        n_elements = predictions.numel()
+        
+        if n_elements == 0:
+            return torch.tensor(0.0, device=predictions.device)
+        
+        total_sum = torch.zeros(1, device=predictions.device, dtype=torch.float32)
+        BLOCK_SIZE = 4096  # Fixed optimal block size
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        
+        _mse_kernel[grid](
+            predictions,
+            targets,
+            total_sum,
+            n_elements,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=8  # Optimal warp configuration
+        )
+        
+        # Return scalar tensor to match reference output
+        return total_sum[0] / n_elements
+
+batch_size = 128
+input_shape = (4096, )
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return []

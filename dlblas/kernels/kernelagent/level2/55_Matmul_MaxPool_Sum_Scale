@@ -1,0 +1,99 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _forward_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    output_ptr,
+    batch_size,
+    in_features,
+    scale_factor,
+    BLOCK_SIZE_IN: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= batch_size:
+        return
+
+    # Load input row with boundary checks
+    x_offset = pid * in_features
+    x_ptrs = x_ptr + x_offset + tl.arange(0, BLOCK_SIZE_IN)
+    mask = tl.arange(0, BLOCK_SIZE_IN) < in_features
+    x_row = tl.load(x_ptrs, mask=mask, other=0.0)
+
+    # Load weights and compute dot products
+    w_row0 = tl.load(w_ptr + 0 * in_features + tl.arange(0, BLOCK_SIZE_IN), mask=mask, other=0.0)
+    dot0 = tl.sum(x_row * w_row0)
+    w_row1 = tl.load(w_ptr + 1 * in_features + tl.arange(0, BLOCK_SIZE_IN), mask=mask, other=0.0)
+    dot1 = tl.sum(x_row * w_row1)
+    w_row2 = tl.load(w_ptr + 2 * in_features + tl.arange(0, BLOCK_SIZE_IN), mask=mask, other=0.0)
+    dot2 = tl.sum(x_row * w_row2)
+    w_row3 = tl.load(w_ptr + 3 * in_features + tl.arange(0, BLOCK_SIZE_IN), mask=mask, other=0.0)
+    dot3 = tl.sum(x_row * w_row3)
+    w_row4 = tl.load(w_ptr + 4 * in_features + tl.arange(0, BLOCK_SIZE_IN), mask=mask, other=0.0)
+    dot4 = tl.sum(x_row * w_row4)
+
+    # Add biases
+    bias0 = tl.load(b_ptr + 0)
+    bias1 = tl.load(b_ptr + 1)
+    bias2 = tl.load(b_ptr + 2)
+    bias3 = tl.load(b_ptr + 3)
+    bias4 = tl.load(b_ptr + 4)
+    out0 = dot0 + bias0
+    out1 = dot1 + bias1
+    out2 = dot2 + bias2
+    out3 = dot3 + bias3
+    out4 = dot4 + bias4
+
+    # Max pooling with kernel_size=2
+    pool0 = tl.maximum(out0, out1)
+    pool1 = tl.maximum(out2, out3)
+    # Sum reduction
+    total = pool0 + pool1
+    # Apply scaling
+    result = total * scale_factor
+
+    tl.store(output_ptr + pid, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, kernel_size, scale_factor):
+        super().__init__()
+        assert out_features == 5 and kernel_size == 2, "Optimized for out_features=5, kernel_size=2"
+        self.in_features = in_features
+        self.out_features = out_features
+        self.scale_factor = scale_factor
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        output = torch.empty(batch_size, device=x.device, dtype=x.dtype)
+        x = x.contiguous()
+        BLOCK_SIZE_IN = 16  # Next power of two >= in_features (10)
+        grid = (batch_size,)
+        _forward_kernel[grid](
+            x, self.weight, self.bias, output,
+            batch_size, self.in_features, self.scale_factor,
+            BLOCK_SIZE_IN=BLOCK_SIZE_IN
+        )
+        return output
+
+batch_size = 128
+in_features = 10
+out_features = 5
+kernel_size = 2
+scale_factor = 0.5
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, kernel_size, scale_factor]

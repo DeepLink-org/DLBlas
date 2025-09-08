@@ -1,0 +1,63 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_relu_bias_kernel(
+    x_ptr,
+    bias_ptr,
+    output_ptr,
+    B, C, H, W,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_channel = tl.program_id(1)
+    
+    offs_hw = tl.arange(0, BLOCK_SIZE)
+    base_idx = pid_batch * C * H * W + pid_channel * H * W
+    offsets = base_idx + offs_hw
+    mask = offs_hw < (H * W)
+    
+    x = tl.load(x_ptr + offsets, mask=mask)
+    bias_val = tl.load(bias_ptr + pid_channel)
+    out = tl.maximum(x, 0.0) + bias_val
+    tl.store(output_ptr + offsets, out, mask=mask)
+
+def fused_relu_bias(x, bias):
+    B, C, H, W = x.shape
+    output = torch.empty_like(x)
+    grid = (B, C)
+    n_elements = H * W
+    BLOCK_SIZE = triton.next_power_of_2(n_elements)
+    fused_relu_bias_kernel[grid](
+        x, bias, output,
+        B, C, H, W,
+        BLOCK_SIZE=BLOCK_SIZE,
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape)) 
+
+    def forward(self, x):
+        x = self.conv(x)
+        bias = self.bias.view(-1).contiguous()
+        x = fused_relu_bias(x, bias)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+bias_shape = (out_channels, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel极ze, bias_shape]

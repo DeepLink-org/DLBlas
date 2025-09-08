@@ -1,0 +1,60 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_scale_residual_kernel(
+    y_ptr,
+    y_detached_ptr,
+    output_ptr,
+    scaling_factor,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Load values from both attached and detached tensors
+    y_val = tl.load(y_ptr + offsets, mask=mask)
+    y_detached_val = tl.load(y_detached_ptr + offsets, mask=mask)
+    
+    # Compute: output = (y * scaling_factor) + y_detached
+    output_val = y_val * scaling_factor + y_detached_val
+    tl.store(output_ptr + offsets, output_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        y = self.matmul(x)
+        y_detached = y.detach()  # Gradient-stopped version
+        
+        output = torch.empty_like(y)
+        n_elements = y.numel()
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        fused_scale_residual_kernel[grid](
+            y, 
+            y_detached,
+            output,
+            self.scaling_factor,
+            n_elements,
+            BLOCK_SIZE=1024
+        )
+        return output
+
+batch_size = 128
+in_features = 64
+out_features = 128
+scaling_factor = 0.5
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, scaling_factor]

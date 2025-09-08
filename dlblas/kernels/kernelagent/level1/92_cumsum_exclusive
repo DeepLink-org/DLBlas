@@ -1,0 +1,97 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def add(a, b):
+    return a + b
+
+@triton.jit
+def inclusive_scan_kernel(
+    x_ptr,
+    output_ptr,
+    n_cols,
+    batch_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= batch_size:
+        return
+
+    base = pid * n_cols
+    prefix = 0.0
+    num_segments = tl.cdiv(n_cols, BLOCK_SIZE)
+
+    for seg in range(num_segments):
+        start = seg * BLOCK_SIZE
+        offsets = base + start + tl.arange(0, BLOCK_SIZE)
+        mask = tl.arange(0, BLOCK_SIZE) < (n_cols - start)
+        x_vals = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+
+        inclusive = tl.associative_scan(x_vals, 0, add)
+        result_segment = inclusive + prefix
+        tl.store(output_ptr + offsets, result_segment, mask=mask)
+
+        segment_sum = tl.sum(x_vals, axis=0)
+        prefix += segment_sum
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        # Pad input with zeros at beginning of feature dimension
+        pad_shape = list(x.shape)
+        pad_shape[self.dim] = 1
+        zeros = torch.zeros(pad_shape, device=x.device, dtype=x.dtype)
+        padded_x = torch.cat([zeros, x], dim=self.dim)
+        
+        # Remove last batch element
+        trimmed_x = padded_x[:-1]
+        original_shape = trimmed_x.shape
+        ndim = trimmed_x.dim()
+        
+        # Permute target dimension to last for efficient processing
+        if self.dim != ndim - 1:
+            perm = list(range(ndim))
+            perm.pop(self.dim)
+            perm.append(self.dim)
+            trimmed_x = trimmed_x.permute(perm)
+            
+        trimmed_x = trimmed_x.contiguous()
+        flattened = trimmed_x.view(-1, trimmed_x.size(-1))
+        total_rows = flattened.size(0)
+        n_cols = flattened.size(1)
+        output = torch.empty_like(flattened)
+        
+        # Launch inclusive scan kernel
+        grid = (total_rows,)
+        BLOCK_SIZE = 512
+        num_warps = 8
+        inclusive_scan_kernel[grid](
+            flattened, output, n_cols, total_rows, 
+            BLOCK_SIZE=BLOCK_SIZE, 
+            num_warps=num_warps
+        )
+        
+        # Restore original shape and dimension order
+        output = output.view(original_shape)
+        if self.dim != ndim - 1:
+            perm_inv = [0] * ndim
+            for i, p in enumerate(perm):
+                perm_inv[p] = i
+            output = output.permute(perm_inv)
+            
+        return output
+
+batch_size = 128
+input_shape = (4000,)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return [dim]

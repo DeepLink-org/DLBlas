@@ -1,0 +1,119 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_groupnorm_swish_mul_kernel(
+    x_ptr,
+    group_norm_weight_ptr,
+    group_norm_bias_ptr,
+    multiply_weight_ptr,
+    output_ptr,
+    batch_size,
+    out_features,
+    num_groups,
+    group_size,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    group_idx = tl.program_id(1)
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    global_col = group_idx * group_size + col_offsets
+    mask = global_col < out_features
+
+    # Calculate base pointer offset for current row and group
+    row_offset = row_idx * out_features
+    ptr_offset = row_offset + global_col
+    
+    # Load input data
+    x = tl.load(x_ptr + ptr_offset, mask=mask, other=0.0)
+    
+    # Compute mean and variance within group
+    group_sum = tl.sum(x, axis=0)
+    group_mean = group_sum / group_size
+    centered = x - group_mean
+    sq = centered * centered
+    group_var = tl.sum(sq, axis=0) / group_size + eps
+    
+    # Group normalization
+    inv_std = tl.math.rsqrt(group_var)
+    normalized = centered * inv_std
+    
+    # Load normalization parameters
+    w = tl.load(group_norm_weight_ptr + global_col, mask=mask, other=0.0)
+    b = tl.load(group_norm_bias_ptr + global_col, mask=mask, other=0.0)
+    y = normalized * w + b
+    
+    # First Swish activation
+    sigmoid_y = tl.sigmoid(y)
+    swish1 = y * sigmoid_y
+    
+    # Element-wise multiplication
+    m = tl.load(multiply_weight_ptr + global_col, mask=mask, other=0.0)
+    scaled = swish1 * m
+    
+    # Second Swish activation
+    sigmoid_scaled = tl.sigmoid(scaled)
+    swish2 = scaled * sigmoid_scaled
+    
+    # Store result
+    tl.store(output_ptr + ptr_offset, swish2, mask=mask)
+
+def fused_groupnorm_swish_mul(x, group_norm_weight, group_norm_bias, multiply_weight, num_groups):
+    batch_size, out_features = x.shape
+    group_size = out_features // num_groups
+    assert out_features % num_groups == 0, "Features must be divisible by group count"
+    
+    output = torch.empty_like(x)
+    grid = (batch_size, num_groups)
+    
+    # Calculate next power-of-two block size for efficient reduction
+    block_size = triton.next_power_of_2(group_size)
+    
+    _fused_groupnorm_swish_mul_kernel[grid](
+        x,
+        group_norm_weight,
+        group_norm_bias,
+        multiply_weight,
+        output,
+        batch_size,
+        out_features,
+        num_groups,
+        group_size,
+        1e-5,  # Match PyTorch GroupNorm epsilon
+        BLOCK_SIZE=block_size
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, multiply_weight_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+        self.multiply_weight = nn.Parameter(torch.randn(multiply_weight_shape))
+        self.num_groups = num_groups
+
+    def forward(self, x):
+        x = self.gemm(x)
+        x = fused_groupnorm_swish_mul(
+            x, 
+            self.group_norm.weight, 
+            self.group_norm.bias, 
+            self.multiply_weight,
+            self.num_groups
+        )
+        return x
+
+batch_size = 128
+in_features = 512
+out_features = 1024
+num_groups = 16
+multiply_weight_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, num_groups, multiply_weight_shape]

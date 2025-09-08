@@ -1,0 +1,98 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _model_forward_kernel(
+    x_ptr, weight_ptr, bias_ptr, constant_ptr,
+    output_ptr,
+    batch_size, in_features, out_features,
+    stride_xb, stride_xf, stride_wf, stride_wi, stride_ob, stride_of,
+    BLOCK_SIZE_IN: tl.constexpr
+):
+    pid_batch = tl.program_id(0)
+    pid_feature = tl.program_id(1)
+    
+    if pid_batch >= batch_size or pid_feature >= out_features:
+        return
+    
+    # Load constant value
+    constant_val = tl.load(constant_ptr)
+    
+    # Precompute input row start position
+    row_start = pid_batch * stride_xb
+    offs_in = tl.arange(0, BLOCK_SIZE_IN)
+    col_mask = offs_in < in_features
+    
+    # Load input row
+    x_ptrs = x_ptr + row_start + offs_in * stride_xf
+    input_row = tl.load(x_ptrs, mask=col_mask, other=0.0)
+    
+    # Load weight row for current feature
+    w_start = pid_feature * stride_wf
+    w_ptrs = weight_ptr + w_start + offs_in * stride_wi
+    weight_row = tl.load(w_ptrs, mask=col_mask, other=0.0)
+    
+    # Compute dot product
+    dot = tl.sum(input_row * weight_row)
+    
+    # Add bias
+    bias_val = tl.load(bias_ptr + pid_feature)
+    dot += bias_val
+    
+    # Apply operations
+    result = tl.minimum(dot, constant_val) - constant_val
+    
+    # Store result
+    out_idx = pid_batch * stride_ob + pid_feature * stride_of
+    tl.store(output_ptr + out_idx, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, constant):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.constant = nn.Parameter(torch.tensor(constant))
+
+    def forward(self, x):
+        batch_size, in_features = x.shape
+        out_features = self.linear.out_features
+        
+        # Allocate output
+        output = torch.empty((batch_size, out_features), 
+                            device=x.device, dtype=x.dtype)
+        
+        # Get tensor metadata
+        stride_xb = x.stride(0)
+        stride_xf = x.stride(1)
+        weight = self.linear.weight
+        bias = self.linear.bias
+        stride_wf = weight.stride(0)
+        stride_wi = weight.stride(1)
+        stride_ob = output.stride(0)
+        stride_of = output.stride(1)
+        
+        # Compute block size
+        BLOCK_SIZE_IN = triton.next_power_of_2(in_features)
+        
+        # Launch kernel with 2D grid (batch x features)
+        grid = (batch_size, out_features)
+        _model_forward_kernel[grid](
+            x, weight, bias, self.constant,
+            output,
+            batch_size, in_features, out_features,
+            stride_xb, stride_xf, stride_wf, stride_wi, stride_ob, stride_of,
+            BLOCK_SIZE_IN
+        )
+        return output
+
+batch_size = 128
+in_features = 10
+out_features = 5
+constant = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, constant]
