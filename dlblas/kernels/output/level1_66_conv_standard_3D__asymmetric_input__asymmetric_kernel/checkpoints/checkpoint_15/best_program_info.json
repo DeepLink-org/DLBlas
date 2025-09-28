@@ -1,0 +1,33 @@
+{
+  "id": "2eae477a-79ba-4ac6-b330-bc1826672230",
+  "generation": 4,
+  "iteration": 0,
+  "current_iteration": 15,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level1_66_conv_standard_3D__asymmetric_input__asymmetric_kernel",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:5",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp68wfmwrf.py\", line 222, in forward\n    return conv3d_triton(\n  File \"/tmp/tmp68wfmwrf.py\", line 160, in conv3d_triton\n    _conv3d_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 69:63:\n\n    # Loop over input channels in blocks\n    for ic_block in range(0, ic_per_group, BLOCK_IC):\n        ic_offsets = ic_block + tl.arange(0, BLOCK_IC)\n        ic_mask = ic_offsets < ic_per_group\n\n        # Loop over kernel dimensions\n        for kd in range(Kd):\n            for kh in range(Kh):\n                for kw in range(Kw):\n                    # Compute input positions\n                    in_d = d_offsets * stride_d - pad_d + kd * dil_d\n                                                               ^\nNameError('dil_d is not defined')\n\n\nThe above exception was the direct cause of the following exception:\n\nNameError: dil_d is not defined\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0443,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754982977.6102383,
+  "saved_at": 1754983829.3118994
+}

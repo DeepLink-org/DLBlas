@@ -1,0 +1,56 @@
+2025-08-07 19:11:20,638 - openevolve.controller - INFO - Logging to openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/logs/openevolve_20250807_191120.log
+2025-08-07 19:11:20,644 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-07 19:11:20,664 - openevolve.llm.openai - INFO - 初始化的 OpenAI 兼容 LLM: deepseek @ https://180.163.156.43:21020/v1
+2025-08-07 19:11:20,664 - openevolve.llm.openai - INFO - SSL 验证: 关闭
+2025-08-07 19:11:20,684 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,723 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,723 - openevolve.prompt.sampler - INFO - Initialized prompt sampler
+2025-08-07 19:11:20,723 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:20,723 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-07 19:11:20,839 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:20,839 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:20,839 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/a858a2a1d21a10ed8c9be5754257ba43.py
+2025-08-07 19:11:20,839 - openevolve.controller - INFO - Adding initial program to database
+2025-08-07 19:11:20,840 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling] verify_plus payload: reference_code(1223 chars) + custom_code(1347 chars)
+2025-08-07 19:11:46,100 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling] verify_plus request success
+2025-08-07 19:11:46,100 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling] verify_plus response: {"id":"level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:2","correctness_trials":"(5 / 5)","reference_timing_ms":0.101,"speed_up":0.43,"custom_timing":0.235},"runtime":0.235,"runtime_stats":{"mean":0.235,"std":0.00245,"min":0.229,"max":0.243,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:2"}}}
+2025-08-07 19:11:46,100 - openevolve.evaluator - INFO - Evaluated program 6af4d6bd-e9ed-4173-a4aa-a5f16ee7aaba in 25.26s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=0.2350, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:2', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 0.101, 'speed_up': 0.43, 'custom_timing': 0.235}
+2025-08-07 19:11:46,101 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 1}
+2025-08-07 19:11:46,111 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-07 19:11:46,111 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-07 19:11:46,112 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-07 19:11:46,112 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-07 19:11:46,112 - openevolve.database - INFO - Island Status:
+2025-08-07 19:11:46,112 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: 6af4d6bd-e9ed-4173-a4aa-a5f16ee7aaba)
+2025-08-07 19:11:46,112 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:46,112 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:46,112 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-07 19:11:46,266 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,267 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,282 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,475 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,475 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,475 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,475 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,478 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,478 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,479 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,479 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,481 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:46,482 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:46,483 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,483 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,485 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,485 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_16_ConvTranspose2d_Mish_Add_Hardtanh_Scaling/evaluation.py
+2025-08-07 19:11:46,486 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:58,466 - openevolve.controller - INFO - Received signal 2, initiating graceful shutdown...
+2025-08-07 19:11:58,476 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,476 - openevolve.threaded_parallel - INFO - Shutdown requested, canceling remaining evaluations...
+2025-08-07 19:11:58,476 - openevolve.threaded_parallel - INFO - Evolution interrupted by shutdown
+2025-08-07 19:11:58,476 - openevolve.controller - INFO - Evolution stopped due to shutdown request
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,668 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,812 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,812 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...

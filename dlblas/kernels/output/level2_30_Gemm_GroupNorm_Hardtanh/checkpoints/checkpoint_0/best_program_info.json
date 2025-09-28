@@ -1,0 +1,33 @@
+{
+  "id": "cb3a0792-4503-4ac0-acad-945aabcea285",
+  "generation": 1,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_30_Gemm_GroupNorm_Hardtanh",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:4",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp1s6xt1a1.py\", line 90, in forward\n    x = triton_gemm(x, self.weight.t(), self.bias)\n  File \"/tmp/tmp1s6xt1a1.py\", line 64, in triton_gemm\n    _gemm_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 38:7:\n\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):\n        k_remaining = K - k * BLOCK_SIZE_K\n        k_mask = offs_k < k_remaining\n        a = tl.load(a_ptrs, mask=k_mask[None, :], other=0.0)\n        b = tl.load(b_ptrs, mask=k_mask[:, None], other=0.0)\n        accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=True)\n        a_ptrs += BLOCK_SIZE_K * stride_ak\n        b_ptrs += BLOCK_SIZE_K * stride_bk\n\n    if bias_ptr != 0:\n       ^\nIncompatibleTypeErrorImpl('invalid operands of type pointer<fp32> and triton.language.int32')\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1081, in __ne__\n    return _semantic.not_equal(self, other)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 558, in not_equal\n    input, other = self.binary_op_type_checking_impl(input, other)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 184, in binary_op_type_checking_impl\n    self.check_ptr_type_impl(lhs_sca_ty, rhs_sca_ty, allow_lhs_ptr)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 161, in check_ptr_type_impl\n    raise IncompatibleTypeErrorImpl(type_a, type_b)\ntriton.language.semantic.IncompatibleTypeErrorImpl: invalid operands of type pointer<fp32> and triton.language.int32\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0799,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754566013.1417034,
+  "saved_at": 1754566013.2034187
+}

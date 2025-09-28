@@ -1,0 +1,33 @@
+{
+  "id": "0823397a-7953-4733-816a-6d4bb5b78795",
+  "generation": 1,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level1_36_RMSNorm_",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:7",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpmou4q2it.py\", line 48, in forward\n    _rms_norm_forward[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 617, in run\n    kernel.run(grid_0, grid_1, grid_2, stream, kernel.function, kernel.packed_metadata, launch_metadata,\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/backends/nvidia/driver.py\", line 708, in __call__\n    self.launch(gridX, gridY, gridZ, stream, function, self.launch_cooperative_grid, self.launch_pdl,\nRuntimeError: Triton Error [CUDA]: invalid argument\n",
+          "runtime_error_name": "builtins.RuntimeError",
+          "reference_timing_ms": 0.0503,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754634413.6398375,
+  "saved_at": 1754634413.6981978
+}

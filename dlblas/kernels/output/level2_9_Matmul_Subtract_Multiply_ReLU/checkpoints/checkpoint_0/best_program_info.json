@@ -1,0 +1,33 @@
+{
+  "id": "6c5aae66-38ec-4b33-ac56-ab61c415dfa8",
+  "generation": 1,
+  "iteration": 2,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_9_Matmul_Subtract_Multiply_ReLU",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:5",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpbmiehxd1.py\", line 90, in forward\n    fused_linear_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 239, in run\n    benchmark()\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 228, in benchmark\n    timings = {config: self._bench(*args, config=config, **kwargs) for config in pruned_configs}\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 228, in <dictcomp>\n    timings = {config: self._bench(*args, config=config, **kwargs) for config in pruned_configs}\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 135, in _bench\n    raise ValueError(f\"Conflicting meta-parameters: {', '.join(conflicts)}.\"\nValueError: Conflicting meta-parameters: BLOCK_SIZE_K, BLOCK_SIZE_N. Make sure that you don't re-define auto-tuned symbols.\n",
+          "runtime_error_name": "builtins.ValueError",
+          "reference_timing_ms": 0.077,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754585154.9456458,
+  "saved_at": 1754585163.1071327
+}

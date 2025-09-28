@@ -1,0 +1,33 @@
+{
+  "id": "a4af8d0c-c6a7-4f03-a990-d79994dd88f5",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_77_ConvTranspose3d_Scale_BatchNorm_GlobalAvgPool",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:1",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp48ix__2j.py\", line 117, in forward\n    x = global_avg_pool_3d_triton(x)\n  File \"/tmp/tmp48ix__2j.py\", line 86, in global_avg_pool_3d_triton\n    global_avg_pool_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 581, in run\n    raise KeyError(\"Keyword argument %s was specified but unrecognised\" % k)\nKeyError: 'Keyword argument output_batch_stride was specified but unrecognised'\n",
+          "runtime_error_name": "builtins.KeyError",
+          "reference_timing_ms": 0.115,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754577895.3580587,
+  "saved_at": 1754578075.221036
+}

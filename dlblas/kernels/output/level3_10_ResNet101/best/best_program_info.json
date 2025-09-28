@@ -1,0 +1,33 @@
+{
+  "id": "bc1dd6ad-a0cc-4063-9fd0-f8571a18a23e",
+  "generation": 1,
+  "iteration": 0,
+  "timestamp": 1754583700.6252663,
+  "parent_id": "b6ea2ab9-3d7d-4223-8bb1-3ba98db576c5",
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level3_10_ResNet101",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:6",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 2150, in load\n    return _semantic.load(pointer, mask, other, boundary_check, padding_option, cache_modifier, eviction_policy,\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1086, in load\n    return self._load_legacy(ptr, mask, other, boundary_check, padding, cache, eviction, is_volatile)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1037, in _load_legacy\n    mask = self.broadcast_impl_shape(mask, ptr.type.get_block_shapes())\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 697, in broadcast_impl_shape\n    raise ValueError(f\"Cannot broadcast, rank mismatch: {src_shape}, {shape}\")\nValueError: Cannot broadcast, rank mismatch: ['64', '16'], ['64']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp0nmb2fzi.py\", line 166, in forward\n    x = self.layer1(x)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/container.py\", line 244, in forward\n    input = module(input)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp0nmb2fzi.py\", line 94, in forward\n    fused_conv_bn_relu_1x1[ (grid_batch, grid_hw, grid_c) ](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 31:8:\n    # Create masks\n    c_offsets = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)\n    c_mask = c_offsets < out_channels\n    hw_mask = tl.arange(0, BLOCK_SIZE_HW) < BLOCK_SIZE_HW\n\n    # Calculate input offsets\n    x_offset = pid_batch * in_channels * BLOCK_SIZE_HW + pid_hw * BLOCK_SIZE_HW\n    w_offset = c_offsets[:, None] * in_channels + tl.arange(0, in_channels)[None, :]\n\n    # Load weights and input\n    w = tl.load(w_ptr + w_offset, mask=c_mask[:, None] & (tl.arange(0, in_channels)[None, :] < in_channels), other=0.0)\n    x = tl.load(x_ptr + x_offset + tl.arange(0, in_channels), mask=hw_mask[None, :] & (tl.arange(0, in_channels)[:, None] < in_channels), other=0.0)\n        ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 2150, in load\n    return _semantic.load(pointer, mask, other, boundary_check, padding_option, cache_modifier, eviction_policy,\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1086, in load\n    return self._load_legacy(ptr, mask, other, boundary_check, padding, cache, eviction, is_volatile)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1037, in _load_legacy\n    mask = self.broadcast_impl_shape(mask, ptr.type.get_block_shapes())\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 697, in broadcast_impl_shape\n    raise ValueError(f\"Cannot broadcast, rank mismatch: {src_shape}, {shape}\")\nValueError: Cannot broadcast, rank mismatch: ['64', '16'], ['64']\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 6.25,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "saved_at": 1754588499.4515707
+}

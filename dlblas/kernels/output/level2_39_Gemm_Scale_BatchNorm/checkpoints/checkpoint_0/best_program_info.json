@@ -1,0 +1,33 @@
+{
+  "id": "df43f08a-7569-4cb6-9ced-3fff75e796ae",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_39_Gemm_Scale_BatchNorm",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:3",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpumd5sxyc.py\", line 92, in forward\n    x = self.bn(x)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py\", line 193, in forward\n    return F.batch_norm(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/functional.py\", line 2817, in batch_norm\n    return torch.batch_norm(\nRuntimeError: running_mean should contain 1024 elements not 512\n",
+          "runtime_error_name": "builtins.RuntimeError",
+          "reference_timing_ms": 0.0935,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754572515.2852523,
+  "saved_at": 1754572598.5118053
+}

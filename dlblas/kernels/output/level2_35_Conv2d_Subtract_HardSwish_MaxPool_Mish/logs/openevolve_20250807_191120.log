@@ -1,0 +1,54 @@
+2025-08-07 19:11:20,609 - openevolve.controller - INFO - Logging to openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/logs/openevolve_20250807_191120.log
+2025-08-07 19:11:20,615 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-07 19:11:20,635 - openevolve.llm.openai - INFO - 初始化的 OpenAI 兼容 LLM: deepseek @ https://180.163.156.43:21020/v1
+2025-08-07 19:11:20,635 - openevolve.llm.openai - INFO - SSL 验证: 关闭
+2025-08-07 19:11:20,655 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,694 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,694 - openevolve.prompt.sampler - INFO - Initialized prompt sampler
+2025-08-07 19:11:20,694 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:20,695 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-07 19:11:20,810 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:20,811 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:20,811 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/8d9508a03fbe35ff0c22d4c42de179cc.py
+2025-08-07 19:11:20,811 - openevolve.controller - INFO - Adding initial program to database
+2025-08-07 19:11:20,812 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish] verify_plus payload: reference_code(1036 chars) + custom_code(1160 chars)
+2025-08-07 19:11:33,715 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish] verify_plus request success
+2025-08-07 19:11:33,715 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish] verify_plus response: {"id":"level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:6","correctness_trials":"(5 / 5)","reference_timing_ms":0.0812,"speed_up":1.055,"custom_timing":0.077},"runtime":0.077,"runtime_stats":{"mean":0.077,"std":0.00313,"min":0.0731,"max":0.0923,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:6"}}}
+2025-08-07 19:11:33,716 - openevolve.evaluator - INFO - Evaluated program 4ecf3b7a-bf61-4576-8a61-93c9ea53f64d in 12.90s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=0.0770, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:6', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 0.0812, 'speed_up': 1.055, 'custom_timing': 0.077}
+2025-08-07 19:11:33,716 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 1}
+2025-08-07 19:11:33,726 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-07 19:11:33,727 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-07 19:11:33,727 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-07 19:11:33,727 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-07 19:11:33,727 - openevolve.database - INFO - Island Status:
+2025-08-07 19:11:33,727 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: 4ecf3b7a-bf61-4576-8a61-93c9ea53f64d)
+2025-08-07 19:11:33,727 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:33,727 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:33,727 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-07 19:11:33,951 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:33,955 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,036 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,182 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,182 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,184 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,184 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,184 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,185 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,187 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:34,187 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,187 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,189 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:34,199 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,199 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,201 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,201 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_35_Conv2d_Subtract_HardSwish_MaxPool_Mish/evaluation.py
+2025-08-07 19:11:34,203 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:58,466 - openevolve.controller - INFO - Received signal 2, initiating graceful shutdown...
+2025-08-07 19:11:58,474 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,474 - openevolve.threaded_parallel - INFO - Shutdown requested, canceling remaining evaluations...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Evolution interrupted by shutdown
+2025-08-07 19:11:58,475 - openevolve.controller - INFO - Evolution stopped due to shutdown request
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,668 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Force exit requested - terminating immediately

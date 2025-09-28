@@ -1,0 +1,47 @@
+{
+  "id": "3b438fd1-0269-4106-a7be-885b4232d38c",
+  "generation": 1,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_20_ConvTranspose3d_Sum_ResidualAdd_Multiply_ResidualAdd",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:2",
+          "max_difference": [
+            "5.509492",
+            "3.929935",
+            "4.700849",
+            "4.511654",
+            "4.424706"
+          ],
+          "avg_difference": [
+            "0.162824",
+            "0.108422",
+            "0.095212",
+            "0.095194",
+            "0.095191"
+          ],
+          "correctness_issue": "Output mismatch",
+          "correctness_trials": "(0 / 5)",
+          "reference_timing_ms": 0.166,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754565796.3365,
+  "saved_at": 1754565796.395439
+}

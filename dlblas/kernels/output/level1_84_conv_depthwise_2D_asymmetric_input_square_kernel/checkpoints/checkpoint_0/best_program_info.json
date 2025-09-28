@@ -1,0 +1,33 @@
+{
+  "id": "e3fdc77f-c0a7-45a5-82ea-5ce1c3ab38f9",
+  "generation": 3,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level1_84_conv_depthwise_2D_asymmetric_input_square_kernel",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:6",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1654, in arange\n    return _semantic.arange(start, end)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 574, in arange\n    raise ValueError(\"arange's arguments must be of type tl.constexpr\")\nValueError: arange's arguments must be of type tl.constexpr\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpr57jyoej.py\", line 117, in forward\n    depthwise_conv2d_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 239, in run\n    benchmark()\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 228, in benchmark\n    timings = {config: self._bench(*args, config=config, **kwargs) for config in pruned_configs}\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 228, in <dictcomp>\n    timings = {config: self._bench(*args, config=config, **kwargs) for config in pruned_configs}\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 160, in _bench\n    return self.do_bench(kernel_call, quantiles=(0.5, 0.2, 0.8))\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/testing.py\", line 149, in do_bench\n    fn()\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/autotuner.py\", line 146, in kernel_call\n    self.fn.run(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 34:38:\n    channel_idx = pid_bc % out_channels\n    group_idx = channel_idx // (out_channels // in_channels)\n\n    ow_start = pid_owb * BLOCK_OW\n    ow_offsets = ow_start + tl.arange(0, BLOCK_OW)\n    ow_mask = ow_offsets < OW\n\n    acc = tl.zeros((BLOCK_OW,), dtype=tl.float32)\n\n    # Preload kernel weights using vectorized load\n    w_base = channel_idx * kernel_size * kernel_size\n    w_vals = tl.load(w_ptr + w_base + tl.arange(0, kernel_size*kernel_size))\n                                      ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1654, in arange\n    return _semantic.arange(start, end)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 574, in arange\n    raise ValueError(\"arange's arguments must be of type tl.constexpr\")\nValueError: arange's arguments must be of type tl.constexpr\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0301,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754983209.099854,
+  "saved_at": 1754983266.8447554
+}

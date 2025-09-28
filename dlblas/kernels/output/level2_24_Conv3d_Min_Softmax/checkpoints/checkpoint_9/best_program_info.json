@@ -1,0 +1,33 @@
+{
+  "id": "1f49fcea-cdbb-427b-8a9d-da84ccf4065e",
+  "generation": 1,
+  "iteration": 2,
+  "current_iteration": 9,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_24_Conv3d_Min_Softmax",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:3",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1693, in full\n    shape = _shape_check_impl(shape)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1677, in _shape_check_impl\n    validate_block_shape(shape)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/_utils.py\", line 50, in validate_block_shape\n    raise TypeError(f\"Shape element {i} must have type `constexpr[int]`, got `constexpr[{type(d)}]\")\nTypeError: Shape element 0 must have type `constexpr[int]`, got `constexpr[<class 'triton.language.core.tensor'>]\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpdktppe3p.py\", line 68, in forward\n    fused_min_softmax_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 18:15:\n    BLOCK_SIZE: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    num_pids = batch_size * height * width\n    if pid >= num_pids:\n        return\n\n    w = pid % width\n    h = (pid // width) % height\n    b = pid // (height * width)\n\n    min_vals = tl.full((n_channels,), float('inf'), dtype=tl.float32)\n               ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1693, in full\n    shape = _shape_check_impl(shape)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1677, in _shape_check_impl\n    validate_block_shape(shape)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/_utils.py\", line 50, in validate_block_shape\n    raise TypeError(f\"Shape element {i} must have type `constexpr[int]`, got `constexpr[{type(d)}]\")\nTypeError: Shape element 0 must have type `constexpr[int]`, got `constexpr[<class 'triton.language.core.tensor'>]\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0599,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754566006.256186,
+  "saved_at": 1754568061.561355
+}

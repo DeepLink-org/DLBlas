@@ -1,0 +1,47 @@
+{
+  "id": "2a261124-c8d7-48b6-9c1e-054c025fd357",
+  "generation": 1,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_37_Matmul_Swish_Sum_GroupNorm",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:2",
+          "max_difference": [
+            "2.996043",
+            "3.023194",
+            "3.023102",
+            "2.981737",
+            "2.958071"
+          ],
+          "avg_difference": [
+            "0.405675",
+            "0.404696",
+            "0.405433",
+            "0.405280",
+            "0.405121"
+          ],
+          "correctness_issue": "Output mismatch",
+          "correctness_trials": "(0 / 5)",
+          "reference_timing_ms": 0.0938,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754572790.0587723,
+  "saved_at": 1754572790.1204388
+}

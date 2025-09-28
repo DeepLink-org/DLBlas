@@ -1,0 +1,33 @@
+{
+  "id": "fa77c854-8596-49f2-8474-19efdfa59750",
+  "generation": 1,
+  "iteration": 2,
+  "current_iteration": 6,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_28_BMM_InstanceNorm_Sum_ResidualAdd_Multiply",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:5",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpe_348rqg.py\", line 77, in forward\n    _forward_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 33:29:\n        mask = k_offs < in_features\n\n        x_val = tl.load(x_ptr + pid0 * stride_x_batch + k_offs * stride_x_feature, mask=mask)\n        w_val = tl.load(w_ptr + pid1 * stride_w_feature + k_offs * stride_w_in, mask=mask)\n        dot += tl.sum(x_val * w_val, axis=0)\n\n    linear_out = dot + tl.load(linear_bias_ptr + pid1)\n\n    # Training vs inference logic\n    if training:\n        tl.atomic_add(sum_feature_ptr + pid1, linear_out)\n        normalized = tl.load(beta_ptr + pid1)\n                             ^\nAttributeError(\"'NoneType' object has no attribute 'type'\")\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 904, in __radd__\n    return add(other, self, sanitize_overflow=True, _semantic=_semantic)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 2468, in add\n    return _semantic.add(x, y, sanitize_overflow)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 226, in add\n    input, other = self.binary_op_type_checking_impl(input, other, True, True)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 182, in binary_op_type_checking_impl\n    lhs_sca_ty = lhs.type.scalar\nAttributeError: 'NoneType' object has no attribute 'type'\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0981,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754566638.7986517,
+  "saved_at": 1754567446.2625873
+}

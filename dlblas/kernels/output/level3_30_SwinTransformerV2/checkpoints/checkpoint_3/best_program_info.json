@@ -1,0 +1,18 @@
+{
+  "id": "63a56e11-c88d-4792-9035-894ada47daed",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 3,
+  "metrics": {
+    "compiled": false,
+    "correctness": false,
+    "score": 1,
+    "stage": "compile_error",
+    "compile_log": "",
+    "exec_log": "[Child] \u7ed1\u5b9a GPU 0, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 151\n    self.logit_scale = nn.Parameter(torch.log(10 * torch.ones((num_heads, 1, 1)), requires_grad=True)\n                                   ^\nSyntaxError: '(' was never closed\n",
+    "exit_code": "1"
+  },
+  "language": "python",
+  "timestamp": 1754593891.2039306,
+  "saved_at": 1754595086.4050627
+}

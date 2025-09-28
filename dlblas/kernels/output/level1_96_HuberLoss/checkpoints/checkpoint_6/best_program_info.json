@@ -1,0 +1,33 @@
+{
+  "id": "96ac68bf-2b4a-49eb-8175-319a57ca8fd2",
+  "generation": 2,
+  "iteration": 4,
+  "current_iteration": 6,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level1_96_HuberLoss",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:2",
+          "correctness_issue": "Output shape mismatch: Expected torch.Size([]), got torch.Size([1])",
+          "correctness_issue_name": "correctness_issue",
+          "reference_timing_ms": 0.0757,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754989980.1817367,
+  "saved_at": 1754990625.2431507
+}

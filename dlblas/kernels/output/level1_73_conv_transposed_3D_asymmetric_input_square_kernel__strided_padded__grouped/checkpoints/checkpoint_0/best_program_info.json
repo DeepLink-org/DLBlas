@@ -1,0 +1,33 @@
+{
+  "id": "ed13d678-506b-478c-ba44-131bbd2c4f9d",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level1_73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:2",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1630, in program_id\n    return _semantic.program_id(axis)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 40, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpt30lo634.py\", line 190, in forward\n    conv_transpose3d_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 29:12:\n    BLOCK_D: tl.constexpr,\n    BLOCK_H: tl.constexpr,\n    BLOCK_W: tl.constexpr,\n    BLOCK_KD: tl.constexpr,\n    BLOCK_KH: tl.constexpr,\n    BLOCK_KW: tl.constexpr,\n):\n    # Program ID mapping\n    pid_b = tl.program_id(0)\n    pid_c = tl.program_id(1)\n    pid_d = tl.program_id(2)\n    pid_h = tl.program_id(3)\n            ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1630, in program_id\n    return _semantic.program_id(axis)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 40, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.0605,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754644890.960427,
+  "saved_at": 1754645072.0764072
+}

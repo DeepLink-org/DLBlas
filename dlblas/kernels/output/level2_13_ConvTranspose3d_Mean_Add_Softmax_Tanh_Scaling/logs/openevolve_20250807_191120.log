@@ -1,0 +1,58 @@
+2025-08-07 19:11:20,605 - openevolve.controller - INFO - Logging to openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/logs/openevolve_20250807_191120.log
+2025-08-07 19:11:20,611 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-07 19:11:20,631 - openevolve.llm.openai - INFO - 初始化的 OpenAI 兼容 LLM: deepseek @ https://180.163.156.43:21020/v1
+2025-08-07 19:11:20,631 - openevolve.llm.openai - INFO - SSL 验证: 关闭
+2025-08-07 19:11:20,650 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,689 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,689 - openevolve.prompt.sampler - INFO - Initialized prompt sampler
+2025-08-07 19:11:20,689 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:20,690 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-07 19:11:20,794 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:20,794 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:20,794 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/0c1272b54cbfcf1dd082bcfd328ba8c3.py
+2025-08-07 19:11:20,794 - openevolve.controller - INFO - Adding initial program to database
+2025-08-07 19:11:20,795 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling] verify_plus payload: reference_code(1252 chars) + custom_code(1376 chars)
+2025-08-07 19:11:33,793 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling] verify_plus request success
+2025-08-07 19:11:33,794 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling] verify_plus response: {"id":"level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:1","correctness_trials":"(5 / 5)","reference_timing_ms":0.106,"speed_up":0.168,"custom_timing":0.632},"runtime":0.632,"runtime_stats":{"mean":0.632,"std":0.00676,"min":0.624,"max":0.655,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:1"}}}
+2025-08-07 19:11:33,794 - openevolve.evaluator - INFO - Evaluated program 1992c6e1-ce04-4d41-ba4a-0309d5a1be25 in 13.00s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=0.6320, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:1', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 0.106, 'speed_up': 0.168, 'custom_timing': 0.632}
+2025-08-07 19:11:33,794 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 1}
+2025-08-07 19:11:33,806 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-07 19:11:33,806 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-07 19:11:33,806 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-07 19:11:33,806 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-07 19:11:33,806 - openevolve.database - INFO - Island Status:
+2025-08-07 19:11:33,806 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: 1992c6e1-ce04-4d41-ba4a-0309d5a1be25)
+2025-08-07 19:11:33,806 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:33,806 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:33,806 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-07 19:11:33,950 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:33,950 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:33,955 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,104 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,104 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,104 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,105 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,106 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,106 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,108 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,108 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,109 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:34,110 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:34,111 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:34,111 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:34,113 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,113 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_13_ConvTranspose3d_Mean_Add_Softmax_Tanh_Scaling/evaluation.py
+2025-08-07 19:11:34,114 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:58,466 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,466 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,466 - openevolve.controller - INFO - Received signal 2, initiating graceful shutdown...
+2025-08-07 19:11:58,466 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,476 - openevolve.threaded_parallel - INFO - Shutdown requested, canceling remaining evaluations...
+2025-08-07 19:11:58,476 - openevolve.threaded_parallel - INFO - Evolution interrupted by shutdown
+2025-08-07 19:11:58,476 - openevolve.controller - INFO - Evolution stopped due to shutdown request
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,668 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,812 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...

@@ -1,0 +1,47 @@
+{
+  "id": "024925b5-0a07-40e5-ac4c-69b15506011d",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_88_Gemm_GroupNorm_Swish_Multiply_Swish",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:3",
+          "max_difference": [
+            "7.297653",
+            "7.304657",
+            "9.711642",
+            "8.998066",
+            "9.947114"
+          ],
+          "avg_difference": [
+            "0.221078",
+            "0.221182",
+            "0.219314",
+            "0.222279",
+            "0.219303"
+          ],
+          "correctness_issue": "Output mismatch",
+          "correctness_trials": "(0 / 5)",
+          "reference_timing_ms": 0.109,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754579764.100001,
+  "saved_at": 1754579954.7742932
+}

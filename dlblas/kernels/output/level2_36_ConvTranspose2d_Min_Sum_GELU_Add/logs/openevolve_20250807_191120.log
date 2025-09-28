@@ -1,0 +1,56 @@
+2025-08-07 19:11:20,662 - openevolve.controller - INFO - Logging to openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/logs/openevolve_20250807_191120.log
+2025-08-07 19:11:20,667 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-07 19:11:20,688 - openevolve.llm.openai - INFO - 初始化的 OpenAI 兼容 LLM: deepseek @ https://180.163.156.43:21020/v1
+2025-08-07 19:11:20,688 - openevolve.llm.openai - INFO - SSL 验证: 关闭
+2025-08-07 19:11:20,708 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,747 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,747 - openevolve.prompt.sampler - INFO - Initialized prompt sampler
+2025-08-07 19:11:20,747 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:20,747 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-07 19:11:20,826 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:20,826 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:20,826 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/2413044d75e573aca4c87189085d6bee.py
+2025-08-07 19:11:20,826 - openevolve.controller - INFO - Adding initial program to database
+2025-08-07 19:11:20,827 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_36_ConvTranspose2d_Min_Sum_GELU_Add] verify_plus payload: reference_code(1233 chars) + custom_code(1357 chars)
+2025-08-07 19:11:40,409 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_36_ConvTranspose2d_Min_Sum_GELU_Add] verify_plus request success
+2025-08-07 19:11:40,409 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_36_ConvTranspose2d_Min_Sum_GELU_Add] verify_plus response: {"id":"level2_36_ConvTranspose2d_Min_Sum_GELU_Add","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:7","correctness_trials":"(5 / 5)","reference_timing_ms":0.192,"speed_up":0.97,"custom_timing":0.198},"runtime":0.198,"runtime_stats":{"mean":0.198,"std":0.00265,"min":0.194,"max":0.212,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:7"}}}
+2025-08-07 19:11:40,410 - openevolve.evaluator - INFO - Evaluated program e3d986e4-2b9e-4831-bfa9-8313ec60abd1 in 19.58s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=0.1980, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:7', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 0.192, 'speed_up': 0.97, 'custom_timing': 0.198}
+2025-08-07 19:11:40,410 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 1}
+2025-08-07 19:11:40,421 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-07 19:11:40,421 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-07 19:11:40,421 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-07 19:11:40,421 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-07 19:11:40,421 - openevolve.database - INFO - Island Status:
+2025-08-07 19:11:40,421 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: e3d986e4-2b9e-4831-bfa9-8313ec60abd1)
+2025-08-07 19:11:40,421 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:40,421 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:40,421 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-07 19:11:40,550 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,551 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,557 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,679 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,680 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:40,680 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,680 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:40,683 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,683 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,684 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,684 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,685 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:40,685 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:40,687 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:40,688 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,688 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_36_ConvTranspose2d_Min_Sum_GELU_Add/evaluation.py
+2025-08-07 19:11:40,688 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:40,690 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:58,465 - openevolve.controller - INFO - Received signal 2, initiating graceful shutdown...
+2025-08-07 19:11:58,473 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Shutdown requested, canceling remaining evaluations...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Evolution interrupted by shutdown
+2025-08-07 19:11:58,475 - openevolve.controller - INFO - Evolution stopped due to shutdown request
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,669 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,812 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,812 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...

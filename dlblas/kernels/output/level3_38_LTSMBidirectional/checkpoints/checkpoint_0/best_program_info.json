@@ -1,0 +1,26 @@
+{
+  "id": "50a85a31-6fa1-4061-b3bf-012972a45a26",
+  "generation": 0,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": true,
+    "stage": "reference code",
+    "passed": false,
+    "score": 0.0,
+    "speed_up": 1.0,
+    "runtime_ms": 43.8,
+    "meta": {
+      "hardware": "NVIDIA L20Y",
+      "device": "cuda:2",
+      "correctness_trials": "(5 / 5)",
+      "reference_timing_ms": 42.6,
+      "speed_up": 0.973,
+      "custom_timing": 43.8
+    }
+  },
+  "language": "python",
+  "timestamp": 1754588514.6685905,
+  "saved_at": 1754589295.4651337
+}

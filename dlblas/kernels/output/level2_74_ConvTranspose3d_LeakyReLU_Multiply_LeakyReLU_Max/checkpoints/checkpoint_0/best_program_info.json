@@ -1,0 +1,33 @@
+{
+  "id": "823e4dcb-0c88-456a-b895-214748b343dc",
+  "generation": 1,
+  "iteration": 2,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_74_ConvTranspose3d_LeakyReLU_Multiply_LeakyReLU_Max",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:4",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1630, in program_id\n    return _semantic.program_id(axis)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 40, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmp8vdgyp5u.py\", line 56, in forward\n    x = fused_leaky_mul_leaky(x, self.multiplier)\n  File \"/tmp/tmp8vdgyp5u.py\", line 41, in fused_leaky_mul_leaky\n    _fused_leaky_mul_leaky_kernel[grid](x, multiplier, output, N, C, D, H, W, BLOCK_W=BLOCK_W)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 11:12:\ndef _fused_leaky_mul_leaky_kernel(\n    x_ptr,\n    multiplier_ptr,\n    output_ptr,\n    N, C, D, H, W,\n    BLOCK_W: tl.constexpr,\n):\n    pid_n = tl.program_id(0)\n    pid_c = tl.program_id(1)\n    pid_d = tl.program_id(2)\n    pid_h = tl.program_id(3)\n            ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 1630, in program_id\n    return _semantic.program_id(axis)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 40, in program_id\n    raise ValueError(f\"program_id axis must be 0, 1, or 2 but got {axis}\")\nValueError: program_id axis must be 0, 1, or 2 but got 3\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.114,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754578838.6414804,
+  "saved_at": 1754578936.091158
+}

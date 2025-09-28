@@ -1,0 +1,56 @@
+2025-08-07 19:11:20,692 - openevolve.controller - INFO - Logging to openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/logs/openevolve_20250807_191120.log
+2025-08-07 19:11:20,698 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-07 19:11:20,718 - openevolve.llm.openai - INFO - 初始化的 OpenAI 兼容 LLM: deepseek @ https://180.163.156.43:21020/v1
+2025-08-07 19:11:20,719 - openevolve.llm.openai - INFO - SSL 验证: 关闭
+2025-08-07 19:11:20,739 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,778 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:20,779 - openevolve.prompt.sampler - INFO - Initialized prompt sampler
+2025-08-07 19:11:20,779 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:20,779 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-07 19:11:20,848 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:20,848 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:20,848 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/6d04d071566fdfe02dfcd9d490524b7b.py
+2025-08-07 19:11:20,848 - openevolve.controller - INFO - Adding initial program to database
+2025-08-07 19:11:20,849 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm] verify_plus payload: reference_code(1138 chars) + custom_code(1262 chars)
+2025-08-07 19:11:45,881 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm] verify_plus request success
+2025-08-07 19:11:45,881 - openevolve.RemoteSpeedupEvaluator - INFO - [level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm] verify_plus response: {"id":"level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:4","correctness_trials":"(5 / 5)","reference_timing_ms":0.102,"speed_up":0.887,"custom_timing":0.115},"runtime":0.115,"runtime_stats":{"mean":0.115,"std":0.0054,"min":0.111,"max":0.162,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:4"}}}
+2025-08-07 19:11:45,882 - openevolve.evaluator - INFO - Evaluated program c479bcc1-5f5a-4de1-9cfe-16af99fa2c96 in 25.03s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=0.1150, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:4', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 0.102, 'speed_up': 0.887, 'custom_timing': 0.115}
+2025-08-07 19:11:45,882 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 1}
+2025-08-07 19:11:45,892 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-07 19:11:45,892 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-07 19:11:45,892 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-07 19:11:45,892 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-07 19:11:45,893 - openevolve.database - INFO - Island Status:
+2025-08-07 19:11:45,893 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: c479bcc1-5f5a-4de1-9cfe-16af99fa2c96)
+2025-08-07 19:11:45,893 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:45,893 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-07 19:11:45,893 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-07 19:11:46,045 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,049 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,050 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,198 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,198 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,200 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,200 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,201 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,201 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,202 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:46,202 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-07 19:11:46,203 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-07 19:11:46,203 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,203 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,204 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:46,205 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,205 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level2_21_Conv2d_Add_Scale_Sigmoid_GroupNorm/evaluation.py
+2025-08-07 19:11:46,206 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-07 19:11:58,466 - openevolve.controller - INFO - Received signal 2, initiating graceful shutdown...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Shutdown requested, canceling remaining evaluations...
+2025-08-07 19:11:58,475 - openevolve.threaded_parallel - INFO - Evolution interrupted by shutdown
+2025-08-07 19:11:58,475 - openevolve.controller - INFO - Evolution stopped due to shutdown request
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,668 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,668 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...
+2025-08-07 19:11:58,811 - openevolve.controller - INFO - Force exit requested - terminating immediately
+2025-08-07 19:11:58,812 - openevolve.controller - INFO - Received signal 15, initiating graceful shutdown...
+2025-08-07 19:11:58,812 - openevolve.threaded_parallel - INFO - Graceful shutdown requested...

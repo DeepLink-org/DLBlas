@@ -1,0 +1,33 @@
+{
+  "id": "17f5928e-2d2d-464c-a20f-a0d662fbc6c6",
+  "generation": 1,
+  "iteration": 2,
+  "current_iteration": 3,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level3_13_DenseNet121TransitionLayer",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:2",
+          "correctness_issue": "Output shape mismatch: Expected torch.Size([10, 64, 112, 112]), got torch.Size([10, 32, 112, 112])",
+          "correctness_issue_name": "correctness_issue",
+          "reference_timing_ms": 0.301,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754586122.1986394,
+  "saved_at": 1754586649.3135915
+}

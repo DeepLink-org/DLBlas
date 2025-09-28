@@ -1,0 +1,47 @@
+{
+  "id": "22cd5b56-9619-4476-b8af-e0d2a3ccbc70",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 9,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level3_31_VisionAttention",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:1",
+          "max_difference": [
+            "6.771070",
+            "7.354507",
+            "7.481483",
+            "8.807193",
+            "7.226679"
+          ],
+          "avg_difference": [
+            "1.129560",
+            "1.129993",
+            "1.129336",
+            "1.128959",
+            "1.129563"
+          ],
+          "correctness_issue": "Output mismatch",
+          "correctness_trials": "(0 / 5)",
+          "reference_timing_ms": 0.335,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754592533.5805802,
+  "saved_at": 1754594167.5755942
+}

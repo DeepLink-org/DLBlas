@@ -1,0 +1,18 @@
+{
+  "id": "28fea149-2980-4cd1-be86-1a0ad3f8c415",
+  "generation": 4,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": false,
+    "correctness": false,
+    "score": 1,
+    "stage": "compile_error",
+    "compile_log": "",
+    "exec_log": "[Child] \u7ed1\u5b9a GPU 0, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 108\n    groups:\u6781 int = 1, bias: bool = False):\n           ^^^^^\nSyntaxError: invalid syntax. Perhaps you forgot a comma?\n",
+    "exit_code": "1"
+  },
+  "language": "python",
+  "timestamp": 1754988962.414786,
+  "saved_at": 1754988962.6134973
+}

@@ -1,0 +1,18 @@
+{
+  "id": "39828dff-fa9c-4a97-82fd-dd6773439f3c",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": false,
+    "correctness": false,
+    "score": 1,
+    "stage": "compile_error",
+    "compile_log": "",
+    "exec_log": "[Child] \u7ed1\u5b9a GPU 4, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 19, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number = inspect.getsourcelines(fn)[1]\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py\", line 1121, in getsourcelines\n    lines, lnum = findsource(object)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py\", line 958, in findsource\n    raise OSError('could not get source code')\nOSError: could not get source code\n",
+    "exit_code": "1"
+  },
+  "language": "python",
+  "timestamp": 1754593524.5849617,
+  "saved_at": 1754594231.0612032
+}

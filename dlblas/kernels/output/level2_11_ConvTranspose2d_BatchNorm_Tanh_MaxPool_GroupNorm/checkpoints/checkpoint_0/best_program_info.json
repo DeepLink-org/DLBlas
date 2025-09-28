@@ -1,0 +1,33 @@
+{
+  "id": "3ca05053-f95a-42f8-b4c9-220ddc9022a6",
+  "generation": 1,
+  "iteration": 1,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_11_ConvTranspose2d_BatchNorm_Tanh_MaxPool_GroupNorm",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:0",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpvvsw4y9l.py\", line 107, in forward\n    group_norm_kernel[grid](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 24:12:\n    group_size = C // num_groups\n\n    # Compute mean and variance per group\n    mean = 0.0\n    var = 0.0\n    count = 0\n\n    # Loop through channels in group\n    for c in range(g * group_size, (g + 1) * group_size):\n        # Loop through spatial dimensions\n        for h in range(0, H, BLOCK_SIZE):\n            for w in range(0, W, BLOCK_SIZE):\n            ^\nAssertionError('Loop-carried variable count has initial type int32 but is re-assigned to uint32 in loop! Please make sure that the type stays consistent.')\n\n\nThe above exception was the direct cause of the following exception:\n\nAssertionError: Loop-carried variable count has initial type int32 but is re-assigned to uint32 in loop! Please make sure that the type stays consistent.\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.154,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754566003.5637841,
+  "saved_at": 1754566336.3700242
+}

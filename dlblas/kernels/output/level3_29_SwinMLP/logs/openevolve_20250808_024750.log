@@ -1,0 +1,853 @@
+2025-08-08 02:47:50,891 - openevolve.controller - INFO - Logging to openevolve_output/level3_29_SwinMLP/logs/openevolve_20250808_024750.log
+2025-08-08 02:47:50,891 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-08 02:47:50,930 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:50,969 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:50,969 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 02:47:50,970 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-08 02:47:50,991 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:50,991 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:50,991 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/420d3826814d51b40b5512ce880e3a78.py
+2025-08-08 02:47:50,991 - openevolve.controller - INFO - Adding initial program to database
+2025-08-08 02:47:50,992 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(16059 chars)
+2025-08-08 02:47:54,752 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 02:47:54,752 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:4","correctness_trials":"(5 / 5)","reference_timing_ms":4.57,"speed_up":0.952,"custom_timing":4.8},"runtime":4.8,"runtime_stats":{"mean":4.8,"std":0.0549,"min":4.67,"max":4.94,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:4"}}}
+2025-08-08 02:47:54,753 - openevolve.evaluator - INFO - Evaluated program fbf8e0dc-374c-411b-9ec4-8a958dac4d27 in 3.76s: compiled=1.0000, correctness=1.0000, stage=reference code, passed=0.0000, score=0.0000, speed_up=1.0000, runtime_ms=4.8000, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:4', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.952, 'custom_timing': 4.8}
+2025-08-08 02:47:54,753 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 0, 'complexity': 9}
+2025-08-08 02:47:54,772 - openevolve.threaded_parallel - INFO - Initializing threaded evaluation pool with 3 workers
+2025-08-08 02:47:54,773 - openevolve.threaded_parallel - INFO - Started thread pool with 3 threads
+2025-08-08 02:47:54,773 - openevolve.threaded_parallel - INFO - Started improved parallel controller
+2025-08-08 02:47:54,774 - openevolve.controller - INFO - Using island-based evolution with 3 islands
+2025-08-08 02:47:54,774 - openevolve.database - INFO - Island Status:
+2025-08-08 02:47:54,774 - openevolve.database - INFO -  * Island 0: 1 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0 (best: fbf8e0dc-374c-411b-9ec4-8a958dac4d27)
+2025-08-08 02:47:54,774 - openevolve.database - INFO -    Island 1: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-08 02:47:54,774 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-08 02:47:54,774 - openevolve.threaded_parallel - INFO - Starting improved parallel evolution from iteration 0 for 30 iterations (total: 30)
+2025-08-08 02:47:54,911 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:54,912 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:54,917 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:55,047 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:55,048 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 02:47:55,050 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,050 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,051 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:55,051 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 02:47:55,052 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 02:47:55,053 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 02:47:55,053 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 02:47:55,053 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,054 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,055 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 02:47:55,056 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,056 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level3_29_SwinMLP/evaluation.py
+2025-08-08 02:47:55,057 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:05:19,883 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:05:19,886 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(17862 chars)
+2025-08-08 03:05:22,363 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:05:22,363 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:3","compilation_error_name":"builtins.NameError","compilation_error":"name '极' is not defined","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:05:22,363 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:05:22,363 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_55441a] execute payload: {id:level3_29_SwinMLP_55441a, device_type:NV_LY_20}
+2025-08-08 03:05:24,583 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_55441a] execute request success
+2025-08-08 03:05:24,584 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_55441a] execute response: {"id":"level3_29_SwinMLP_55441a","exit_code":"1","content":"[Child] 绑定 GPU 4, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 19, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number 
+2025-08-08 03:05:24,584 - openevolve.evaluator - INFO - Evaluated program 39828dff-fa9c-4a97-82fd-dd6773439f3c in 4.70s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 4, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 19, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:05:24,587 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:05:24,594 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 9, 'complexity': 9}
+2025-08-08 03:05:24,594 - openevolve.database - INFO - New best program 39828dff-fa9c-4a97-82fd-dd6773439f3c replaces fbf8e0dc-374c-411b-9ec4-8a958dac4d27
+2025-08-08 03:05:24,605 - openevolve.threaded_parallel - INFO - Iteration 1: Program 39828dff-fa9c-4a97-82fd-dd6773439f3c (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 1049.53s
+2025-08-08 03:05:24,605 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 4, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 19, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:05:24,605 - openevolve.threaded_parallel - INFO - 🌟 New best solution found at iteration 1: 39828dff-fa9c-4a97-82fd-dd6773439f3c
+2025-08-08 03:09:10,051 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:09:10,053 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(61908 chars)
+2025-08-08 03:09:12,511 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:09:12,512 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:5","compilation_error_name":"builtins.SyntaxError","compilation_error":"unterminated string literal (detected at line 441) (tmpoweose7d.py, line 441)","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:09:12,512 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:09:12,512 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_09195b] execute payload: {id:level3_29_SwinMLP_09195b, device_type:NV_LY_20}
+2025-08-08 03:09:14,690 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_09195b] execute request success
+2025-08-08 03:09:14,690 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_09195b] execute response: {"id":"level3_29_SwinMLP_09195b","exit_code":"1","content":"[Child] 绑定 GPU 6, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 441\n    But note: the weight matrix for each head is of size [window_size^2, window_size^2] and it is applied to each feature (C//nH) independently? Actually, it's applied to the entire vector of length C//nH? \n                                                                                                                                                             ^\nSyntaxError: unterminated string literal (detected at line 441)\n"}
+2025-08-08 03:09:14,691 - openevolve.evaluator - INFO - Evaluated program fa4fee52-695d-4c43-881d-fad1c24473bb in 4.64s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 6, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 441
+    But note: the weight matrix for each head is of size [window_size^2, window_size^2] and it is applied to each feature (C//nH) independently? Actually, it's applied to the entire vector of length C//nH? 
+                                                                                                                                                             ^
+SyntaxError: unterminated string literal (detected at line 441)
+, exit_code=1
+2025-08-08 03:09:14,694 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:09:14,709 - openevolve.threaded_parallel - INFO - Iteration 2: Program fa4fee52-695d-4c43-881d-fad1c24473bb (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 1279.64s
+2025-08-08 03:09:14,710 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 6, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 441
+    But note: the weight matrix for each head is of size [window_size^2, window_size^2] and it is applied to each feature (C//nH) independently? Actually, it's applied to the entire vector of length C//nH? 
+                                                                                                                                                             ^
+SyntaxError: unterminated string literal (detected at line 441)
+, exit_code=1
+2025-08-08 03:17:10,935 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:17:10,938 - openevolve.evaluator - INFO - Evaluated program bb824447-0974-4d36-958e-078e37d580ed in 0.01s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:17:10,942 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:17:10,948 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': -1000, 'complexity': 0}
+2025-08-08 03:17:10,955 - openevolve.threaded_parallel - INFO - Iteration 0: Program bb824447-0974-4d36-958e-078e37d580ed (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 1755.89s
+2025-08-08 03:17:10,955 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:17:10,955 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 0
+2025-08-08 03:17:10,957 - openevolve.database - INFO - Island Status:
+2025-08-08 03:17:10,957 - openevolve.database - INFO -    Island 0: 3 programs, best=1.0000, avg=0.6667, diversity=6280.93, gen=1 (best: 39828dff-fa9c-4a97-82fd-dd6773439f3c)
+2025-08-08 03:17:10,957 - openevolve.database - INFO -  * Island 1: 1 programs, best=-100.0000, avg=-100.0000, diversity=0.00, gen=2 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 03:17:10,958 - openevolve.database - INFO -    Island 2: 0 programs, best=0.0000, avg=0.0000, diversity=0.00, gen=0
+2025-08-08 03:17:11,046 - openevolve.database - INFO - Saved database with 4 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_0
+2025-08-08 03:17:11,063 - openevolve.controller - INFO - Saved best program at checkpoint 0 with metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 4, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 19, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:17:11,063 - openevolve.controller - INFO - Saved checkpoint at iteration 0 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_0
+2025-08-08 03:17:18,792 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:17:18,792 - openevolve.evaluator - INFO - Evaluated program 4c2bf1e8-72e0-4235-8bfe-b87c806b623a in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:17:18,795 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:17:18,803 - openevolve.threaded_parallel - INFO - Iteration 5: Program 4c2bf1e8-72e0-4235-8bfe-b87c806b623a (parent: fa4fee52-695d-4c43-881d-fad1c24473bb) completed in 7.85s
+2025-08-08 03:17:18,804 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:21:55,037 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:21:55,040 - openevolve.evaluator - INFO - Evaluated program 8802fe55-ac8c-4284-ba38-79143d61cac4 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:21:55,042 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:21:55,057 - openevolve.threaded_parallel - INFO - Iteration 4: Program 8802fe55-ac8c-4284-ba38-79143d61cac4 (parent: 39828dff-fa9c-4a97-82fd-dd6773439f3c) completed in 760.35s
+2025-08-08 03:21:55,057 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:31:09,023 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:31:09,025 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(19552 chars)
+2025-08-08 03:31:11,495 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:31:11,496 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:2","compilation_error_name":"builtins.NameError","compilation_error":"name 'self' is not defined","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:31:11,496 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:31:11,496 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_5c8f31] execute payload: {id:level3_29_SwinMLP_5c8f31, device_type:NV_LY_20}
+2025-08-08 03:31:13,536 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_5c8f31] execute request success
+2025-08-08 03:31:13,536 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_5c8f31] execute response: {"id":"level3_29_SwinMLP_5c8f31","exit_code":"1","content":"[Child] 绑定 GPU 3, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 411, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number
+2025-08-08 03:31:13,537 - openevolve.evaluator - INFO - Evaluated program ae0107e8-6ce2-4ccf-92e2-6276b058daa7 in 4.52s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:31:13,541 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:31:13,543 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 9, 'complexity': 0}
+2025-08-08 03:31:13,557 - openevolve.threaded_parallel - INFO - Iteration 6: Program ae0107e8-6ce2-4ccf-92e2-6276b058daa7 (parent: bb824447-0974-4d36-958e-078e37d580ed) completed in 834.74s
+2025-08-08 03:31:13,557 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:31:13,557 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 6
+2025-08-08 03:31:13,560 - openevolve.database - INFO - Island Status:
+2025-08-08 03:31:13,560 - openevolve.database - INFO -    Island 0: 4 programs, best=1.0000, avg=0.7500, diversity=7017.23, gen=2 (best: 39828dff-fa9c-4a97-82fd-dd6773439f3c)
+2025-08-08 03:31:13,560 - openevolve.database - INFO -  * Island 1: 2 programs, best=-100.0000, avg=-100.0000, diversity=60.90, gen=3 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 03:31:13,560 - openevolve.database - INFO -    Island 2: 1 programs, best=-100.0000, avg=-100.0000, diversity=0.00, gen=1 (best: 8802fe55-ac8c-4284-ba38-79143d61cac4)
+2025-08-08 03:31:13,652 - openevolve.database - INFO - Saved database with 7 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_6
+2025-08-08 03:31:13,713 - openevolve.controller - INFO - Saved best program at checkpoint 6 with metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 4, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 19, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:31:13,713 - openevolve.controller - INFO - Saved checkpoint at iteration 6 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_6
+2025-08-08 03:31:21,067 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:31:21,067 - openevolve.evaluator - INFO - Evaluated program a31ef7d7-f645-4c4f-ba73-dd3e7a06a857 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:31:21,070 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:31:21,080 - openevolve.threaded_parallel - INFO - Iteration 8: Program a31ef7d7-f645-4c4f-ba73-dd3e7a06a857 (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 7.53s
+2025-08-08 03:31:21,080 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:34:46,484 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:34:46,486 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(18091 chars)
+2025-08-08 03:34:48,852 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:34:48,853 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:2","compilation_error_name":"builtins.SyntaxError","compilation_error":"invalid syntax. Perhaps you forgot a comma? (tmpi81iu2sg.py, line 117)","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:34:48,853 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:34:48,853 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_06f6dd] execute payload: {id:level3_29_SwinMLP_06f6dd, device_type:NV_LY_20}
+2025-08-08 03:34:50,823 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_06f6dd] execute request success
+2025-08-08 03:34:50,823 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_06f6dd] execute response: {"id":"level3_29_SwinMLP_06f6dd","exit_code":"1","content":"[Child] 绑定 GPU 3, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 117\n    act_layer=nn.GEL极 norm_layer=nn.LayerNorm):\n              ^^^^^^^^^^^^^^^^^^\nSyntaxError: invalid syntax. Perhaps you forgot a comma?\n"}
+2025-08-08 03:34:50,824 - openevolve.evaluator - INFO - Evaluated program 45d52386-851c-46fc-8dba-e08e02bafe53 in 4.34s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 117
+    act_layer=nn.GEL极 norm_layer=nn.LayerNorm):
+              ^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+, exit_code=1
+2025-08-08 03:34:50,828 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:34:50,832 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 9, 'complexity': 3}
+2025-08-08 03:34:50,845 - openevolve.threaded_parallel - INFO - Iteration 3: Program 45d52386-851c-46fc-8dba-e08e02bafe53 (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 1766.24s
+2025-08-08 03:34:50,845 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 117
+    act_layer=nn.GEL极 norm_layer=nn.LayerNorm):
+              ^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+, exit_code=1
+2025-08-08 03:34:50,845 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 3
+2025-08-08 03:34:50,848 - openevolve.database - INFO - Island Status:
+2025-08-08 03:34:50,848 - openevolve.database - INFO -  * Island 0: 4 programs, best=1.0000, avg=0.7500, diversity=7017.23, gen=3 (best: 39828dff-fa9c-4a97-82fd-dd6773439f3c)
+2025-08-08 03:34:50,849 - openevolve.database - INFO -    Island 1: 3 programs, best=-100.0000, avg=-100.0000, diversity=51.27, gen=3 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 03:34:50,849 - openevolve.database - INFO -    Island 2: 2 programs, best=1.0000, avg=-49.5000, diversity=6407.40, gen=2 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 03:34:50,962 - openevolve.database - INFO - Saved database with 9 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_3
+2025-08-08 03:34:50,978 - openevolve.controller - INFO - Saved best program at checkpoint 3 with metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 4, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 19, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:34:50,978 - openevolve.controller - INFO - Saved checkpoint at iteration 3 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_3
+2025-08-08 03:39:54,165 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:39:54,167 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(4431 chars)
+2025-08-08 03:39:56,665 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:39:56,665 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":true,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:0","runtime_error":"Traceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 516, in eval_kernel_against_ref\n    kernel_exec_result = run_and_check_correctness(\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 713, in run_and_check_correctness\n    model_new = new_model_instance.cuda(device=device)\nAttributeError: 'ModelNew' object has no attribute 'cuda'\n","runtime_error_name":"builtins.AttributeError","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:39:56,665 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ wrong_answer
+2025-08-08 03:39:56,665 - openevolve.evaluator - INFO - Evaluated program b7146906-be81-4c05-b545-edc02f51df47 in 2.50s: compiled=1.0000, correctness=0.0000, score=10.0000, stage=wrong_answer, verify_payload={'id': 'level3_29_SwinMLP', 'result': {'compiled': True, 'correctness': False, 'metadata': {'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'runtime_error': 'Traceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 516, in eval_kernel_against_ref\n    kernel_exec_result = run_and_check_correctness(\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 713, in run_and_check_correctness\n    model_new = new_model_instance.cuda(device=device)\nAttributeError: \'ModelNew\' object has no attribute \'cuda\'\n', 'runtime_error_name': 'builtins.AttributeError', 'reference_timing_ms': 4.57, 'speed_up': -1.0, 'custom_timing': -1.0}, 'runtime': -1.0, 'runtime_stats': {}}}
+2025-08-08 03:39:56,671 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:39:56,671 - openevolve.database - INFO - MAP-Elites cell improved: {'score': 9, 'complexity': 0} (fitness: 1.000 -> 10.000)
+2025-08-08 03:39:56,673 - openevolve.database - INFO - New best program b7146906-be81-4c05-b545-edc02f51df47 replaces 39828dff-fa9c-4a97-82fd-dd6773439f3c
+2025-08-08 03:39:56,710 - openevolve.threaded_parallel - INFO - Iteration 9: Program b7146906-be81-4c05-b545-edc02f51df47 (parent: 4c2bf1e8-72e0-4235-8bfe-b87c806b623a) completed in 515.60s
+2025-08-08 03:39:56,710 - openevolve.threaded_parallel - INFO - Metrics: compiled=1.0000, correctness=0.0000, score=10.0000, stage=wrong_answer, verify_payload={'id': 'level3_29_SwinMLP', 'result': {'compiled': True, 'correctness': False, 'metadata': {'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'runtime_error': 'Traceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 516, in eval_kernel_against_ref\n    kernel_exec_result = run_and_check_correctness(\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 713, in run_and_check_correctness\n    model_new = new_model_instance.cuda(device=device)\nAttributeError: \'ModelNew\' object has no attribute \'cuda\'\n', 'runtime_error_name': 'builtins.AttributeError', 'reference_timing_ms': 4.57, 'speed_up': -1.0, 'custom_timing': -1.0}, 'runtime': -1.0, 'runtime_stats': {}}}
+2025-08-08 03:39:56,710 - openevolve.threaded_parallel - INFO - 🌟 New best solution found at iteration 9: b7146906-be81-4c05-b545-edc02f51df47
+2025-08-08 03:39:56,710 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 9
+2025-08-08 03:39:56,712 - openevolve.database - INFO - Island Status:
+2025-08-08 03:39:56,713 - openevolve.database - INFO -    Island 0: 5 programs, best=10.0000, avg=2.6000, diversity=5577.85, gen=3 (best: b7146906-be81-4c05-b545-edc02f51df47)
+2025-08-08 03:39:56,713 - openevolve.database - INFO -  * Island 1: 3 programs, best=-100.0000, avg=-100.0000, diversity=51.27, gen=4 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 03:39:56,713 - openevolve.database - INFO -    Island 2: 2 programs, best=1.0000, avg=-49.5000, diversity=6407.40, gen=2 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 03:39:56,842 - openevolve.database - INFO - Saved database with 10 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_9
+2025-08-08 03:39:56,859 - openevolve.controller - INFO - Saved best program at checkpoint 9 with metrics: compiled=1.0000, correctness=0.0000, score=10.0000, stage=wrong_answer, verify_payload={'id': 'level3_29_SwinMLP', 'result': {'compiled': True, 'correctness': False, 'metadata': {'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'runtime_error': 'Traceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 516, in eval_kernel_against_ref\n    kernel_exec_result = run_and_check_correctness(\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 713, in run_and_check_correctness\n    model_new = new_model_instance.cuda(device=device)\nAttributeError: \'ModelNew\' object has no attribute \'cuda\'\n', 'runtime_error_name': 'builtins.AttributeError', 'reference_timing_ms': 4.57, 'speed_up': -1.0, 'custom_timing': -1.0}, 'runtime': -1.0, 'runtime_stats': {}}}
+2025-08-08 03:39:56,859 - openevolve.controller - INFO - Saved checkpoint at iteration 9 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_9
+2025-08-08 03:40:04,280 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:40:04,280 - openevolve.evaluator - INFO - Evaluated program 2dcdd2b5-46e5-4ff1-a903-d99cee5fc991 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:40:04,283 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:40:04,290 - openevolve.threaded_parallel - INFO - Iteration 11: Program 2dcdd2b5-46e5-4ff1-a903-d99cee5fc991 (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 7.61s
+2025-08-08 03:40:04,290 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:41:39,064 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:41:39,067 - openevolve.evaluator - INFO - Evaluated program 66c7e300-1241-47c2-a1c8-3e6531325d9a in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:41:39,069 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:41:39,083 - openevolve.threaded_parallel - INFO - Iteration 7: Program 66c7e300-1241-47c2-a1c8-3e6531325d9a (parent: bb824447-0974-4d36-958e-078e37d580ed) completed in 1184.02s
+2025-08-08 03:41:39,084 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:45:58,232 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:45:58,233 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(17867 chars)
+2025-08-08 03:46:02,372 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:46:02,372 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":true,"correctness":true,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:0","correctness_trials":"(5 / 5)","reference_timing_ms":4.57,"speed_up":0.95,"custom_timing":4.81},"runtime":4.81,"runtime_stats":{"mean":4.81,"std":0.288,"min":4.58,"max":6.62,"num_trials":100,"hardware":"NVIDIA L20Y","device":"cuda:0"}}}
+2025-08-08 03:46:02,373 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✔ success | speed_up=0.950  score=20.00
+2025-08-08 03:46:02,373 - openevolve.evaluator - INFO - Evaluated program 7d651b2f-ac55-4a6c-b743-b2d09ed758b6 in 4.14s: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 03:46:02,377 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:46:02,379 - openevolve.database - INFO - MAP-Elites cell improved: {'score': 9, 'complexity': 0} (fitness: 10.000 -> 20.000)
+2025-08-08 03:46:02,379 - openevolve.database - INFO - New best program 7d651b2f-ac55-4a6c-b743-b2d09ed758b6 replaces b7146906-be81-4c05-b545-edc02f51df47
+2025-08-08 03:46:02,386 - openevolve.threaded_parallel - INFO - Iteration 10: Program 7d651b2f-ac55-4a6c-b743-b2d09ed758b6 (parent: 8802fe55-ac8c-4284-ba38-79143d61cac4) completed in 671.55s
+2025-08-08 03:46:02,386 - openevolve.threaded_parallel - INFO - Metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 03:46:02,386 - openevolve.threaded_parallel - INFO - 🌟 New best solution found at iteration 10: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6
+2025-08-08 03:46:10,223 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:46:10,223 - openevolve.evaluator - INFO - Evaluated program 818ebffd-0673-4e1e-af80-50069bb7b438 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:46:10,226 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:46:10,232 - openevolve.threaded_parallel - INFO - Iteration 14: Program 818ebffd-0673-4e1e-af80-50069bb7b438 (parent: fbf8e0dc-374c-411b-9ec4-8a958dac4d27) completed in 7.85s
+2025-08-08 03:46:10,232 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:53:51,213 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:53:51,215 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(18189 chars)
+2025-08-08 03:53:53,739 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:53:53,739 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:2","compilation_error_name":"builtins.SyntaxError","compilation_error":"invalid syntax (tmpzakl2gu8.py, line 371)","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 03:53:53,739 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:53:53,739 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_1e319e] execute payload: {id:level3_29_SwinMLP_1e319e, device_type:NV_LY_20}
+2025-08-08 03:53:55,705 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_1e319e] execute request success
+2025-08-08 03:53:55,705 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_1e319e] execute response: {"id":"level3_29_SwinMLP_1e319e","exit_code":"1","content":"[Child] 绑定 GPU 3, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 371\n    class ModelNew(nn.Mod极:\n                          ^\nSyntaxError: invalid syntax\n"}
+2025-08-08 03:53:55,706 - openevolve.evaluator - INFO - Evaluated program 7d847ee2-c7d2-4d94-bfbb-dc4b248c466f in 4.49s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 371
+    class ModelNew(nn.Mod极:
+                          ^
+SyntaxError: invalid syntax
+, exit_code=1
+2025-08-08 03:53:55,709 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:53:55,730 - openevolve.threaded_parallel - INFO - Iteration 13: Program 7d847ee2-c7d2-4d94-bfbb-dc4b248c466f (parent: 8802fe55-ac8c-4284-ba38-79143d61cac4) completed in 736.64s
+2025-08-08 03:53:55,730 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 371
+    class ModelNew(nn.Mod极:
+                          ^
+SyntaxError: invalid syntax
+, exit_code=1
+2025-08-08 03:55:17,030 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 03:55:17,032 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(2883 chars)
+2025-08-08 03:55:19,556 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 03:55:19,557 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"error":"ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 173, in _verification_worker\n    result: KernelExecResult = eval_kernel_against_ref(\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 484, in eval_kernel_against_ref\n    custom_model = ModelNew(*init_args, **init_kwargs)\nTypeError: ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'\n"}}
+2025-08-08 03:55:19,557 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 03:55:19,557 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_f3ed8e] execute payload: {id:level3_29_SwinMLP_f3ed8e, device_type:NV_LY_20}
+2025-08-08 03:55:21,775 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_f3ed8e] execute request success
+2025-08-08 03:55:21,775 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_f3ed8e] execute response: {"id":"level3_29_SwinMLP_f3ed8e","exit_code":"1","content":"[Child] 绑定 GPU 5, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 8, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number =
+2025-08-08 03:55:21,775 - openevolve.evaluator - INFO - Evaluated program 6fb18d26-614e-4223-b66d-ef8e174809af in 4.75s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 173, in _verification_worker
+    result: KernelExecResult = eval_kernel_against_ref(
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 484, in eval_kernel_against_ref
+    custom_model = ModelNew(*init_args, **init_kwargs)
+TypeError: ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'
+, exec_log=[Child] 绑定 GPU 5, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 8, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:55:21,781 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:55:21,797 - openevolve.threaded_parallel - INFO - Iteration 12: Program 6fb18d26-614e-4223-b66d-ef8e174809af (parent: bb824447-0974-4d36-958e-078e37d580ed) completed in 917.49s
+2025-08-08 03:55:21,797 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 173, in _verification_worker
+    result: KernelExecResult = eval_kernel_against_ref(
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 484, in eval_kernel_against_ref
+    custom_model = ModelNew(*init_args, **init_kwargs)
+TypeError: ModelNew.__init__() missing 4 required positional arguments: 'in_channels', 'out_channels', 'kernel_size', and 'groups'
+, exec_log=[Child] 绑定 GPU 5, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 8, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 03:55:21,797 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 12
+2025-08-08 03:55:21,800 - openevolve.database - INFO - Island Status:
+2025-08-08 03:55:21,800 - openevolve.database - INFO -    Island 0: 7 programs, best=20.0000, avg=4.8571, diversity=3612.43, gen=5 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 03:55:21,800 - openevolve.database - INFO -  * Island 1: 5 programs, best=-100.0000, avg=-100.0000, diversity=28.85, gen=6 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 03:55:21,800 - openevolve.database - INFO -    Island 2: 4 programs, best=1.0000, avg=-49.5000, diversity=4290.47, gen=4 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 03:55:22,009 - openevolve.database - INFO - Saved database with 16 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_12
+2025-08-08 03:55:22,020 - openevolve.controller - INFO - Saved best program at checkpoint 12 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 03:55:22,020 - openevolve.controller - INFO - Saved checkpoint at iteration 12 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_12
+2025-08-08 03:55:29,657 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 03:55:29,658 - openevolve.evaluator - INFO - Evaluated program 209bf10d-dbcc-4b14-9323-a5b3250b6ccc in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 03:55:29,661 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 03:55:29,670 - openevolve.threaded_parallel - INFO - Iteration 17: Program 209bf10d-dbcc-4b14-9323-a5b3250b6ccc (parent: fa4fee52-695d-4c43-881d-fad1c24473bb) completed in 7.88s
+2025-08-08 03:55:29,670 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:09:12,086 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 04:09:12,089 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(18159 chars)
+2025-08-08 04:09:14,582 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 04:09:14,582 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:1","compilation_error_name":"builtins.AttributeError","compilation_error":"module 'torch.nn' has no attribute 'Mod极'","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 04:09:14,582 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 04:09:14,582 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b05a9d] execute payload: {id:level3_29_SwinMLP_b05a9d, device_type:NV_LY_20}
+2025-08-08 04:09:16,659 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b05a9d] execute request success
+2025-08-08 04:09:16,659 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b05a9d] execute response: {"id":"level3_29_SwinMLP_b05a9d","exit_code":"1","content":"[Child] 绑定 GPU 2, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 69, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number 
+2025-08-08 04:09:16,659 - openevolve.evaluator - INFO - Evaluated program 12966f95-ac4f-42ba-bc73-988a1bdf7d00 in 4.57s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 2, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 69, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:09:16,665 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:09:16,680 - openevolve.threaded_parallel - INFO - Iteration 16: Program 12966f95-ac4f-42ba-bc73-988a1bdf7d00 (parent: 66c7e300-1241-47c2-a1c8-3e6531325d9a) completed in 920.95s
+2025-08-08 04:09:16,681 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 2, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 69, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:10:55,139 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 04:10:55,141 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(20022 chars)
+2025-08-08 04:10:57,852 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 04:10:57,852 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:4","compilation_error_name":"builtins.NameError","compilation_error":"name 'self' is not defined","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 04:10:57,853 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 04:10:57,853 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_7ccda7] execute payload: {id:level3_29_SwinMLP_7ccda7, device_type:NV_LY_20}
+2025-08-08 04:11:00,255 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_7ccda7] execute request success
+2025-08-08 04:11:00,256 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_7ccda7] execute response: {"id":"level3_29_SwinMLP_7ccda7","exit_code":"1","content":"[Child] 绑定 GPU 6, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 411, in <module>\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in __init__\n    self.starting_line_number
+2025-08-08 04:11:00,256 - openevolve.evaluator - INFO - Evaluated program 9aef0949-fe98-423d-9089-e22fef7cd43b in 5.12s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 6, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:11:00,260 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:11:00,274 - openevolve.threaded_parallel - INFO - Iteration 18: Program 9aef0949-fe98-423d-9089-e22fef7cd43b (parent: bb824447-0974-4d36-958e-078e37d580ed) completed in 930.60s
+2025-08-08 04:11:00,274 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 6, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411, in <module>
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:11:00,274 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 18
+2025-08-08 04:11:00,277 - openevolve.database - INFO - Island Status:
+2025-08-08 04:11:00,277 - openevolve.database - INFO -    Island 0: 8 programs, best=20.0000, avg=4.3750, diversity=3659.97, gen=6 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 04:11:00,277 - openevolve.database - INFO -  * Island 1: 6 programs, best=-100.0000, avg=-100.0000, diversity=23.17, gen=7 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 04:11:00,277 - openevolve.database - INFO -    Island 2: 5 programs, best=1.0000, avg=-39.4000, diversity=3216.17, gen=5 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 04:11:00,502 - openevolve.database - INFO - Saved database with 19 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_18
+2025-08-08 04:11:00,513 - openevolve.controller - INFO - Saved best program at checkpoint 18 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:11:00,513 - openevolve.controller - INFO - Saved checkpoint at iteration 18 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_18
+2025-08-08 04:11:07,752 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:11:07,752 - openevolve.evaluator - INFO - Evaluated program 26642e29-0067-4632-920a-114c53ec5992 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:11:07,757 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:11:07,765 - openevolve.threaded_parallel - INFO - Iteration 20: Program 26642e29-0067-4632-920a-114c53ec5992 (parent: fa4fee52-695d-4c43-881d-fad1c24473bb) completed in 7.49s
+2025-08-08 04:11:07,766 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:11:12,302 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:11:12,303 - openevolve.evaluator - INFO - Evaluated program 2c3d2fc0-7dc3-405f-bf48-79112ea4e068 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:11:12,306 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:11:12,314 - openevolve.threaded_parallel - INFO - Iteration 15: Program 2c3d2fc0-7dc3-405f-bf48-79112ea4e068 (parent: bb824447-0974-4d36-958e-078e37d580ed) completed in 1502.08s
+2025-08-08 04:11:12,314 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:11:12,314 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 15
+2025-08-08 04:11:12,317 - openevolve.database - INFO - Island Status:
+2025-08-08 04:11:12,317 - openevolve.database - INFO -  * Island 0: 8 programs, best=20.0000, avg=4.3750, diversity=3659.97, gen=7 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 04:11:12,317 - openevolve.database - INFO -    Island 1: 7 programs, best=-100.0000, avg=-100.0000, diversity=29.18, gen=7 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 04:11:12,317 - openevolve.database - INFO -    Island 2: 6 programs, best=1.0000, avg=-49.5000, diversity=3201.33, gen=6 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 04:11:12,558 - openevolve.database - INFO - Saved database with 21 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_15
+2025-08-08 04:11:12,569 - openevolve.controller - INFO - Saved best program at checkpoint 15 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:11:12,569 - openevolve.controller - INFO - Saved checkpoint at iteration 15 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_15
+2025-08-08 04:14:38,643 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 04:14:38,645 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(817 chars)
+2025-08-08 04:14:41,208 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 04:14:41,208 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"error":"\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 173, in _verification_worker\n    result: KernelExecResult = eval_kernel_against_ref(\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 485, in eval_kernel_against_ref\n    assert hasattr(custom_model, \"forward\")\nAssertionError\n"}}
+2025-08-08 04:14:41,208 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 04:14:41,208 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b73674] execute payload: {id:level3_29_SwinMLP_b73674, device_type:NV_LY_20}
+2025-08-08 04:14:43,812 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b73674] execute request success
+2025-08-08 04:14:43,812 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_b73674] execute response: {"id":"level3_29_SwinMLP_b73674","exit_code":"1","content":"[Child] 绑定 GPU 1, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 6, in <module>\n  File \"<string>\", line 9, in ModelNew\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 844, in jit\n    return decorator(fn)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 832, in decorator\n    return JITFunction(\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 635, in
+2025-08-08 04:14:43,813 - openevolve.evaluator - INFO - Evaluated program e74a6fbb-8402-486f-b968-da8cf71c626a in 5.17s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 173, in _verification_worker
+    result: KernelExecResult = eval_kernel_against_ref(
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 485, in eval_kernel_against_ref
+    assert hasattr(custom_model, "forward")
+AssertionError
+, exec_log=[Child] 绑定 GPU 1, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 6, in <module>
+  File "<string>", line 9, in ModelNew
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:14:43,817 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:14:43,829 - openevolve.threaded_parallel - INFO - Iteration 21: Program e74a6fbb-8402-486f-b968-da8cf71c626a (parent: 2dcdd2b5-46e5-4ff1-a903-d99cee5fc991) completed in 216.06s
+2025-08-08 04:14:43,830 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 173, in _verification_worker
+    result: KernelExecResult = eval_kernel_against_ref(
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py", line 485, in eval_kernel_against_ref
+    assert hasattr(custom_model, "forward")
+AssertionError
+, exec_log=[Child] 绑定 GPU 1, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 6, in <module>
+  File "<string>", line 9, in ModelNew
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 844, in jit
+    return decorator(fn)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 832, in decorator
+    return JITFunction(
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py", line 635, in __init__
+    self.starting_line_number = inspect.getsourcelines(fn)[1]
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 1121, in getsourcelines
+    lines, lnum = findsource(object)
+  File "/home/lijiaxing/.conda/envs/api/lib/python3.10/inspect.py", line 958, in findsource
+    raise OSError('could not get source code')
+OSError: could not get source code
+, exit_code=1
+2025-08-08 04:14:43,830 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 21
+2025-08-08 04:14:43,832 - openevolve.database - INFO - Island Status:
+2025-08-08 04:14:43,832 - openevolve.database - INFO -    Island 0: 9 programs, best=20.0000, avg=4.0000, diversity=3659.97, gen=7 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 04:14:43,832 - openevolve.database - INFO -  * Island 1: 7 programs, best=-100.0000, avg=-100.0000, diversity=29.18, gen=8 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 04:14:43,833 - openevolve.database - INFO -    Island 2: 6 programs, best=1.0000, avg=-49.5000, diversity=3201.33, gen=6 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 04:14:44,110 - openevolve.database - INFO - Saved database with 22 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_21
+2025-08-08 04:14:44,119 - openevolve.controller - INFO - Saved best program at checkpoint 21 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:14:44,120 - openevolve.controller - INFO - Saved checkpoint at iteration 21 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_21
+2025-08-08 04:14:51,306 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:14:51,306 - openevolve.evaluator - INFO - Evaluated program 8f33734f-e8a6-4ca4-9b67-70c66e40bc14 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:14:51,310 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:14:51,318 - openevolve.threaded_parallel - INFO - Iteration 23: Program 8f33734f-e8a6-4ca4-9b67-70c66e40bc14 (parent: ae0107e8-6ce2-4ccf-92e2-6276b058daa7) completed in 7.49s
+2025-08-08 04:14:51,318 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:14:59,281 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:14:59,282 - openevolve.evaluator - INFO - Evaluated program 39652ac8-cac3-4543-a51e-f6c6985f9f1c in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:14:59,286 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:14:59,294 - openevolve.threaded_parallel - INFO - Iteration 24: Program 39652ac8-cac3-4543-a51e-f6c6985f9f1c (parent: fa4fee52-695d-4c43-881d-fad1c24473bb) completed in 7.97s
+2025-08-08 04:14:59,294 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:14:59,294 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 24
+2025-08-08 04:14:59,296 - openevolve.database - INFO - Island Status:
+2025-08-08 04:14:59,296 - openevolve.database - INFO -  * Island 0: 9 programs, best=20.0000, avg=4.0000, diversity=3659.97, gen=8 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 04:14:59,296 - openevolve.database - INFO -    Island 1: 8 programs, best=-100.0000, avg=-100.0000, diversity=29.18, gen=8 (best: bb824447-0974-4d36-958e-078e37d580ed)
+2025-08-08 04:14:59,297 - openevolve.database - INFO -    Island 2: 7 programs, best=1.0000, avg=-56.7143, diversity=4284.70, gen=7 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 04:14:59,629 - openevolve.database - INFO - Saved database with 24 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_24
+2025-08-08 04:14:59,640 - openevolve.controller - INFO - Saved best program at checkpoint 24 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:14:59,640 - openevolve.controller - INFO - Saved checkpoint at iteration 24 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_24
+2025-08-08 04:15:07,032 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:15:07,033 - openevolve.evaluator - INFO - Evaluated program b6bd50d1-7a16-41cd-8192-6ddbaa5e1abf in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:15:07,037 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:15:07,041 - openevolve.threaded_parallel - INFO - Iteration 25: Program b6bd50d1-7a16-41cd-8192-6ddbaa5e1abf (parent: 12966f95-ac4f-42ba-bc73-988a1bdf7d00) completed in 7.75s
+2025-08-08 04:15:07,041 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:04,297 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:18:04,299 - openevolve.evaluator - INFO - Evaluated program c4b13603-9414-4739-84d2-2c9902841560 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:04,303 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:18:04,306 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:04,306 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:04,306 - openevolve.database - INFO - Cleaned up 1 stale island best program references
+2025-08-08 04:18:04,313 - openevolve.threaded_parallel - INFO - Iteration 22: Program c4b13603-9414-4739-84d2-2c9902841560 (parent: 12966f95-ac4f-42ba-bc73-988a1bdf7d00) completed in 411.99s
+2025-08-08 04:18:04,314 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:12,538 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:18:12,539 - openevolve.evaluator - INFO - Evaluated program 42faac8c-6c0b-4036-b323-81ad79b405b7 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:12,543 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:18:12,543 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': -1000, 'complexity': 0}
+2025-08-08 04:18:12,544 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:12,544 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:12,550 - openevolve.threaded_parallel - INFO - Iteration 27: Program 42faac8c-6c0b-4036-b323-81ad79b405b7 (parent: fa4fee52-695d-4c43-881d-fad1c24473bb) completed in 8.24s
+2025-08-08 04:18:12,550 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:12,550 - openevolve.threaded_parallel - INFO - Checkpoint interval reached at iteration 27
+2025-08-08 04:18:12,552 - openevolve.database - INFO - Island Status:
+2025-08-08 04:18:12,553 - openevolve.database - INFO -  * Island 0: 10 programs, best=20.0000, avg=-6.4000, diversity=3659.97, gen=9 (best: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6)
+2025-08-08 04:18:12,553 - openevolve.database - INFO -    Island 1: 7 programs, best=-100.0000, avg=-100.0000, diversity=26.55, gen=9 (best: 818ebffd-0673-4e1e-af80-50069bb7b438)
+2025-08-08 04:18:12,553 - openevolve.database - INFO -    Island 2: 8 programs, best=1.0000, avg=-62.1250, diversity=3241.20, gen=8 (best: 45d52386-851c-46fc-8dba-e08e02bafe53)
+2025-08-08 04:18:12,831 - openevolve.database - INFO - Saved database with 25 programs to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_27
+2025-08-08 04:18:12,841 - openevolve.controller - INFO - Saved best program at checkpoint 27 with metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:18:12,841 - openevolve.controller - INFO - Saved checkpoint at iteration 27 to openevolve_output/level3_29_SwinMLP/checkpoints/checkpoint_27
+2025-08-08 04:18:20,163 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:18:20,163 - openevolve.evaluator - INFO - Evaluated program 10c066e0-44a0-47d1-bacb-468171a669cf in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:20,164 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:20,167 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:20,168 - openevolve.llm.ensemble - INFO - Sampled model: deepseek
+2025-08-08 04:18:20,174 - openevolve.threaded_parallel - INFO - Iteration 28: Program 10c066e0-44a0-47d1-bacb-468171a669cf (parent: 7d847ee2-c7d2-4d94-bfbb-dc4b248c466f) completed in 7.62s
+2025-08-08 04:18:20,174 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:28,086 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ invalid_answer 'import triton' is not found
+2025-08-08 04:18:28,087 - openevolve.evaluator - INFO - Evaluated program 48233165-37c5-43ce-825d-9e92bb88bcc2 in 0.00s: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:28,090 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:28,090 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:28,106 - openevolve.threaded_parallel - INFO - Iteration 29: Program 48233165-37c5-43ce-825d-9e92bb88bcc2 (parent: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6) completed in 7.92s
+2025-08-08 04:18:28,106 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=-100.0000, stage=no_valid_triton_code, feedback=You need to generate real and valid triton code for the core function. The key word 'import triton' is not found.
+2025-08-08 04:18:47,998 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 04:18:48,000 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(18098 chars)
+2025-08-08 04:18:50,478 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 04:18:50,478 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:2","compilation_error_name":"builtins.SyntaxError","compilation_error":"invalid syntax. Perhaps you forgot a comma? (tmpncrxnsga.py, line 200)","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 04:18:50,479 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 04:18:50,479 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_c8ed40] execute payload: {id:level3_29_SwinMLP_c8ed40, device_type:NV_LY_20}
+2025-08-08 04:18:52,507 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_c8ed40] execute request success
+2025-08-08 04:18:52,507 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_c8ed40] execute response: {"id":"level3_29_SwinMLP_c8ed40","exit_code":"1","content":"[Child] 绑定 GPU 3, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 200\n    spatial_mlp_windows = spatial_mlp_windows.reshape(-1, self.window_size, self.window_size极 C)\n                                                                            ^^^^^^^^^^^^^^^^^^^\nSyntaxError: invalid syntax. Perhaps you forgot a comma?\n"}
+2025-08-08 04:18:52,508 - openevolve.evaluator - INFO - Evaluated program 86e7ed6d-4c73-4942-9bfc-30b257fe33f9 in 4.51s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 200
+    spatial_mlp_windows = spatial_mlp_windows.reshape(-1, self.window_size, self.window_size极 C)
+                                                                            ^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+, exit_code=1
+2025-08-08 04:18:52,510 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:52,510 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:52,528 - openevolve.threaded_parallel - INFO - Iteration 19: Program 86e7ed6d-4c73-4942-9bfc-30b257fe33f9 (parent: 45d52386-851c-46fc-8dba-e08e02bafe53) completed in 575.84s
+2025-08-08 04:18:52,528 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 3, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 200
+    spatial_mlp_windows = spatial_mlp_windows.reshape(-1, self.window_size, self.window_size极 C)
+                                                                            ^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+, exit_code=1
+2025-08-08 04:18:55,201 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] triton key words check pass
+2025-08-08 04:18:55,201 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus payload: reference_code(15938 chars) + custom_code(23916 chars)
+2025-08-08 04:18:57,681 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus request success
+2025-08-08 04:18:57,681 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] verify_plus response: {"id":"level3_29_SwinMLP","result":{"compiled":false,"correctness":false,"metadata":{"hardware":"NVIDIA L20Y","device":"cuda:4","compilation_error_name":"builtins.SyntaxError","compilation_error":"invalid decimal literal (tmp10bup74d.py, line 411)","reference_timing_ms":4.57,"speed_up":-1.0,"custom_timing":-1.0},"runtime":-1.0,"runtime_stats":{}}}
+2025-08-08 04:18:57,682 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP] ✘ compile_error
+2025-08-08 04:18:57,682 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_cde14d] execute payload: {id:level3_29_SwinMLP_cde14d, device_type:NV_LY_20}
+2025-08-08 04:18:59,796 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_cde14d] execute request success
+2025-08-08 04:18:59,796 - openevolve.RemoteSpeedupEvaluator - INFO - [level3_29_SwinMLP_cde14d] execute response: {"id":"level3_29_SwinMLP_cde14d","exit_code":"1","content":"[Child] 绑定 GPU 5, torch sees 1 device(s)\n\n[Exception]\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py\", line 71, in _exec_worker\n    exec(textwrap.dedent(code_src), mod.__dict__)\n  File \"<string>\", line 411\n    1. The kernel uses 4D grid (n_batch, num_heads, window_size_sq, triton.cdiv(c_per_head, 128)) which might be too high-dimensional and cause issues.\n                       ^\nSyntaxError: invalid decimal literal\n"}
+2025-08-08 04:18:59,797 - openevolve.evaluator - INFO - Evaluated program 757a4d2a-a2b1-48a6-86e5-c8940472e740 in 4.60s: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 5, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411
+    1. The kernel uses 4D grid (n_batch, num_heads, window_size_sq, triton.cdiv(c_per_head, 128)) which might be too high-dimensional and cause issues.
+                       ^
+SyntaxError: invalid decimal literal
+, exit_code=1
+2025-08-08 04:18:59,799 - openevolve.database - INFO - New MAP-Elites cell occupied: {'score': 9, 'complexity': 1}
+2025-08-08 04:18:59,799 - openevolve.database - INFO - Population size (26) exceeds limit (25), removing 1 programs
+2025-08-08 04:18:59,799 - openevolve.database - INFO - Population size after cleanup: 25
+2025-08-08 04:18:59,811 - openevolve.threaded_parallel - INFO - Iteration 26: Program 757a4d2a-a2b1-48a6-86e5-c8940472e740 (parent: 39828dff-fa9c-4a97-82fd-dd6773439f3c) completed in 232.76s
+2025-08-08 04:18:59,811 - openevolve.threaded_parallel - INFO - Metrics: compiled=0.0000, correctness=0.0000, score=1.0000, stage=compile_error, compile_log=, exec_log=[Child] 绑定 GPU 5, torch sees 1 device(s)
+
+[Exception]
+Traceback (most recent call last):
+  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/code_executor.py", line 71, in _exec_worker
+    exec(textwrap.dedent(code_src), mod.__dict__)
+  File "<string>", line 411
+    1. The kernel uses 4D grid (n_batch, num_heads, window_size_sq, triton.cdiv(c_per_head, 128)) which might be too high-dimensional and cause issues.
+                       ^
+SyntaxError: invalid decimal literal
+, exit_code=1
+2025-08-08 04:18:59,811 - openevolve.threaded_parallel - INFO - Evolution completed
+2025-08-08 04:18:59,820 - openevolve.threaded_parallel - INFO - Stopped thread pool
+2025-08-08 04:18:59,820 - openevolve.threaded_parallel - INFO - Stopped improved parallel controller
+2025-08-08 04:18:59,820 - openevolve.controller - INFO - Using tracked best program: 7d651b2f-ac55-4a6c-b743-b2d09ed758b6
+2025-08-08 04:18:59,820 - openevolve.controller - INFO - Evolution complete. Best program has metrics: compiled=1.0000, correctness=1.0000, stage=success, passed=0.0000, score=20.0000, speed_up=0.9500, runtime_ms=4.8100, meta={'hardware': 'NVIDIA L20Y', 'device': 'cuda:0', 'correctness_trials': '(5 / 5)', 'reference_timing_ms': 4.57, 'speed_up': 0.95, 'custom_timing': 4.81}
+2025-08-08 04:18:59,835 - openevolve.controller - INFO - Saved best program to openevolve_output/level3_29_SwinMLP/best/best_program.py with program info to openevolve_output/level3_29_SwinMLP/best/best_program_info.json
+2025-08-08 04:18:59,836 - __main__ - INFO - ✅ 完成 level3_29_SwinMLP
+2025-08-08 04:18:59,836 - __main__ - INFO - ======================================================================
+2025-08-08 04:18:59,836 - __main__ - INFO - 🚀 [6/7] 开始 level4_10_google-bigbird-roberta-base_bs1024_seq32
+2025-08-08 04:18:59,836 - __main__ - INFO - ======================================================================
+2025-08-08 04:18:59,888 - openevolve.controller - INFO - Logging to openevolve_output/level4_10_google-bigbird-roberta-base_bs1024_seq32/logs/openevolve_20250808_041859.log
+2025-08-08 04:18:59,888 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-08 04:18:59,928 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 04:18:59,968 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 04:18:59,968 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 04:18:59,969 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-08 04:18:59,990 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level4_10_google-bigbird-roberta-base_bs1024_seq32/evaluation.py
+2025-08-08 04:18:59,991 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level4_10_google-bigbird-roberta-base_bs1024_seq32/evaluation.py
+2025-08-08 04:18:59,991 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/37f546a0d74b95e2e5f220576f48ca25.py
+2025-08-08 04:18:59,991 - openevolve.controller - INFO - Adding initial program to database
+2025-08-08 04:18:59,992 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus payload: reference_code(727 chars) + custom_code(848 chars)
+2025-08-08 04:19:02,386 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus request success
+2025-08-08 04:19:02,387 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus response: {"id":"level4_10_google-bigbird-roberta-base_bs1024_seq32","result":{"error":"No module named 'transformers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 3, in <module>\nModuleNotFoundError: No module named 'transformers'\n"}}
+2025-08-08 04:19:02,387 - openevolve.evaluator - WARNING - Evaluation attempt 1/4 failed for program 952c01cf-621d-440b-820b-e62de9755645: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'transformers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'transformers\'\n'}
+2025-08-08 04:19:03,394 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus payload: reference_code(727 chars) + custom_code(848 chars)
+2025-08-08 04:19:05,728 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus request success
+2025-08-08 04:19:05,729 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus response: {"id":"level4_10_google-bigbird-roberta-base_bs1024_seq32","result":{"error":"No module named 'transformers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 3, in <module>\nModuleNotFoundError: No module named 'transformers'\n"}}
+2025-08-08 04:19:05,729 - openevolve.evaluator - WARNING - Evaluation attempt 2/4 failed for program 952c01cf-621d-440b-820b-e62de9755645: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'transformers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'transformers\'\n'}
+2025-08-08 04:19:06,732 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus payload: reference_code(727 chars) + custom_code(848 chars)
+2025-08-08 04:19:09,057 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus request success
+2025-08-08 04:19:09,057 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus response: {"id":"level4_10_google-bigbird-roberta-base_bs1024_seq32","result":{"error":"No module named 'transformers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 3, in <module>\nModuleNotFoundError: No module named 'transformers'\n"}}
+2025-08-08 04:19:09,058 - openevolve.evaluator - WARNING - Evaluation attempt 3/4 failed for program 952c01cf-621d-440b-820b-e62de9755645: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'transformers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'transformers\'\n'}
+2025-08-08 04:19:10,061 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus payload: reference_code(727 chars) + custom_code(848 chars)
+2025-08-08 04:19:12,425 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus request success
+2025-08-08 04:19:12,425 - openevolve.RemoteSpeedupEvaluator - INFO - [level4_10_google-bigbird-roberta-base_bs1024_seq32] verify_plus response: {"id":"level4_10_google-bigbird-roberta-base_bs1024_seq32","result":{"error":"No module named 'transformers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 3, in <module>\nModuleNotFoundError: No module named 'transformers'\n"}}
+2025-08-08 04:19:12,426 - openevolve.evaluator - WARNING - Evaluation attempt 4/4 failed for program 952c01cf-621d-440b-820b-e62de9755645: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'transformers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'transformers\'\n'}
+2025-08-08 04:19:12,426 - openevolve.evaluator - ERROR - All evaluation attempts failed for program 952c01cf-621d-440b-820b-e62de9755645. Last error: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'transformers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 3, in <module>\nModuleNotFoundError: No module named \'transformers\'\n'}
+2025-08-08 04:19:12,427 - __main__ - ERROR - 💥 失败 level4_10_google-bigbird-roberta-base_bs1024_seq32: 'score'
+2025-08-08 04:19:12,427 - __main__ - INFO - ======================================================================
+2025-08-08 04:19:12,427 - __main__ - INFO - 🚀 [7/7] 开始 level5_6_hunyuanvideo_vae_encoder
+2025-08-08 04:19:12,427 - __main__ - INFO - ======================================================================
+2025-08-08 04:19:12,513 - openevolve.controller - INFO - Logging to openevolve_output/level5_6_hunyuanvideo_vae_encoder/logs/openevolve_20250808_041912.log
+2025-08-08 04:19:12,513 - openevolve.controller - INFO - Set random seed to 42 for reproducibility
+2025-08-08 04:19:12,553 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 04:19:12,591 - openevolve.llm.ensemble - INFO - Initialized LLM ensemble with models: deepseek (weight: 0.80), deepseek (weight: 0.20)
+2025-08-08 04:19:12,591 - openevolve.prompt.sampler - INFO - Set custom templates: system=evaluator_system_message, user=None
+2025-08-08 04:19:12,592 - openevolve.database - INFO - Initialized program database with 0 programs
+2025-08-08 04:19:12,651 - openevolve.evaluator - INFO - Successfully loaded evaluation function from openevolve_output/level5_6_hunyuanvideo_vae_encoder/evaluation.py
+2025-08-08 04:19:12,652 - openevolve.evaluator - INFO - Initialized evaluator with openevolve_output/level5_6_hunyuanvideo_vae_encoder/evaluation.py
+2025-08-08 04:19:12,652 - openevolve.controller - INFO - Initialized OpenEvolve with /tmp/616cc5185310e43ae7d60f903b0b89af.py
+2025-08-08 04:19:12,652 - openevolve.controller - INFO - Adding initial program to database
+2025-08-08 04:19:12,653 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus payload: reference_code(32631 chars) + custom_code(32752 chars)
+2025-08-08 04:19:14,921 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus request success
+2025-08-08 04:19:14,921 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus response: {"id":"level5_6_hunyuanvideo_vae_encoder","result":{"error":"No module named 'diffusers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 27, in <module>\nModuleNotFoundError: No module named 'diffusers'\n"}}
+2025-08-08 04:19:14,922 - openevolve.evaluator - WARNING - Evaluation attempt 1/4 failed for program 5b6cb59c-a86c-41d4-845e-3cdc5168a2cc: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'diffusers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 27, in <module>\nModuleNotFoundError: No module named \'diffusers\'\n'}
+2025-08-08 04:19:15,924 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus payload: reference_code(32631 chars) + custom_code(32752 chars)
+2025-08-08 04:19:18,380 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus request success
+2025-08-08 04:19:18,382 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus response: {"id":"level5_6_hunyuanvideo_vae_encoder","result":{"error":"No module named 'diffusers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 27, in <module>\nModuleNotFoundError: No module named 'diffusers'\n"}}
+2025-08-08 04:19:18,382 - openevolve.evaluator - WARNING - Evaluation attempt 2/4 failed for program 5b6cb59c-a86c-41d4-845e-3cdc5168a2cc: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'diffusers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 27, in <module>\nModuleNotFoundError: No module named \'diffusers\'\n'}
+2025-08-08 04:19:19,385 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus payload: reference_code(32631 chars) + custom_code(32752 chars)
+2025-08-08 04:19:21,642 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus request success
+2025-08-08 04:19:21,642 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus response: {"id":"level5_6_hunyuanvideo_vae_encoder","result":{"error":"No module named 'diffusers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 27, in <module>\nModuleNotFoundError: No module named 'diffusers'\n"}}
+2025-08-08 04:19:21,643 - openevolve.evaluator - WARNING - Evaluation attempt 3/4 failed for program 5b6cb59c-a86c-41d4-845e-3cdc5168a2cc: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'diffusers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 27, in <module>\nModuleNotFoundError: No module named \'diffusers\'\n'}
+2025-08-08 04:19:22,645 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus payload: reference_code(32631 chars) + custom_code(32752 chars)
+2025-08-08 04:19:25,150 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus request success
+2025-08-08 04:19:25,151 - openevolve.RemoteSpeedupEvaluator - INFO - [level5_6_hunyuanvideo_vae_encoder] verify_plus response: {"id":"level5_6_hunyuanvideo_vae_encoder","result":{"error":"No module named 'diffusers'\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py\", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File \"<string>\", line 27, in <module>\nModuleNotFoundError: No module named 'diffusers'\n"}}
+2025-08-08 04:19:25,151 - openevolve.evaluator - WARNING - Evaluation attempt 4/4 failed for program 5b6cb59c-a86c-41d4-845e-3cdc5168a2cc: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'diffusers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 27, in <module>\nModuleNotFoundError: No module named \'diffusers\'\n'}
+2025-08-08 04:19:25,152 - openevolve.evaluator - ERROR - All evaluation attempts failed for program 5b6cb59c-a86c-41d4-845e-3cdc5168a2cc. Last error: Error: The reference code is not valid or correct. The verify result is: {'error': 'No module named \'diffusers\'\nTraceback (most recent call last):\n  File "/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/evaluator.py", line 92, in _measure_perf_worker\n    exec(textwrap.dedent(code_src), temp_module.__dict__)\n  File "<string>", line 27, in <module>\nModuleNotFoundError: No module named \'diffusers\'\n'}
+2025-08-08 04:19:25,153 - __main__ - ERROR - 💥 失败 level5_6_hunyuanvideo_vae_encoder: 'score'
+2025-08-08 04:19:25,153 - __main__ - INFO - ----------------------------------------------------------------------
+2025-08-08 04:19:25,154 - __main__ - INFO - 📊 进程 rank=0 结束 | 成功 5 | 失败 2
+2025-08-08 04:19:25,154 - __main__ - INFO - ----------------------------------------------------------------------

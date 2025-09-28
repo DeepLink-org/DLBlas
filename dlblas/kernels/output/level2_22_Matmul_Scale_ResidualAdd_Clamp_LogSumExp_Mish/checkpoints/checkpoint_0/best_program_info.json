@@ -1,0 +1,33 @@
+{
+  "id": "621fb068-2663-477f-804d-445e361cffab",
+  "generation": 1,
+  "iteration": 0,
+  "current_iteration": 0,
+  "metrics": {
+    "compiled": true,
+    "correctness": false,
+    "score": 10,
+    "stage": "wrong_answer",
+    "verify_payload": {
+      "id": "level2_22_Matmul_Scale_ResidualAdd_Clamp_LogSumExp_Mish",
+      "result": {
+        "compiled": true,
+        "correctness": false,
+        "metadata": {
+          "hardware": "NVIDIA L20Y",
+          "device": "cuda:4",
+          "runtime_error": "Traceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 2216, in store\n    return _semantic.store(pointer, value, mask, boundary_check, cache_modifier, eviction_policy)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1292, in store\n    return self._store_legacy(ptr, val, mask, boundary_check, cache, eviction)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1248, in _store_legacy\n    raise ValueError(\"Value argument cannot be block type if pointer argument is not a block\")\nValueError: Value argument cannot be block type if pointer argument is not a block\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/cpfs01/shared/llm_kernel/hujiakai/KernelLLM/validation_api_server/helpers/evaluations.py\", line 720, in run_and_check_correctness\n    output_new = model_new(*inputs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1773, in _wrapped_call_impl\n    return self._call_impl(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/torch/nn/modules/module.py\", line 1784, in _call_impl\n    return forward_call(*args, **kwargs)\n  File \"/tmp/tmpp356fvrp.py\", line 123, in forward\n    reduce_logsumexp_mish_kernel[grid2](\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 390, in <lambda>\n    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/runtime/jit.py\", line 594, in run\n    kernel = self.compile(src, target=target, options=options.__dict__)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 339, in compile\n    module = src.make_ir(options, codegen_fns, module_map, context)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/compiler/compiler.py\", line 83, in make_ir\n    return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,\ntriton.compiler.errors.CompilationError: at 35:4:\n        mask = (k + offs) < hidden_size\n        val = tl.load(input_ptr + row_start + k + offs, mask=mask, other=0.0)\n        exp_val = tl.exp(val - max_val)\n        sum_exp += tl.sum(exp_val, axis=0)\n\n    log_sum_exp = tl.log(sum_exp) + max_val\n    sp = tl.log(1.0 + tl.exp(log_sum_exp))\n    tanh_sp = (tl.exp(2 * sp) - 1.0) / (tl.exp(2 * sp) + 1.0)\n    mish_val = log_sum_exp * tanh_sp\n    result = log_sum_exp * mish_val\n\n    tl.store(output_ptr, result)\n    ^\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 42, in wrapper\n    return fn(*args, **kwargs)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/core.py\", line 2216, in store\n    return _semantic.store(pointer, value, mask, boundary_check, cache_modifier, eviction_policy)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1292, in store\n    return self._store_legacy(ptr, val, mask, boundary_check, cache, eviction)\n  File \"/home/lijiaxing/.conda/envs/api/lib/python3.10/site-packages/triton/language/semantic.py\", line 1248, in _store_legacy\n    raise ValueError(\"Value argument cannot be block type if pointer argument is not a block\")\nValueError: Value argument cannot be block type if pointer argument is not a block\n",
+          "runtime_error_name": "triton.compiler.errors.CompilationError",
+          "reference_timing_ms": 0.137,
+          "speed_up": -1.0,
+          "custom_timing": -1.0
+        },
+        "runtime": -1.0,
+        "runtime_stats": {}
+      }
+    }
+  },
+  "language": "python",
+  "timestamp": 1754565999.2131186,
+  "saved_at": 1754565999.282944
+}
