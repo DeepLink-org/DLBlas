@@ -2,9 +2,10 @@ import torch
 from torch import Tensor
 import triton
 import triton.language as tl
-from dlblas.utils.op_helper import grouped_lanuch_diagonal
+import triton.language.extra.deeplink as dl
+from dlblas.utils.op_helper import grouped_launch_diagonal
 from dlblas.utils.device_utils import get_number_cores
-# import triton.language.extra.deeplink as dl
+
 
 def get_autotune_config():
     return [
@@ -56,7 +57,7 @@ def m_grouped_gemm_bKmajor_kernel(
         cur_count = last_count + num_block_m * num_block_n
         cur_block = core_idx if core_idx >= last_count else (core_idx + total_cores)
         while cur_block < cur_count:
-            task_m_idx, task_n_idx = grouped_lanuch_diagonal(cur_block-last_count, num_block_m, num_block_n, BLOCK_TRESHHOLD)
+            task_m_idx, task_n_idx = grouped_launch_diagonal(cur_block-last_count, num_block_m, num_block_n, BLOCK_TRESHHOLD)
             # matmul begin
             offs_am = (group_start + task_m_idx * BLOCK_M) + tl.arange(0, BLOCK_M)
             offs_bn = (group_idx * N + task_n_idx * BLOCK_N) + tl.arange(0, BLOCK_N)
@@ -74,14 +75,14 @@ def m_grouped_gemm_bKmajor_kernel(
                     mask=msk_m[:, None] and (offs_k[None, :] < K - k * BLOCK_K),
                     other=0.0,
                 )
-                tl.compile_hint(a, "dot_pad_only_k")
+                dl.compile_hint(a, "dot_pad_only_k")
                 b = tl.load(
                     b_ptrs,
                     mask=msk_n[:, None] and (offs_k[None, :] < (K - k * BLOCK_K)),
                     other=0.0,
                 )
                 b = tl.trans(b)
-                tl.compile_hint(b, "dot_pad_only_k")
+                dl.compile_hint(b, "dot_pad_only_k")
                 # mma
                 accumulator = tl.dot(a, b, acc=accumulator)
         
@@ -132,7 +133,7 @@ def m_grouped_gemm_bNmajor_kernel(
         cur_count = last_count + num_block_m * num_block_n
         cur_block = core_idx if core_idx >= last_count else (core_idx + total_cores)
         while cur_block < cur_count:
-            task_m_idx, task_n_idx = grouped_lanuch_diagonal(cur_block-last_count, num_block_m, num_block_n, BLOCK_TRESHHOLD)
+            task_m_idx, task_n_idx = grouped_launch_diagonal(cur_block-last_count, num_block_m, num_block_n, BLOCK_TRESHHOLD)
             # matmul begin
             offs_am = (group_start + task_m_idx * BLOCK_M) + tl.arange(0, BLOCK_M)
             offs_bn = (task_n_idx * BLOCK_N) + tl.arange(0, BLOCK_N)
@@ -151,13 +152,13 @@ def m_grouped_gemm_bNmajor_kernel(
                     mask=msk_m[:, None] and (offs_ak[None, :] < K - k * BLOCK_K),
                     other=0.0,
                 )
-                tl.compile_hint(a, "dot_pad_only_k")
+                dl.compile_hint(a, "dot_pad_only_k")
                 b = tl.load(
                     b_ptrs,
                     mask=(offs_bk[:, None] < (group_idx * K + K - k * BLOCK_K)) and msk_n[None, :],
                     other=0.0,
                 )
-                tl.compile_hint(b, "dot_pad_only_k")
+                dl.compile_hint(b, "dot_pad_only_k")
                 # mma
                 accumulator = tl.dot(a, b, acc=accumulator)
         

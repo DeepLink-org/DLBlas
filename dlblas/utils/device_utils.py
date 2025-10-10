@@ -32,12 +32,12 @@ def get_device_props(device=None):
 
 @functools.lru_cache
 def get_number_cores():
-    if is_cuda():
-        return torch.cuda.get_device_properties("cuda").multi_processor_count
-    elif is_npu():
+    if is_npu():
         import triton.runtime.driver as driver
         device = torch.npu.current_device()
         return driver.active.utils.get_device_properties(device)["num_aicore"]
+    elif is_cuda():
+        return torch.cuda.get_device_properties("cuda").multi_processor_count
     else:
         raise RuntimeError("Please implement this function.")
 
@@ -79,13 +79,13 @@ def infer_device():
     """
     Get current device name based on available devices
     """
-    if is_cuda():
-        return 'cuda'
-    elif is_npu():
+    if is_npu():
         return 'npu'
     elif is_mlu_592():
         return 'mlu'
     elif is_muxi():
+        return 'cuda'
+    elif is_cuda():
         return 'cuda'
     else:
         return 'cpu'

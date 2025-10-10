@@ -11,11 +11,10 @@ def grouped_launch_swizzling(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
         remian_pid = pid - group_id * width
         pid_m = group_id * GROUP_M + (remian_pid % group_size)
         pid_n = (pid % width) // group_size
-        return pid_m, pid_n
     else:
-        task_m_idx = pid // num_pid_n
-        task_n_idx = pid % num_pid_n
-    return task_m_idx, task_n_idx
+        pid_m = pid // num_pid_n
+        pid_n = pid % num_pid_n
+    return pid_m, pid_n
 
 
 '''
@@ -57,7 +56,7 @@ def grouped_launch_swizzling(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
     所以当矩阵在M和N方向均超过8块时使能对角线分核即可有优化,当右矩阵大小超过L2Cache大小时优化效果尤为明显
 '''
 @triton.jit
-def grouped_lanuch_diagonal(pid, num_pid_m, num_pid_n, BLOCK_TRESHHOLD: tl.constexpr):
+def grouped_launch_diagonal(pid, num_pid_m, num_pid_n, BLOCK_TRESHHOLD: tl.constexpr):
     if (num_pid_m >= BLOCK_TRESHHOLD) and (num_pid_n >= BLOCK_TRESHHOLD):
         # 对角线分核代码实现 
         curThresholdM = BLOCK_TRESHHOLD if pid < (num_pid_m // BLOCK_TRESHHOLD * BLOCK_TRESHHOLD) * num_pid_n else num_pid_m % BLOCK_TRESHHOLD

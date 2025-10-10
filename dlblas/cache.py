@@ -74,8 +74,8 @@ class Cache:
         # key += '-' + device
         return key
 
-    def put(self, op: OpImpl, op_name, args):
-        key = self.gen_key(op_name, args)
+    def put(self, op: OpImpl, op_name, args, cache_key):
+        key = self.gen_key(op_name, args) if cache_key is None else cache_key
         self._cache[key] = op
         # new_op = OpImplCache(
         #     op.params,
@@ -88,8 +88,8 @@ class Cache:
         # )
         # self._cache[key] = new_op
 
-    def get(self, op_name, args) -> Optional[OpImpl]:
-        key = self.gen_key(op_name, args)
+    def get(self, op_name, args, cache_key) -> Optional[OpImpl]:
+        key = self.gen_key(op_name, args) if cache_key is None else cache_key
         if key in self._cache:
             op_cache = self._cache[key]
             if isinstance(op_cache, OpImpl):

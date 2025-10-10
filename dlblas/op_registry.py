@@ -61,18 +61,21 @@ class OpRegistry:
         else:
             self.ops[name] = [impl]
 
+    def get_op_count(self, name):
+        return len(self.ops[name])
+
     def get_list_op_names(self):
         return list(self.ops.keys())
 
     def get_args_from_op_name(self, op_name: str):
         return [i.params for i in self.ops[op_name]]
 
-    def get_op(self, op_name: str, args: tuple, configs=None):
+    def get_op(self, op_name: str, args: tuple, configs=None, cache_key=None):
         if op_name not in self.ops:
             raise NameError(f"op {op_name} not found")
 
         # 1. check cache
-        if op := self.look_up_cache(op_name, args):
+        if op := self.look_up_cache(op_name, args, cache_key):
             # if op is not None, will hit the true branch
             logger.debug(f"cache hit for op {op_name}")
             return op
@@ -83,16 +86,16 @@ class OpRegistry:
             configs = AutotuneConfig()
         else:
             assert isinstance(configs, AutotuneConfig)
-        op = self._tunning(op_name, args, configs)
+        op = self._tunning(op_name, args, configs, cache_key)
         return op
 
-    def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
-        if cached := self.cache.get(op_name, args):
+    def look_up_cache(self, op_name: str, args: tuple, cache_key) -> Optional[OpImpl]:
+        if cached := self.cache.get(op_name, args, cache_key):
             assert isinstance(cached, OpImpl)
             # compile_op(cached)
             return cached
 
-    def _tunning(self, op_name: str, args: tuple, configs):
+    def _tunning(self, op_name: str, args: tuple, configs=None, cache_key=None):
         # fetch candidates
         candidates = self._get_candidates(op_name, args)
         if len(candidates) == 0:
@@ -105,7 +108,7 @@ class OpRegistry:
         best_op: OpImpl = candidates[best_idx]
 
         # cache
-        self.cache.put(best_op, op_name, args)
+        self.cache.put(best_op, op_name, args, cache_key)
         return best_op
 
     def _get_candidates(self, op_name: str, args: tuple):

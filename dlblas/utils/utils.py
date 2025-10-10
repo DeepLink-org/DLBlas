@@ -31,7 +31,10 @@ def get_tl_log():
 
 def get_tl_tanh():
     if is_npu():
-        from triton.language.extra.ascend.libdevice import tanh
+        try:
+            from triton.language.extra.ascend.libdevice import tanh
+        except ModuleNotFoundError:
+            tanh = None
     if triton.__version__ >= '3.0.0':
         try:
             # typical import path with dispatch available
