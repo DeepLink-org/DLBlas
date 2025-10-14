@@ -3,7 +3,9 @@ import pytest
 from dlblas.kernels.lighting_indexer import mqa_attn_return_logits_interface
 from dlblas.utils.utils import assert_tensors_similar, tensor_cache
 from typing import Any, Callable, Dict, Literal, Optional, Tuple
+from dlblas.utils.device_utils import infer_device, is_npu
 
+device_ = torch.device(infer_device())
 
 def display_error_message(msg):
     print(f"\033[31mWARNING: {msg}\033[0m")
@@ -53,8 +55,8 @@ def ref_fp8_mqa_logits(q: torch.Tensor, kv: torch.Tensor, weights: torch.Tensor,
     k = k.float()
 
     seq_len_kv = kv.shape[0]
-    mask_lo = torch.arange(0, seq_len_kv, device='cuda')[None, :] >= cu_seqlen_ks[:, None]
-    mask_hi = torch.arange(0, seq_len_kv, device='cuda')[None, :] < cu_seqlen_ke[:, None]
+    mask_lo = torch.arange(0, seq_len_kv, device=device_)[None, :] >= cu_seqlen_ks[:, None]
+    mask_hi = torch.arange(0, seq_len_kv, device=device_)[None, :] < cu_seqlen_ke[:, None]
     mask = mask_lo & mask_hi
 
     score = torch.einsum('mhd,nd->hmn', q, k)
@@ -129,17 +131,17 @@ def cal_cu_seqlen_ks_for_q(cu_seqlens_qs: torch.LongTensor, cu_seqlens_qe: torch
 def generate_random_cu_seqlens(per_cp_seqlen, cp_size=4, cp_rank=3, kv_stride=1, average_q_len=512):
     total_seqlen = per_cp_seqlen * cp_size
 
-    cu_seqlens = torch.randint(0, average_q_len * 2, (total_seqlen // average_q_len * 2,)).cuda()
+    cu_seqlens = torch.randint(0, average_q_len * 2, (total_seqlen // average_q_len * 2,), device=device_)
     last_seq_id = torch.where(cu_seqlens.cumsum(0) >= total_seqlen)[0][0]
     cu_seqlens = cu_seqlens[:last_seq_id]
 
     if cu_seqlens.sum() < total_seqlen:
-        cu_seqlens = torch.cat([cu_seqlens, torch.tensor([total_seqlen - cu_seqlens.sum()]).cuda()])
+        cu_seqlens = torch.cat([cu_seqlens, torch.tensor([total_seqlen - cu_seqlens.sum()], device=device_)])
 
     cu_seqlens_cumsum = torch.cumsum(cu_seqlens, dim=0)
     cu_seqlens_k_cumsum = torch.cumsum(cu_seqlens // kv_stride, dim=0)
-    cu_seqlens_qs = torch.cat([torch.tensor([0]).cuda(), cu_seqlens_cumsum[:-1]])
-    cu_seqlens_ks = torch.cat([torch.tensor([0]).cuda(), cu_seqlens_k_cumsum[:-1]])
+    cu_seqlens_qs = torch.cat([torch.tensor([0], device=device_), cu_seqlens_cumsum[:-1]])
+    cu_seqlens_ks = torch.cat([torch.tensor([0], device=device_), cu_seqlens_k_cumsum[:-1]])
     cu_seqlens_qe = cu_seqlens_cumsum.clone()
     cu_seqlens_ke = cu_seqlens_k_cumsum.clone()
 
@@ -185,11 +187,14 @@ def generate_random_cu_seqlens(per_cp_seqlen, cp_size=4, cp_rank=3, kv_stride=1,
 @pytest.mark.parametrize("HKV", [1])
 @pytest.mark.parametrize("D", [64])
 @pytest.mark.parametrize("kv_stride", [1])
-def test_fp8_lighting_indexer(S, SKV, H, HKV, D, kv_stride):
-    q = torch.randn(S, H, D, device="cuda", dtype=torch.bfloat16).to(torch.bfloat16)
-    kv = torch.randn(SKV, D, device="cuda", dtype=torch.bfloat16).to(torch.bfloat16)
-    weights = torch.randn(S, H, device="cuda", dtype=torch.float32)
-    p = (torch.randn(S, SKV, device="cuda", dtype=torch.float32) * 4).softmax(dim=-1)
+@pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.bfloat16])
+def test_fp8_lighting_indexer(S, SKV, H, HKV, D, kv_stride, dtype):
+    if is_npu() and dtype == torch.float8_e4m3fn:
+        pytest.skip("NPU not support fp8.")
+    q = torch.randn(S, H, D, device=device_, dtype=torch.bfloat16)
+    kv = torch.randn(SKV, D, device=device_, dtype=torch.bfloat16)
+    weights = torch.randn(S, H, device=device_, dtype=torch.float32)
+    p = (torch.randn(S, SKV, device=device_, dtype=torch.float32) * 4).softmax(dim=-1)
 
     ks, ke = generate_random_cu_seqlens(
         per_cp_seqlen=S, cp_size=4, cp_rank=3, kv_stride=kv_stride, average_q_len=2048)
@@ -197,12 +202,15 @@ def test_fp8_lighting_indexer(S, SKV, H, HKV, D, kv_stride):
     logits_ref, cost_ref, mask = ref_fp8_mqa_logits(
         q=q, kv=kv, weights=weights, cu_seqlen_ks=ks, cu_seqlen_ke=ke)
 
-    q_fp8 = q.to(torch.float8_e4m3fn)
-    kv_fp8, kv_scales = per_custom_dims_cast_to_fp8(kv, (0,), False)
+    if dtype == torch.float8_e4m3fn:
+        q_fp8 = q.to(torch.float8_e4m3fn)
+        kv_fp8, kv_scales = per_custom_dims_cast_to_fp8(kv, (0,), False)
+        logits_triton = mqa_attn_return_logits_interface(
+            q=q_fp8.clone(), kv=kv_fp8.clone(), kv_scales=kv_scales.clone(), weights=weights.clone(), cu_seqlen_ks=ks.clone(), cu_seqlen_ke=ke.clone())
+    else:
+        logits_triton = mqa_attn_return_logits_interface(
+            q=q, kv=kv, kv_scales=None, weights=weights, cu_seqlen_ks=ks, cu_seqlen_ke=ke)
 
-    logits_triton = mqa_attn_return_logits_interface(
-        q=q_fp8.clone(), kv=kv_fp8.clone(), kv_scales=kv_scales.clone(), weights=weights.clone(), cu_seqlen_ks=ks.clone(), cu_seqlen_ke=ke.clone(), use_triton=True)
-    
     logits_triton = logits_triton.masked_fill(~mask, float('-inf'))
     
     diff = validate_tensor_match(
