@@ -1,0 +1,4 @@
+## 版本说明
+deepgemm： commit 03d0be3d2d03b6eed3c99d683c0620949a13a826
+deepep： commit 9fe9021f29c9083cd1808ab36b740208524d9f63
+依赖的第三方算子只在上述特定版本做过测试，不保证其他版本的兼容性。欢迎提PR升级。
