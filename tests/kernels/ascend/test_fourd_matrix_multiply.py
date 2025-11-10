@@ -32,10 +32,6 @@ class ModelTorch(nn.Module):
         return torch.einsum("bijl,lk->bijk", A, B)
 
 
-# @pytest.mark.skipif(not importlib.util.find_spec("mindspeed"), reason="requires mindspeed")
-# @pytest.mark.parametrize(['N', 'K'], [(4096, 4096), (768*2, 2048), (2048, 768), (1536*2, 4096), (4096, 1536)])
-# @pytest.mark.parametrize('dtype', [torch.bfloat16])
-# @pytest.mark.parametrize('groups', [8])
 def test_fourd_matrix_multiply():
     b = 16
     i = 256
