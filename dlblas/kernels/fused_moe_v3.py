@@ -9,7 +9,7 @@ from dlblas.kernels.quant_dequant import tma_align_input_scale
 from dlblas.layers.moe.kernels.activation import silu_and_mul
 
 try:
-    from deep_gemm import m_grouped_gemm_fp8_fp8_bf16_nt_contiguous
+    import deep_gemm
     use_deep_gemm = True
 except ImportError:
     use_deep_gemm = False
@@ -85,12 +85,10 @@ def _fwd_kernel_ep_scatter_2(
             expert_id = tl.load(recv_topk + token_id * recv_topk_stride0 + topk_index)
             if expert_id >= 0:
                 dest_token_index = tl.atomic_add(expert_start_loc + expert_id, 1)
-                tl.store(
-                    output_index + token_id * output_index_stride0 + topk_index,
-                    dest_token_index,
-                )
-                output_tensor_ptr = (output_tensor + dest_token_index * output_tensor_stride0)
-                output_tensor_scale_ptr = (output_tensor_scale + dest_token_index * output_tensor_scale_stride0)
+                dest_token_index = dest_token_index.to(tl.int64)
+                tl.store(output_index + token_id * output_index_stride0 + topk_index, dest_token_index)
+                output_tensor_ptr = output_tensor + dest_token_index * output_tensor_stride0
+                output_tensor_scale_ptr = output_tensor_scale + dest_token_index * output_tensor_scale_stride0
                 tl.store(output_tensor_ptr + offset_in, to_copy, mask=mask)
                 tl.store(output_tensor_scale_ptr + offset_in_s, to_copy_s, mask=mask_s)
 
@@ -234,6 +232,17 @@ def ep_gather(
     )
     return
 
+def _deepgemm_grouped_fp8_nt_contiguous(
+    input_tuple: Tuple[torch.Tensor, torch.Tensor],
+    w_tuple: Tuple[torch.Tensor, torch.Tensor],
+    out: torch.Tensor,
+    m_indices: torch.Tensor,
+):
+    if hasattr(deep_gemm, "m_grouped_gemm_fp8_fp8_bf16_nt_contiguous"):
+        return deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(input_tuple, w_tuple, out, m_indices)
+    if hasattr(deep_gemm, "m_grouped_fp8_gemm_nt_contiguous"):
+        return deep_gemm.m_grouped_fp8_gemm_nt_contiguous(input_tuple, w_tuple, out, m_indices)
+    raise RuntimeError("deep_gemm version mismatch")
 
 def fused_moe_v3(
     hidden_states_fp8: Tuple[torch.Tensor, torch.Tensor],
@@ -295,8 +304,8 @@ def fused_moe_v3(
     )
     input_tensor_scale = tma_align_input_scale(input_tensor_scale)
     assert use_deep_gemm, 'Please install deep_gemm'
-    m_grouped_gemm_fp8_fp8_bf16_nt_contiguous([input_tensor, input_tensor_scale], w13_weight_fp8, gateup_output,
-                                              m_indices)
+    _deepgemm_grouped_fp8_nt_contiguous([input_tensor, input_tensor_scale], w13_weight_fp8, gateup_output,
+                                        m_indices)
     down_input = torch.empty(
         (
             all_tokens,
@@ -324,7 +333,7 @@ def fused_moe_v3(
         scale_block_size,
     )
     down_input_scale = tma_align_input_scale(down_input_scale)
-    m_grouped_gemm_fp8_fp8_bf16_nt_contiguous(
+    _deepgemm_grouped_fp8_nt_contiguous(
         (down_input_fp8, down_input_scale),
         w2_weight_fp8,
         down_output,
