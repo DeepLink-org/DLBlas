@@ -1,8 +1,6 @@
 # Copyright (c) 2025, DeepLink.
 import os
 from typing import List, Optional, Tuple, Union
-
-import deep_gemm
 import torch
 import torch.distributed as dist
 
@@ -14,6 +12,12 @@ from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blo
 from dlblas.layers.moe.token_dispatcher import DeepEPTokenDispatcherLowLatency, DeepEPTokenDispatcherNormal
 from dlblas.utils.logger import get_logger
 from dlblas.utils.utils import DisposibleTensor
+
+try:
+    import deep_gemm
+    use_deep_gemm = True
+except ImportError:
+    use_deep_gemm = False
 
 logger = get_logger(__name__)
 
@@ -133,6 +137,20 @@ class FusedMoELowLatency:
             hidden_size=hidden_dim,
             params_dtype=out_dtype,
         )
+    def deepgemm_grouped_fp8_nt_masked(
+        self,
+        input_tuple: Tuple[torch.Tensor, torch.Tensor],
+        w_tuple: Tuple[torch.Tensor, torch.Tensor],
+        out: torch.Tensor,
+        masked_m: torch.Tensor,
+        expected_m: int,
+    ):
+        assert use_deep_gemm, 'Please install deep_gemm'
+        if hasattr(deep_gemm, "m_grouped_fp8_gemm_nt_masked"):
+            return deep_gemm.m_grouped_fp8_gemm_nt_masked(input_tuple, w_tuple, out, masked_m, expected_m)
+        if hasattr(deep_gemm, "m_grouped_gemm_fp8_fp8_bf16_nt_masked"):
+            return deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(input_tuple, w_tuple, out, masked_m, expected_m)
+        raise RuntimeError("deep_gemm version mismatch")
 
     def experts(
         self,
@@ -151,8 +169,8 @@ class FusedMoELowLatency:
         n = gate_up_weight.size(1)
         expected_m = min(expected_m, m)
         gateup_output = torch.empty((num_groups, m, n), device=hidden_states_fp8[0].device, dtype=self.out_dtype)
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked([DisposibleTensor.maybe_unwrap(x) for x in hidden_states_fp8],
-                                                        gate_up_weight_fp8, gateup_output, masked_m, expected_m)
+        self.deepgemm_grouped_fp8_nt_masked([DisposibleTensor.maybe_unwrap(x) for x in hidden_states_fp8],
+                                            gate_up_weight_fp8, gateup_output, masked_m, expected_m)
         DisposibleTensor.maybe_dispose(hidden_states_fp8[0])
         DisposibleTensor.maybe_dispose(hidden_states_fp8[1])
         down_input = torch.empty((
@@ -180,13 +198,9 @@ class FusedMoELowLatency:
         )
         del gateup_output
         n = gate_down_weight.size(1)
-        down_input_fp8 = (
-            down_input,
-            deep_gemm.get_col_major_tma_aligned_tensor(down_input_scale),
-        )
+        down_input_fp8 = (down_input, down_input_scale)
         down_output = torch.empty((num_groups, m, n), device=down_input.device, dtype=self.out_dtype)
-        deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(down_input_fp8, gate_down_weight_fp8, down_output, masked_m,
-                                                        expected_m)
+        self.deepgemm_grouped_fp8_nt_masked(down_input_fp8, gate_down_weight_fp8, down_output, masked_m, expected_m)
         return down_output
 
     def forward(self,
