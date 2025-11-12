@@ -1,0 +1,55 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def sigmoid_sum_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    total = 0.0
+    for i in range(0, n_elements, BLOCK_SIZE):
+        off = i + tl.arange(0, BLOCK_SIZE)
+        mask = off < n_elements
+        offsets = pid * n_elements + off
+        # Load with large negative value for out-of-bound elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=-1e20)
+        # Use optimized sigmoid intrinsic
+        sig_x = tl.sigmoid(x)
+        total += tl.sum(sig_x, axis=0)
+    tl.store(output_ptr + pid, total)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.avg_pool = nn.AvgPool2d(pool_kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.avg_pool(x)
+        batch_size = x.shape[0]
+        n_elements = x.numel() // batch_size
+        x_flat = x.contiguous().view(batch_size, -1)
+        output = torch.empty(batch_size, device=x.device, dtype=torch.float32)
+        grid = (batch_size,)
+        BLOCK_SIZE = 1024
+        sigmoid_sum_kernel[grid](x_flat, output, n_elements, BLOCK_SIZE)
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+pool_kernel_size = 2
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, pool_kernel_size]

@@ -1,0 +1,154 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def conv_transpose3d_kernel(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    B, IC, OC, 
+    D_in, H_in, W_in,
+    D_out, H_out, W_out,
+    kernel_size, stride, padding,
+    x_bs, x_ics, x_ds, x_hs, x_ws,
+    w_ocs, w_ics, w_ds, w_hs, w_ws,
+    out_bs, out_ocs, out_ds, out_hs, out_ws,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_elements = B * OC * D_out * H_out * W_out
+    if pid >= num_elements:
+        return
+    
+    # Compute output indices
+    b = pid // (OC * D_out * H_out * W_out)
+    oc = (pid // (D_out * H_out * W_out)) % OC
+    d_out = (pid // (H_out * W_out)) % D_out
+    h_out = (pid // W_out) % H_out
+    w_out = pid % W_out
+    
+    acc = 0.0
+    
+    # Loop over input channels and kernel dimensions
+    for ic in range(IC):
+        for kd in range(kernel_size):
+            for kh in range(kernel_size):
+                for kw in range(kernel_size):
+                    # Calculate input coordinates
+                    d_in = d_out - kd + padding
+                    h_in = h_out - kh + padding
+                    w_in = w_out - kw + padding
+                    
+                    # Check divisibility by stride
+                    cond_div = (d_in % stride == 0) & (h_in % stride == 0) & (w_in % stride == 0)
+                    d_in //= stride
+                    h_in //= stride
+                    w_in //= stride
+                    
+                    # Check bounds with separate conditions
+                    cond_d = (d_in >= 0) & (d_in < D_in)
+                    cond_h = (h_in >= 0) & (h_in < H_in)
+                    cond_w = (w_in >= 0) & (w_in < W_in)
+                    cond_bounds = cond_d & cond_h & cond_w
+                    
+                    if cond_div & cond_bounds:
+                        # Load input value
+                        x_offset = b * x_bs + ic * x_ics + d_in * x_ds + h_in * x_hs + w_in * x_ws
+                        x_val = tl.load(x_ptr + x_offset)
+                        
+                        # Load weight value
+                        w_offset = oc * w_ocs + ic * w_ics + kd * w_ds + kh * w_hs + kw * w_ws
+                        w_val = tl.load(weight_ptr + w_offset)
+                        
+                        acc += x_val * w_val
+    
+    # Add bias if present
+    if bias_ptr is not None:
+        bias_val = tl.load(bias_ptr + oc)
+        acc += bias_val
+    
+    # Store result
+    out_offset = b * out_bs + oc * out_ocs + d_out * out_ds + h_out * out_hs + w_out * out_ws
+    tl.store(output_ptr + out_offset, acc)
+
+def conv_transpose3d_triton(x, weight, bias, stride, padding):
+    B, IC, D_in, H_in, W_in = x.shape
+    OC, _, kernel_size, _, _ = weight.shape
+    
+    # Calculate output dimensions
+    D_out = (D_in - 1) * stride - 2 * padding + kernel_size
+    H_out = (H_in - 1) * stride - 2 * padding + kernel_size
+    W_out = (W_in - 1) * stride - 2 * padding + kernel_size
+    
+    output = torch.empty((B, OC, D_out, H_out, W_out), device=x.device, dtype=x.dtype)
+    
+    # Get tensor strides
+    x_stride = x.stride()
+    weight_stride = weight.stride()
+    output_stride = output.stride()
+    
+    total_elements = B * OC * D_out * H_out * W_out
+    grid = lambda meta: (triton.cdiv(total_elements, meta['BLOCK_SIZE']),)
+    
+    conv_transpose3d_kernel[grid](
+        x, weight, bias, output,
+        B, IC, OC, 
+        D_in, H_in, W_in,
+        D_out, H_out, W_out,
+        kernel_size, stride, padding,
+        x_stride[0], x_stride[1], x_stride[2], x_stride[3], x_stride[4],
+        weight_stride[0], weight_stride[1], weight_stride[2], weight_stride[3], weight_stride[4],
+        output_stride[0], output_stride[1], output_stride[2], output_stride[3], output_stride[4],
+        BLOCK_SIZE=256
+    )
+    
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.stride = stride
+        self.padding = padding
+        
+        # Initialize weights
+        self.weight = nn.Parameter(torch.empty(
+            out_channels, in_channels, kernel_size, kernel_size, kernel_size
+        ))
+        nn.init.kaiming_uniform_(self.weight)
+        
+        # Initialize bias
+        if bias_shape is not None:
+            self.bias = nn.Parameter(torch.zeros(out_channels))
+        else:
+            self.bias = None
+            
+        self.batch_norm = nn.BatchNorm3d(out_channels)
+        self.avg_pool1 = nn.AvgPool3d(kernel_size=2)
+        self.avg_pool2 = nn.AvgPool3d(kernel_size=2)
+
+    def forward(self, x):
+        x = conv_transpose3d_triton(
+            x, self.weight, self.bias, self.stride, self.padding
+        )
+        x = self.batch_norm(x)
+        x = self.avg_pool1(x)
+        x = self.avg_pool2(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 32, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+bias_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, bias_shape]

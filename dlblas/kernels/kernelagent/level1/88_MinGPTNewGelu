@@ -1,0 +1,79 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
+import triton
+import triton.language as tl
+
+# Triton kernel for GELU activation
+@triton.jit
+def gelu_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Load input data
+    x = tl.load(x_ptr + offsets, mask=mask)
+    
+    # Constants for GELU approximation
+    a = 0.044715
+    b = 0.7978845608028654  # sqrt(2/pi)
+    
+    # Compute GELU: 0.5 * x * (1 + tanh(b * (x + a * x^3)))
+    x_cubed = x * x * x
+    inner = x + a * x_cubed
+    inner_scaled = b * inner
+    
+    # Efficient tanh implementation using exponentials
+    exp_val = tl.exp(-2.0 * inner_scaled)
+    tanh_val = (1.0 - exp_val) / (1.0 + exp_val)
+    
+    output = 0.5 * x * (1.0 + tanh_val)
+    
+    # Store results
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    """
+    Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT).
+    Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415
+    """
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x):
+        # Ensure contiguous memory access
+        if not x.is_contiguous():
+            x = x.contiguous()
+            
+        # Flatten input tensor for 1D processing
+        x_flat = x.view(-1)
+        output_flat = torch.empty_like(x_flat)
+        n_elements = x_flat.numel()
+        
+        # Handle empty tensor case
+        if n_elements == 0:
+            return x
+            
+        # Configure and launch Triton kernel
+        BLOCK_SIZE = 1024
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        gelu_kernel[grid](x_flat, output_flat, n_elements, BLOCK_SIZE=BLOCK_SIZE)
+        
+        # Restore original shape
+        return output_flat.view_as(x)
+
+batch_size = 2000
+dim = 2000
+
+def get_inputs():
+    return [torch.randn(batch_size, dim)]
+
+def get_init_inputs():
+    return []

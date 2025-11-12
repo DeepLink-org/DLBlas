@@ -1,0 +1,144 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+# Optimized GEMM kernel with fused bias
+@triton.jit
+def gemm_kernel(
+    a_ptr, b_ptr, bias_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_SIZE_M: tl.constexpr, 
+    BLOCK_SIZE_N: tl.constexpr, 
+    BLOCK_SIZE_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
+
+    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    
+    a_ptrs = a_ptr + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
+
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a_mask = (offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K)
+        a = tl.load(a_ptrs, mask=a_mask, other=0.0)
+        
+        b_mask = (offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N)
+        b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+        
+        acc += tl.dot(a, b)
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+
+    # Always apply bias (uses zero buffer when bias=False)
+    bias_ptrs = bias_ptr + offs_bn
+    b_mask = offs_bn < N
+    bias = tl.load(bias_ptrs, mask=b_mask, other=0.0)
+    acc += bias[None, :]
+
+    c_ptrs = c_ptr + offs_am[:, None] * stride_cm + offs_bn[None, :] * stride_cn
+    c_mask = (offs_am[:, None] < M) & (offs_bn[None, :] < N)
+    tl.store(c_ptrs, acc, mask=c_mask)
+
+# Fused LogSumExp + Activations kernel
+@triton.jit
+def fused_logsumexp_activations_kernel(
+    x_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= M:
+        return
+    row_offset = pid * stride_m
+    offsets = row_offset + tl.arange(0, BLOCK_SIZE) * stride_n
+    mask = tl.arange(0, BLOCK_SIZE) < N
+    
+    row = tl.load(x_ptr + offsets, mask=mask, other=-float('inf'))
+    max_val = tl.max(row, axis=0)
+    safe_row = row - max_val
+    exp_row = tl.exp(safe_row)
+    sum_exp = tl.sum(exp_row, axis=0)
+    log_sum_exp = tl.log(sum_exp) + max_val
+    
+    # Apply fused activations
+    # First LeakyReLU
+    x = tl.where(log_sum_exp >= 0, log_sum_exp, 0.01 * log_sum_exp)
+    # Second LeakyReLU
+    x = tl.where(x >= 0, x, 0.01 * x)
+    # First GELU
+    gelu1 = x * 0.5 * (1.0 + tl.erf(x * 0.7071067811865476))
+    # Second GELU
+    gelu2 = gelu1 * 0.5 * (1.0 + tl.erf(gelu1 * 0.7071067811865476))
+    
+    tl.store(output_ptr + pid, gelu2)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super(ModelNew, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features))
+        else:
+            # Register zero buffer for consistent pointer access
+            self.register_buffer('bias', torch.zeros(out_features), persistent=False)
+        
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if bias:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        M, K = x.shape
+        N = self.out_features
+        
+        # Process GEMM with Triton (increased BLOCK_K for better efficiency)
+        x = x.contiguous()
+        # Transpose weight for correct matrix multiplication (K x N)
+        weight = self.weight.t().contiguous()
+        out = torch.empty((M, N), device=x.device, dtype=x.dtype)
+        
+        # Pass bias tensor directly (not data_ptr)
+        grid = (triton.cdiv(M, 64) * triton.cdiv(N, 64),)
+        gemm_kernel[grid](
+            x, weight, self.bias, out,
+            M, N, K,
+            x.stride(0), x.stride(1),
+            weight.stride(0), weight.stride(1),
+            out.stride(0), out.stride(1),
+            BLOCK_SIZE_M=64, BLOCK_SIZE_N=64, BLOCK_SIZE_K=64  # Increased K-block size
+        )
+        
+        # Process fused LogSumExp + Activations with Triton
+        out = out.contiguous()
+        fused_out = torch.empty(M, 1, device=x.device, dtype=x.dtype)
+        BLOCK_SIZE = triton.next_power_of_2(N)
+        fused_logsumexp_activations_kernel[(M,)](out, fused_out, M, N, out.stride(0), out.stride(1), BLOCK_SIZE)
+        
+        return fused_out
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]

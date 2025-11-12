@@ -1,0 +1,96 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def max_pool_2d_kernel(
+    input_ptr, output_ptr,
+    batch_size, channels, height, width,
+    out_height, out_width,
+    stride: tl.constexpr,
+    padding: tl.constexpr,
+    dilation: tl.constexpr,
+    kernel_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    element_ids = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = element_ids < (batch_size * channels * out_height * out_width)
+    
+    # Compute output indices
+    n = element_ids // (channels * out_height * out_width)
+    c = (element_ids % (channels * out_height * out_width)) // (out_height * out_width)
+    oh = (element_ids % (out_height * out_width)) // out_width
+    ow = element_ids % out_width
+    
+    # Compute start positions
+    start_h = oh * stride - padding
+    start_w = ow * stride - padding
+    
+    # Initialize with large negative value
+    cur_max = tl.full((BLOCK_SIZE,), -1e30, dtype=tl.float32)
+    
+    # Unrolled loops for kernel processing
+    for kh in tl.static_range(0, kernel_size):
+        h = start_h + kh * dilation
+        for kw in tl.static_range(0, kernel_size):
+            w = start_w + kw * dilation
+            
+            # Check boundaries
+            in_bounds = (h >= 0) & (h < height) & (w >= 0) & (w < width)
+            offset = n * (channels * height * width) + c * (height * width) + h * width + w
+            
+            # Load value with boundary masking
+            val = tl.load(input_ptr + offset, mask=mask & in_bounds, other=-1e30)
+            cur_max = tl.maximum(cur_max, val)
+    
+    # Store result using linear index
+    tl.store(output_ptr + element_ids, cur_max, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, kernel_size: int, stride: int, padding: int, dilation: int):
+        super(ModelNew, self).__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, channels, height, width = x.shape
+        out_height = (height + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        out_width = (width + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        
+        x = x.contiguous()
+        output = torch.empty((batch_size, channels, out_height, out_width), device=x.device, dtype=x.dtype)
+        
+        total_elements = batch_size * channels * out_height * out_width
+        if total_elements == 0:
+            return output
+            
+        grid = lambda meta: (triton.cdiv(total_elements, meta['BLOCK_SIZE']),)
+        max_pool_2d_kernel[grid](
+            x, output,
+            batch_size, channels, height, width,
+            out_height, out_width,
+            self.stride, self.padding, self.dilation, self.kernel_size,
+            BLOCK_SIZE=1024
+        )
+        return output
+
+batch_size = 16
+channels = 32
+height = 128
+width = 128
+kernel_size = 2
+stride = 2
+padding = 1
+dilation = 3
+
+def get_inputs():
+    x = torch.randn(batch_size, channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [kernel_size, stride, padding, dilation]
+

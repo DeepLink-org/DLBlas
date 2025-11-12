@@ -1,0 +1,102 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _fused_ops_kernel(
+    x_ptr,
+    output_ptr,
+    batch_size,
+    spatial_size,
+    stride_batch,
+    stride_channel,
+    stride_spatial,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_SIZE_C: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_block = tl.program_id(1)
+    pid = tl.program_id(2)
+    
+    if pid_batch >= batch_size or pid_block * BLOCK_SIZE + pid >= spatial_size:
+        return
+    
+    spatial_idx = pid_block * BLOCK_SIZE + pid
+    offset_base = pid_batch * stride_batch + spatial_idx * stride_spatial
+    
+    # Vectorized load and activation
+    c_offsets = tl.arange(0, BLOCK_SIZE_C)
+    ptrs = x_ptr + offset_base + c_offsets * stride_channel
+    mask = c_offsets < BLOCK_SIZE_C
+    vals = tl.load(ptrs, mask=mask, other=0.0)
+    
+    # Fused HardSwish + ReLU
+    shifted = vals + 3.0
+    clipped = tl.minimum(tl.maximum(shifted, 0.0), 6.0)
+    activated = vals * clipped / 6.0
+    activated = tl.maximum(activated, 0.0)
+    
+    # Stable softmax
+    max_val = tl.max(activated, axis=0)
+    exp_vals = tl.exp(activated - max_val)
+    exp_sum = tl.sum(exp_vals, axis=0)
+    softmax_vals = exp_vals / exp_sum
+    
+    # Atomic accumulation
+    output_offsets = pid_batch * BLOCK_SIZE_C + c_offsets
+    tl.atomic_add(output_ptr + output_offsets, softmax_vals, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bias=True):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, bias=bias)
+        self.out_channels = out_channels
+        
+    def forward(self, x):
+        x = self.conv(x)
+        
+        # Reshape to [batch, channels, spatial]
+        batch_size, num_channels, depth, height, width = x.shape
+        spatial_size = depth * height * width
+        x = x.contiguous().view(batch_size, num_channels, spatial_size)
+        
+        # Prepare output tensor
+        output = torch.zeros((batch_size, num_channels), device=x.device, dtype=torch.float32)
+        
+        # Configure kernel launch
+        BLOCK_SIZE = 128
+        grid = (
+            batch_size, 
+            (spatial_size + BLOCK_SIZE - 1) // BLOCK_SIZE,
+            BLOCK_SIZE
+        )
+        
+        # Launch kernel
+        _fused_ops_kernel[grid](
+            x,
+            output,
+            batch_size,
+            spatial_size,
+            x.stride(0),
+            x.stride(1),
+            x.stride(2),
+            BLOCK_SIZE=BLOCK_SIZE,
+            BLOCK_SIZE_C=num_channels
+        )
+        
+        # Final mean calculation
+        return output / spatial_size
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

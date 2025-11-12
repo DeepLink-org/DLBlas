@@ -1,0 +1,104 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _layer_norm_gelu_scale_fwd(
+    x_ptr, 
+    y_ptr,
+    weight_ptr,
+    bias_ptr,
+    N, 
+    C, 
+    eps,
+    scaling_factor,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    row_start = row_idx * C
+    
+    # Compute mean and variance
+    mean = 0.0
+    mean_sq = 0.0
+    for offset in range(0, C, BLOCK_SIZE):
+        cols = offset + tl.arange(0, BLOCK_SIZE)
+        mask = cols < C
+        x = tl.load(x_ptr + row_start + cols, mask=mask, other=0.0)
+        x_float = x.to(tl.float32)
+        mean += tl.sum(x_float, axis=0)
+        mean_sq += tl.sum(x_float * x_float, axis=0)
+    
+    mean /= C
+    mean_sq /= C
+    var = mean_sq - mean * mean
+
+    # Normalize, apply weights/biases, GELU, and scaling
+    for offset in range(0, C, BLOCK_SIZE):
+        cols = offset + tl.arange(0, BLOCK_SIZE)
+        mask = cols < C
+        x = tl.load(x_ptr + row_start + cols, mask=mask, other=0.0)
+        x_float = x.to(tl.float32)
+        
+        # LayerNorm
+        normalized = (x_float - mean) * tl.math.rsqrt(var + eps)
+        w = tl.load(weight_ptr + cols, mask=mask)
+        b = tl.load(bias_ptr + cols, mask=mask)
+        x_scaled = normalized * w + b
+        
+        # GELU with erf approximation (matches PyTorch default)
+        gelu_x = x_scaled * 0.5 * (1.0 + tl.erf(x_scaled * 0.7071067811865475))
+        
+        # Apply scaling and store
+        output = gelu_x * scaling_factor
+        tl.store(y_ptr + row_start + cols, output, mask=mask)
+
+def custom_layer_norm_gelu_scale(x, weight, bias, eps, scaling_factor):
+    N, C = x.shape
+    y = torch.empty_like(x)
+    block_size = triton.next_power_of_2(C)
+    if block_size < 16:
+        block_size = 16
+    grid = (N,)
+    _layer_norm_gelu_scale_fwd[grid](
+        x, y, weight, bias, 
+        N, C, eps, scaling_factor,
+        BLOCK_SIZE=block_size
+    )
+    return y
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True, eps=1e-5, scaling_factor=1.0):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+        self.weight = nn.Parameter(torch.ones(out_channels))
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.eps = eps
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        batch, c, d, h, w = x.shape
+        # Corrected view: normalize along original last dimension (w)
+        x = x.contiguous().view(-1, w)
+        x = custom_layer_norm_gelu_scale(x, self.weight, self.bias, self.eps, self.scaling_factor)
+        x = x.view(batch, c, d, h, w)
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+D, H, W = 16, 32, 32
+kernel_size = 4
+stride = 2
+padding = 1
+bias = True
+eps = 1e-5
+scaling_factor = 1.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, bias, eps, scaling_factor]

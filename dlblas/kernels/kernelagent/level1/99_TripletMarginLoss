@@ -1,0 +1,82 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _triplet_loss_kernel(
+    anchor_ptr,
+    positive_ptr,
+    negative_ptr,
+    loss_ptr,
+    margin,
+    feature_dim,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    base_anchor = anchor_ptr + pid * feature_dim
+    base_positive = positive_ptr + pid * feature_dim
+    base_negative = negative_ptr + pid * feature_dim
+    
+    accum_ap = 0.0
+    accum_an = 0.0
+    
+    for j in range(0, feature_dim, BLOCK_SIZE):
+        offsets = j + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < feature_dim
+        
+        a = tl.load(base_anchor + offsets, mask=mask, other=0.0)
+        p = tl.load(base_positive + offsets, mask=mask, other=0.0)
+        n = tl.load(base_negative + offsets, mask=mask, other=0.0)
+        
+        diff_ap = a - p
+        diff_an = a - n
+        
+        accum_ap += tl.sum(diff_ap * diff_ap, axis=0)
+        accum_an += tl.sum(diff_an * diff_an, axis=0)
+    
+    d_ap = tl.sqrt(accum_ap)
+    d_an = tl.sqrt(accum_an)
+    
+    loss_val = tl.maximum(d_ap - d_an + margin, 0.0)
+    tl.store(loss_ptr + pid, loss_val)
+
+class ModelNew(nn.Module):
+    def __init__(self, margin=1.0):
+        super(ModelNew, self).__init__()
+        self.margin = margin
+
+    def forward(self, anchor, positive, negative):
+        batch_size = anchor.size(0)
+        feature_dim = anchor.size(1)
+        
+        if batch_size == 0:
+            return torch.tensor(0.0, device=anchor.device)
+        
+        anchor = anchor.contiguous()
+        positive = positive.contiguous()
+        negative = negative.contiguous()
+        
+        losses = torch.empty(batch_size, device=anchor.device, dtype=anchor.dtype)
+        
+        grid = (batch_size,)
+        BLOCK = 1024
+        
+        _triplet_loss_kernel[grid](
+            anchor, positive, negative, losses,
+            self.margin, feature_dim,
+            BLOCK_SIZE=BLOCK
+        )
+        
+        return losses.mean()
+
+batch_size = 128
+input_shape = (4096, )
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return [1.0]  # Default margin
+

@@ -1,0 +1,68 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _elementwise_kernel(
+    x_ptr,
+    add_value,
+    multiply_value,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    x = tl.load(x_ptr + offsets, mask=mask)
+    x = x + add_value
+    x = tl.minimum(x, 0.0)
+    # Compute GELU: 0.5 * x * (1 + erf(x / sqrt(2)))
+    x_erf = x * 0.7071067811865475  # 1/sqrt(2)
+    erf = tl.erf(x_erf)
+    gelu = 0.5 * x * (1.0 + erf)
+    gelu = gelu * multiply_value
+    tl.store(x_ptr + offsets, gelu, mask=mask)
+
+class ModelNew(nn.Module):
+    """
+    Model that performs a transposed convolution, adds a value, takes the minimum, applies GELU, and multiplies by a value.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, add_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride)
+        self.add_value = add_value
+        self.multiply_value = multiply_value
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        # Process element-wise operations with Triton kernel
+        x_contig = x.contiguous()
+        n_elements = x_contig.numel()
+        if n_elements > 0:
+            grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+            _elementwise_kernel[grid](
+                x_contig, 
+                self.add_value, 
+                self.multiply_value, 
+                n_elements, 
+                BLOCK_SIZE=1024
+            )
+        return x_contig.view_as(x)
+
+batch_size = 128
+in_channels = 32
+out_channels = 16
+height, width = 32, 32
+kernel_size = 4
+stride = 2
+add_value = 0.5
+multiply_value = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, add_value, multiply_value]

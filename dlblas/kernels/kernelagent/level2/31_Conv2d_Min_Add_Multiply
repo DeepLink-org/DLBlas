@@ -1,0 +1,87 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_min_bias_scale_kernel(
+    x_ptr,
+    output_ptr,
+    bias_ptr,
+    constant_value,
+    scaling_factor,
+    spatial_size,
+    n_channels,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    
+    spatial_offs = pid1 * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    spatial_mask = spatial_offs < spatial_size
+    channel_idx = pid0 % n_channels
+    
+    base_offset = pid0 * spatial_size
+    offsets = base_offset + spatial_offs
+    
+    x = tl.load(x_ptr + offsets, mask=spatial_mask, other=0.0)
+    bias_val = tl.load(bias_ptr + channel_idx)
+    
+    clipped = tl.minimum(x, constant_value)
+    biased = clipped + bias_val
+    result = biased * scaling_factor
+    
+    tl.store(output_ptr + offsets, result, mask=spatial_mask)
+
+def fused_min_bias_scale(x, bias, constant_value, scaling_factor):
+    if x.is_cuda:
+        n_batch, n_channels, height, width = x.shape
+        spatial_size = height * width
+        total_batch_channels = n_batch * n_channels
+        
+        output = torch.empty_like(x)
+        bias_contig = bias.contiguous().view(-1)
+        
+        BLOCK_SIZE = 128
+        grid = (total_batch_channels, triton.cdiv(spatial_size, BLOCK_SIZE))
+        
+        fused_min_bias_scale_kernel[grid](
+            x, output, bias_contig, constant_value, scaling_factor,
+            spatial_size, n_channels, BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+    else:
+        x = torch.min(x, torch.tensor(constant_value, device=x.device))
+        x = x + bias
+        return x * scaling_factor
+
+class ModelNew(nn.Module):
+    """
+    Simple model that performs a convolution, takes the minimum with a constant, adds a bias term, and multiplies by a scaling factor.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, constant_value, bias_shape, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.constant_value = constant_value
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = fused_min_bias_scale(x, self.bias, self.constant_value, self.scaling_factor)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+constant_value = 0.5
+bias_shape = (out_channels, 1, 1)
+scaling_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, constant_value, bias_shape, scaling_factor]
