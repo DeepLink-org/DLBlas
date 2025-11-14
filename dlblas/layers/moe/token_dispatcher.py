@@ -22,6 +22,7 @@ class DeepEPMode(Enum):
     LOW_LATENCY = "low_latency"
     AUTO = "auto"
 
+
 class DeepEPBuffer:
     _buffer_normal = None
     _buffer_low_latency = None
@@ -213,7 +214,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         expert_list: List[int] = None,
         previous_event=None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
         hidden_states, x_scales = x if isinstance(x, tuple) else (x, None)
         self.hidden_shape = hidden_states.shape
         topk_idx = topk_idx.to(torch.int64)
