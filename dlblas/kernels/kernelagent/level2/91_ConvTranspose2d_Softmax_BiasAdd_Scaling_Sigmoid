@@ -1,0 +1,143 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({}, num_warps=1, num_stages=1),
+        triton.Config({}, num_warps=1, num_stages=2),
+        triton.Config({}, num_warps=1, num_stages=4),
+        triton.Config({}, num_warps=2, num_stages=1),
+        triton.Config({}, num_warps=2, num_stages=2),
+        triton.Config({}, num_warps=2, num_stages=4),
+        triton.Config({}, num_warps=4, num_stages=1),
+        triton.Config({}, num_warps=4, num_stages=2),
+        triton.Config({}, num_warps=4, num_stages=4),
+        triton.Config({}, num_warps=8, num_stages=1),
+        triton.Config({}, num_warps=8, num_stages=2),
+        triton.Config({}, num_warps=8, num_stages=4),
+    ],
+    key=['channels', 'height', 'width'],
+)
+@triton.jit
+def _fused_ops_kernel(
+    input_ptr,
+    bias_ptr,
+    output_ptr,
+    scaling_factor,
+    channels,
+    height,
+    width,
+    stride_batch,
+    stride_channel,
+    stride_height,
+    stride_width,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    pixels_per_batch = height * width
+    total_pixels = tl.num_programs(0) * 2
+    
+    # Process two pixels per thread
+    pixel0 = pid * 2
+    pixel1 = pid * 2 + 1
+    
+    # Compute indices for first pixel
+    batch_idx0 = pixel0 // pixels_per_batch
+    hw0 = pixel0 % pixels_per_batch
+    h0 = hw0 // width
+    w0 = hw0 % width
+    base0 = batch_idx0 * stride_batch + h0 * stride_height + w0 * stride_width
+    
+    # Compute indices for second pixel
+    valid1 = pixel1 < total_pixels
+    batch_idx1 = tl.where(valid1, pixel1 // pixels_per_batch, 0)
+    hw1 = tl.where(valid1, pixel1 % pixels_per_batch, 0)
+    h1 = tl.where(valid1, hw1 // width, 0)
+    w1 = tl.where(valid1, hw1 % width, 0)
+    base1 = batch_idx1 * stride_batch + h1 * stride_height + w1 * stride_width
+    
+    # Load input data for both pixels
+    off_ch = tl.arange(0, BLOCK_SIZE)
+    mask = off_ch < channels
+    
+    x0 = tl.load(input_ptr + base0 + off_ch * stride_channel, mask=mask, other=-float('inf'))
+    x1 = tl.load(input_ptr + base1 + off_ch * stride_channel, mask=mask & valid1, other=-float('inf'))
+    
+    # Load bias once and reuse for both pixels
+    bias = tl.load(bias_ptr + off_ch, mask=mask, other=0.0)
+    
+    # Process first pixel
+    y0 = tl.softmax(x0)
+    y0 = (y0 + bias) * scaling_factor
+    y0 = tl.sigmoid(y0)
+    
+    # Process second pixel
+    y1 = tl.softmax(x1)
+    y1 = (y1 + bias) * scaling_factor
+    y1 = tl.sigmoid(y1)
+    
+    # Store results
+    tl.store(output_ptr + base0 + off_ch * stride_channel, y0, mask=mask)
+    tl.store(output_ptr + base1 + off_ch * stride_channel, y1, mask=mask & valid1)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape)) 
+        self.scaling_factor = scaling_factor
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        if not x.is_cuda:
+            return self._fallback_forward(x)
+            
+        batch, channels, height, width = x.shape
+        total_pixels = batch * height * width
+        
+        # Adjust grid for two pixels per thread
+        grid = ((total_pixels + 1) // 2,)
+        output = torch.empty_like(x)
+        BLOCK_SIZE = triton.next_power_of_2(channels)
+        
+        _fused_ops_kernel[grid](
+            x, 
+            self.bias, 
+            output, 
+            self.scaling_factor,
+            channels, 
+            height, 
+            width,
+            x.stride(0), 
+            x.stride(1), 
+            x.stride(2), 
+            x.stride(3),
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+    def _fallback_forward(self, x):
+        x = torch.softmax(x, dim=1)
+        x = x + self.bias
+        x = x * self.scaling_factor
+        return torch.sigmoid(x)
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+height, width = 16, 16
+kernel_size = 4
+stride = 2
+padding = 1
+output_padding = 1
+bias_shape = (out_channels, 1, 1)
+scaling_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape, scaling_factor]

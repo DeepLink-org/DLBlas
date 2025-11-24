@@ -1,0 +1,80 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _instance_norm_kernel(
+    x_ptr,
+    output_ptr,
+    stride_n,
+    stride_c,
+    H,
+    W,
+    eps,
+    total_pixels,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    feature_map_start = pid * total_pixels
+    
+    # Initialize accumulators
+    sum_val = 0.0
+    sq_val = 0.0
+    
+    # First pass: compute mean and variance
+    for offset in range(0, total_pixels, BLOCK_SIZE):
+        idxs = offset + tl.arange(0, BLOCK_SIZE)
+        mask = idxs < total_pixels
+        block = tl.load(x_ptr + feature_map_start + idxs, mask=mask, other=0.0)
+        sum_val += tl.sum(block, axis=0)
+        sq_val += tl.sum(block * block, axis=0)
+    
+    mean = sum_val / total_pixels
+    variance = (sq_val / total_pixels) - (mean * mean)
+    denom = tl.sqrt(variance + eps)
+    
+    # Second pass: normalize and store
+    for offset in range(0, total_pixels, BLOCK_SIZE):
+        idxs = offset + tl.arange(0, BLOCK_SIZE)
+        mask = idxs < total_pixels
+        block = tl.load(x_ptr + feature_map_start + idxs, mask=mask, other=0.0)
+        normalized = (block - mean) / denom
+        tl.store(output_ptr + feature_map_start + idxs, normalized, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, num_features: int):
+        super(ModelNew, self).__init__()
+        self.num_features = num_features
+        self.eps = 1e-5
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        N, C, H, W = x.shape
+        total_pixels = H * W
+        grid = (N * C,)
+        
+        # Optimized block size for 256x256 feature maps
+        BLOCK_SIZE = 4096
+        
+        _instance_norm_kernel[grid](
+            x, output,
+            x.stride(0), x.stride(1),
+            H, W, self.eps,
+            total_pixels,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+batch_size = 16
+features = 64
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [features]

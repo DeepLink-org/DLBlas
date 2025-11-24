@@ -1,0 +1,125 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _depthwise_conv2d_forward(
+    x_ptr, weight_ptr, bias_ptr, output_ptr,
+    batch_size, in_channels, height_in, width_in,
+    out_channels, kernel_size, stride, padding,
+    height_out, width_out,
+    x_batch_stride, x_channel_stride, x_height_stride, x_width_stride,
+    weight_channel_stride, weight_height_stride, weight_width_stride,
+    output_batch_stride, output_channel_stride, output_height_stride, output_width_stride,
+    BLOCK_SIZE: tl.constexpr,
+    USE_BIAS: tl.constexpr
+):
+    pid = tl.program_id(0)
+    num_pixels = height_out * width_out
+    num_operations = batch_size * out_channels * num_pixels
+    num_blocks = tl.cdiv(num_operations, BLOCK_SIZE)
+    
+    if pid >= num_blocks:
+        return
+    
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_operations
+    
+    batch_idx = offsets // (out_channels * num_pixels)
+    residual = offsets % (out_channels * num_pixels)
+    channel_idx = residual // num_pixels
+    pixel_idx = residual % num_pixels
+    
+    h_out = pixel_idx // width_out
+    w_out = pixel_idx % width_out
+    
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    for kh in range(kernel_size):
+        for kw in range(kernel_size):
+            h_in = h_out * stride - padding + kh
+            w_in = w_out * stride - padding + kw
+            
+            in_bounds = (h_in >= 0) & (h_in < height_in) & (w_in >= 0) & (w_in < width_in)
+            in_offsets = batch_idx * x_batch_stride + channel_idx * x_channel_stride + h_in * x_height_stride + w_in * x_width_stride
+            x_vals = tl.load(x_ptr + in_offsets, mask=mask & in_bounds, other=0.0)
+            
+            weight_offsets = channel_idx * weight_channel_stride + kh * weight_height_stride + kw * weight_width_stride
+            w_vals = tl.load(weight_ptr + weight_offsets, mask=mask, other=0.0)
+            
+            acc += x_vals * w_vals
+    
+    if USE_BIAS:
+        bias_vals = tl.load(bias_ptr + channel_idx, mask=mask, other=0.0)
+        acc += bias_vals
+    
+    output_offsets = batch_idx * output_batch_stride + channel_idx * output_channel_stride + h_out * output_height_stride + w_out * output_width_stride
+    tl.store(output_ptr + output_offsets, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        
+        self.weight = nn.Parameter(torch.empty(out_channels, 1, kernel_size, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, in_channels, height_in, width_in = x.shape
+        assert in_channels == self.in_channels, "Input channels mismatch"
+        
+        height_out = (height_in + 2 * self.padding - self.kernel_size) // self.stride + 1
+        width_out = (width_in + 2 * self.padding - self.kernel_size) // self.stride + 1
+        output = torch.empty((batch_size, self.out_channels, height_out, width_out), 
+                            device=x.device, dtype=x.dtype)
+        
+        BLOCK_SIZE = 128
+        num_operations = batch_size * self.out_channels * height_out * width_out
+        grid = (triton.cdiv(num_operations, BLOCK_SIZE),)
+        
+        _depthwise_conv2d_forward[grid](
+            x, self.weight, self.bias if self.bias is not None else None, output,
+            batch_size, self.in_channels, height_in, width_in,
+            self.out_channels, self.kernel_size, self.stride, self.padding,
+            height_out, width_out,
+            x.stride(0), x.stride(1), x.stride(2), x.stride(3),
+            self.weight.stride(0), self.weight.stride(2), self.weight.stride(3),
+            output.stride(0), output.stride(1), output.stride(2), output.stride(3),
+            BLOCK_SIZE,
+            self.bias is not None
+        )
+        
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 3
+kernel_size = 3
+width_in = 256
+height_in = 128
+stride = 1
+padding = 0
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height_in, width_in)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding]

@@ -1,0 +1,110 @@
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def batch_norm_forward_kernel(
+    x_ptr, 
+    mean_ptr, 
+    var_ptr, 
+    weight_ptr, 
+    bias_ptr, 
+    output_ptr,
+    eps: tl.constexpr,
+    stride_b, stride_c, stride_h, stride_w,
+    H: tl.constexpr, 
+    W: tl.constexpr,
+    B: tl.constexpr,
+    C: tl.constexpr,
+    affine: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    VEC_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    elements_per_block = BLOCK_SIZE * VEC_SIZE
+    spatial_blocks = tl.cdiv(H * W, elements_per_block)
+    batch_idx = pid // (C * spatial_blocks)
+    channel_idx = (pid // spatial_blocks) % C
+    spatial_pid = pid % spatial_blocks
+    
+    start_idx = spatial_pid * elements_per_block
+    vec_indices = start_idx + tl.arange(0, BLOCK_SIZE)[:, None] * VEC_SIZE + tl.arange(0, VEC_SIZE)[None, :]
+    vec_indices_flat = tl.reshape(vec_indices, [BLOCK_SIZE * VEC_SIZE])
+    mask = vec_indices_flat < (H * W)
+    
+    h_vals = vec_indices_flat // W
+    w_vals = vec_indices_flat % W
+    
+    x_offset = batch_idx * stride_b + channel_idx * stride_c + h_vals * stride_h + w_vals * stride_w
+    
+    mean_val = tl.load(mean_ptr + channel_idx)
+    var_val = tl.load(var_ptr + channel_idx)
+    
+    if affine:
+        weight_val = tl.load(weight_ptr + channel_idx)
+        bias_val = tl.load(bias_ptr + channel_idx)
+    else:
+        weight_val = 1.0
+        bias_val = 0.0
+    
+    inv_std = 1.0 / tl.sqrt(var_val + eps)
+    
+    # Vectorized load
+    x_vals = tl.load(x_ptr + x_offset, mask=mask, other=0.0)
+    normalized = (x_vals - mean_val) * inv_std
+    out_vals = normalized * weight_val + bias_val
+    
+    # Vectorized store
+    tl.store(output_ptr + x_offset, out_vals, mask=mask)
+
+class ModelNew(torch.nn.Module):
+    def __init__(self, num_features: int, eps=1e-5, affine=True):
+        super().__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.affine = affine
+        if affine:
+            self.weight = torch.nn.Parameter(torch.ones(num_features))
+            self.bias = torch.nn.Parameter(torch.zeros(num_features))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mean = x.mean(dim=(0, 2, 3))
+        var = x.var(dim=(0, 2, 3), unbiased=False)
+        
+        output = torch.empty_like(x)
+        B, C, H, W = x.shape
+        
+        VEC_SIZE = 4
+        BLOCK_SIZE = 256  # Now handles 1024 elements per block (256*4)
+        spatial_blocks = triton.cdiv(H * W, BLOCK_SIZE * VEC_SIZE)
+        grid = (B * C * spatial_blocks,)
+        
+        batch_norm_forward_kernel[grid](
+            x, mean, var, 
+            self.weight if self.weight is not None else torch.empty(0, device=x.device),
+            self.bias if self.bias is not None else torch.empty(0, device=x.device),
+            output,
+            self.eps,
+            x.stride(0), x.stride(1), x.stride(2), x.stride(3),
+            H, W,
+            B, C,
+            self.affine,
+            BLOCK_SIZE=BLOCK_SIZE,
+            VEC_SIZE=VEC_SIZE
+        )
+        return output
+
+batch_size = 16
+features = 64
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return [features]

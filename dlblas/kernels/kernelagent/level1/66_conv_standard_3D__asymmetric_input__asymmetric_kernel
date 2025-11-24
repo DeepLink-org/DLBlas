@@ -1,0 +1,201 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _conv3d_forward(
+    x_ptr, weight_ptr, bias_ptr, output_ptr,
+    in_channels, depth, height, width,
+    out_channels, kernel_d, kernel_h, kernel_w,
+    stride_d, stride_h, stride_w,
+    padding_d, padding_h, padding_w,
+    dilation_d, dilation_h, dilation_w,
+    groups,
+    depth_out, height_out, width_out,
+    total_output_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_output_elements
+    
+    # Calculate 5D indices
+    width_out_ = width_out
+    height_out_ = height_out
+    depth_out_ = depth_out
+    
+    ow_idx = offsets % width_out_
+    oh_idx = (offsets // width_out_) % height_out_
+    od_idx = (offsets // (width_out_ * height_out_)) % depth_out_
+    oc_idx = (offsets // (width_out_ * height_out_ * depth_out_)) % out_channels
+    batch_idx = offsets // (width_out_ * height_out_ * depth_out_ * out_channels)
+    
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Calculate window positions
+    start_w = tl.where(mask, ow_idx * stride_w - padding_w, 0)
+    start_h = tl.where(mask, oh_idx * stride_h - padding_h, 0)
+    start_d = tl.where(mask, od_idx * stride_d - padding_d, 0)
+    
+    # Group processing
+    group_size = in_channels // groups
+    group_id = oc_idx // (out_channels // groups)
+    start_ic = group_id * group_size
+    
+    # Loop through kernel dimensions
+    for kd in range(kernel_d):
+        d_loc = tl.where(mask, start_d + kd * dilation_d, -1)
+        d_in_bounds = (d_loc >= 0) & (d_loc < depth)
+        
+        for kh in range(kernel_h):
+            h_loc = tl.where(mask, start_h + kh * dilation_h, -1)
+            h_in_bounds = (h_loc >= 0) & (h_loc < height)
+            
+            for kw in range(kernel_w):
+                w_loc = tl.where(mask, start_w + kw * dilation_w, -1)
+                w_in_bounds = (w_loc >= 0) & (w_loc < width)
+                
+                # Loop through input channels in group
+                for ic_offset in range(0, group_size):
+                    ic = start_ic + ic_offset
+                    
+                    # Check bounds
+                    in_bounds = mask & d_in_bounds & h_in_bounds & w_in_bounds
+                    
+                    # Calculate input index
+                    input_idx = (
+                        batch_idx * in_channels * depth * height * width +
+                        ic * depth * height * width +
+                        d_loc * height * width +
+                        h_loc * width +
+                        w_loc
+                    )
+                    
+                    # Load input and weight
+                    x_val = tl.load(
+                        x_ptr + input_idx, 
+                        mask=in_bounds,
+                        other=0.0
+                    )
+                    
+                    weight_idx = (
+                        oc_idx * (in_channels // groups) * kernel_d * kernel_h * kernel_w +
+                        ic_offset * kernel_d * kernel_h * kernel_w +
+                        kd * kernel_h * kernel_w +
+                        kh * kernel_w +
+                        kw
+                    )
+                    w_val = tl.load(weight_ptr + weight_idx, mask=mask, other=0.0)
+                    
+                    # Accumulate
+                    acc += tl.where(in_bounds, x_val * w_val, 0.0)
+    
+    # Add bias if present
+    if bias_ptr is not None:
+        bias_val = tl.load(bias_ptr + oc_idx, mask=mask, other=0.0)
+        acc += bias_val
+    
+    # Store result
+    output_idx = (
+        batch_idx * out_channels * depth_out * height_out * width_out +
+        oc_idx * depth_out * height_out * width_out +
+        od_idx * height_out * width_out +
+        oh_idx * width_out +
+        ow_idx
+    )
+    tl.store(output_ptr + output_idx, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, stride: tuple = (1, 1, 1), padding: tuple = (0, 0, 0), dilation: tuple = (1, 1, 1), groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        
+        # Initialize parameters
+        self.weight = nn.Parameter(torch.empty(
+            out_channels,
+            in_channels // groups,
+            *kernel_size
+        ))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.bias = None
+            
+        # Reset parameters
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Get dimensions
+        batch_size, in_channels, depth, height, width = x.shape
+        kd, kh, kw = self.kernel_size
+        sd, sh, sw = self.stride
+        pd, ph, pw = self.padding
+        dd, dh, dw = self.dilation
+        
+        # Calculate output dimensions
+        depth_out = (depth + 2 * pd - dd * (kd - 1) - 1) // sd + 1
+        height_out = (height + 2 * ph - dh * (kh - 1) - 1) // sh + 1
+        width_out = (width + 2 * pw - dw * (kw - 1) - 1) // sw + 1
+        
+        # Prepare inputs
+        x = x.contiguous()
+        weight = self.weight.contiguous()
+        bias = self.bias.contiguous() if self.bias is not None else None
+        
+        # Create output tensor
+        output = torch.empty(
+            (batch_size, self.out_channels, depth_out, height_out, width_out),
+            device=x.device,
+            dtype=x.dtype
+        )
+        total_output_elements = output.numel()
+        
+        # Launch kernel
+        grid = lambda meta: (triton.cdiv(total_output_elements, meta['BLOCK_SIZE']),)
+        _conv3d_forward[grid](
+            x, weight, bias, output,
+            in_channels, depth, height, width,
+            self.out_channels, kd, kh, kw,
+            sd, sh, sw,
+            pd, ph, pw,
+            dd, dh, dw,
+            self.groups,
+            depth_out, height_out, width_out,
+            total_output_elements,
+            BLOCK_SIZE=128
+        )
+        
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = (3, 5, 7)  # Asymmetric kernel size
+depth = 16
+height = 256
+width = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, depth, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]  # Provide in_channels, out_channels, kernel_size for initialization

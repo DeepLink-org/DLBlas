@@ -1,0 +1,184 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _conv2d_forward(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    # Tensor dimensions
+    batch_size, in_channels, height, width,
+    out_channels, kernel_size, 
+    stride_h, stride_w,
+    padding_h, padding_w,
+    dilation_h, dilation_w,
+    # Output dimensions
+    height_out, width_out,
+    # Other
+    bias_available: tl.constexpr,
+    # Block dimensions
+    BLOCK_H: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+    BLOCK_OC: tl.constexpr,
+):
+    pid_b = tl.program_id(0)
+    pid_oc = tl.program_id(1)
+    pid_block = tl.program_id(2)
+    
+    # Spatial block decomposition
+    num_blocks_w = tl.cdiv(width_out, BLOCK_W)
+    block_h_idx = pid_block // num_blocks_w
+    block_w_idx = pid_block % num_blocks_w
+    
+    # Output offsets
+    h_start = block_h_idx * BLOCK_H
+    w_start = block_w_idx * BLOCK_W
+    oc_start = pid_oc * BLOCK_OC
+    
+    # Create masks for boundary checks
+    h_mask = h_start + tl.arange(0, BLOCK_H) < height_out
+    w_mask = w_start + tl.arange(0, BLOCK_W) < width_out
+    oc_mask = oc_start + tl.arange(0, BLOCK_OC) < out_channels
+    spatial_mask = h_mask[:, None] & w_mask[None, :]
+    
+    # Initialize output block
+    output_block = tl.zeros((BLOCK_OC, BLOCK_H, BLOCK_W), dtype=tl.float32)
+    
+    # Precompute base indices using constexpr ranges
+    h_idx = tl.arange(0, BLOCK_H)
+    w_idx = tl.arange(0, BLOCK_W)
+    
+    # Loop over input channels
+    for c_in in range(0, in_channels):
+        # Loop over kernel height
+        for kh in range(0, kernel_size):
+            # Loop over kernel width
+            for kw in range(0, kernel_size):
+                # Compute input positions using precomputed indices
+                h_in = (h_start + h_idx) * stride_h + kh * dilation_h - padding_h
+                w_in = (w_start + w_idx) * stride_w + kw * dilation_w - padding_w
+                
+                # Create input masks
+                h_in_mask = (h_in >= 0) & (h_in < height)
+                w_in_mask = (w_in >= 0) & (w_in < width)
+                in_mask = h_in_mask[:, None] & w_in_mask[None, :]
+                
+                # Compute input offsets
+                x_offsets = pid_b * in_channels * height * width + c_in * height * width + \
+                            h_in[:, None] * width + w_in[None, :]
+                
+                # Load input block
+                x_block = tl.load(x_ptr + x_offsets, mask=in_mask, other=0.0)
+                
+                # Compute weight offsets
+                weight_offsets = (oc_start + tl.arange(0, BLOCK_OC))[:, None, None] * in_channels * kernel_size * kernel_size + \
+                                c_in * kernel_size * kernel_size + kh * kernel_size + kw
+                
+                # Load weights
+                weights = tl.load(weight_ptr + weight_offsets, mask=oc_mask[:, None, None], other=0.0)
+                
+                # Accumulate
+                output_block += weights * x_block
+    
+    # Add bias if available
+    if bias_available:
+        bias = tl.load(bias_ptr + oc_start + tl.arange(0, BLOCK_OC), mask=oc_mask, other=0.0)
+        output_block += bias[:, None, None]
+    
+    # Compute output offsets
+    output_offsets = pid_b * out_channels * height_out * width_out + \
+                    (oc_start + tl.arange(0, BLOCK_OC))[:, None, None] * height_out * width_out + \
+                    (h_start + tl.arange(0, BLOCK_H))[None, :, None] * width_out + \
+                    (w_start + tl.arange(0, BLOCK_W))[None, None, :]
+    
+    # Write output block
+    output_mask = oc_mask[:, None, None] & spatial_mask[None, :, :]
+    tl.store(output_ptr + output_offsets, output_block, mask=output_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, 
+                 groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        if groups != 1:
+            raise NotImplementedError("Only groups=1 is supported")
+            
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        self.padding = padding if isinstance(padding, tuple) else (padding, padding)
+        self.dilation = dilation if isinstance(dilation, tuple) else (dilation, dilation)
+        self.groups = groups
+        self.bias = bias
+        
+        # Initialize weights
+        self.weight = nn.Parameter(torch.empty(
+            out_channels, in_channels, kernel_size, kernel_size
+        ))
+        if bias:
+            self.bias_param = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias_param', None)
+            
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias_param is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias_param, -bound, bound)
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Calculate output dimensions
+        batch_size, _, height, width = x.shape
+        stride_h, stride_w = self.stride
+        padding_h, padding_w = self.padding
+        dilation_h, dilation_w = self.dilation
+        
+        height_out = (height + 2 * padding_h - dilation_h * (self.kernel_size - 1) - 1) // stride_h + 1
+        width_out = (width + 2 * padding_w - dilation_w * (self.kernel_size - 1) - 1) // stride_w + 1
+        
+        # Create output tensor
+        output = torch.empty((batch_size, self.out_channels, height_out, width_out), 
+                             device=x.device, dtype=x.dtype)
+        
+        # Configure kernel launch parameters
+        BLOCK_H, BLOCK_W, BLOCK_OC = 16, 16, 8
+        grid_b = batch_size
+        grid_oc = triton.cdiv(self.out_channels, BLOCK_OC)
+        grid_blocks = triton.cdiv(height_out, BLOCK_H) * triton.cdiv(width_out, BLOCK_W)
+        
+        # Launch kernel
+        _conv2d_forward[(grid_b, grid_oc, grid_blocks)](
+            x, self.weight, self.bias_param, output,
+            batch_size, self.in_channels, height, width,
+            self.out_channels, self.kernel_size,
+            stride_h, stride_w,
+            padding_h, padding_w,
+            dilation_h, dilation_w,
+            height_out, width_out,
+            self.bias_param is not None,
+            BLOCK_H=BLOCK_H, 
+            BLOCK_W=BLOCK_W, 
+            BLOCK_OC=BLOCK_OC,
+        )
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = 3
+width = 256
+height = 128  # Asymmetric input
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]  # Provide in_channels, out_channels, kernel_size for initialization
