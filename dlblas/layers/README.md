@@ -1,6 +1,6 @@
 ## 版本说明
-deepgemm： commit 03d0be3d2d03b6eed3c99d683c0620949a13a826
+deepgemm： v2.1.1.post3
 
-deepep： commit 9fe9021f29c9083cd1808ab36b740208524d9f63
+deepep： v1.2.1
 
 依赖的第三方算子只在上述特定版本做过测试，不保证其他版本的兼容性。如果遇到兼容性问题请检查版本。
