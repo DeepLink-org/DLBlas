@@ -10,6 +10,7 @@ from packaging.version import Version
 
 from dlblas.utils.device_utils import infer_device, is_npu
 
+
 def get_tl_exp():
     if is_npu():
         from triton.language.math import exp as tl_exp
@@ -18,6 +19,10 @@ def get_tl_exp():
     else:
         from triton.language.math import fast_expf as tl_exp
     return tl_exp
+
+
+exp = get_tl_exp()
+
 
 def get_tl_log():
     if is_npu():
@@ -35,7 +40,7 @@ def get_tl_tanh():
             from triton.language.extra.ascend.libdevice import tanh
         except ModuleNotFoundError:
             tanh = None
-    if triton.__version__ >= '3.0.0':
+    if triton.__version__ >= "3.0.0":
         try:
             # typical import path with dispatch available
             from triton.language.extra.libdevice import tanh
@@ -56,7 +61,8 @@ def _is_equal(a, b):
         return a is b
     # Whitelist of types that are safe to compare by value for caching.
     if isinstance(a, (int, float, str, bool, type(None))) and isinstance(
-            b, (int, float, str, bool, type(None))):
+        b, (int, float, str, bool, type(None))
+    ):
         return a == b
     # For other types, we cannot guarantee a cheap and safe comparison, so we fail the cache check.
     return False
@@ -90,9 +96,11 @@ def tensor_cache(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]
             if len(args) == len(last_args) and len(kwargs) == len(last_kwargs):
                 # For Tensors, check for object identity. For other types, check for equality.
                 # Python caches small integers, so `is` works for them but not for large integers like 4096.
-                if all(_is_equal(a, b) for a, b in zip(args, last_args)) and \
-                   set(kwargs.keys()) == set(last_kwargs.keys()) and \
-                   all(_is_equal(v, last_kwargs[k]) for k, v in kwargs.items()):
+                if (
+                    all(_is_equal(a, b) for a, b in zip(args, last_args))
+                    and set(kwargs.keys()) == set(last_kwargs.keys())
+                    and all(_is_equal(v, last_kwargs[k]) for k, v in kwargs.items())
+                ):
                     return last_result
 
         result = fn(*args, **kwargs)
@@ -153,13 +161,14 @@ def assert_tensors_similar(x, y, eps=1e-8, name="tensor", raise_assert=True):
         raise_assert: Whether to raise assertion error on failure
     """
     sim = calculate_tensor_similarity(x, y, name)
-    diff = 1. - sim
+    diff = 1.0 - sim
     if not (0 <= diff <= eps):
         print(
             f"\033[31mERROR: {name} similarity check failed, diff={diff:.2e} (threshold={eps:.2e})\033[0m"
         )
         if raise_assert:
             assert False  # noqa: B011
+
 
 class DisposibleTensor:
 
@@ -189,35 +198,37 @@ class DisposibleTensor:
         return self._value is None
 
     @staticmethod
-    def maybe_unwrap(value: 'MaybeDisposibleTensor') -> torch.Tensor:
+    def maybe_unwrap(value: "MaybeDisposibleTensor") -> torch.Tensor:
         if isinstance(value, DisposibleTensor):
             return value.value
         return value
 
     @staticmethod
-    def maybe_dispose(value: 'MaybeDisposibleTensor') -> torch.Tensor:
+    def maybe_dispose(value: "MaybeDisposibleTensor") -> torch.Tensor:
         if isinstance(value, DisposibleTensor):
             value.dispose()
 
     @property
     def shape(self):
-        return self._get_metadata('shape')
+        return self._get_metadata("shape")
 
     @property
     def device(self):
-        return self._get_metadata('device')
+        return self._get_metadata("device")
 
     @property
     def dtype(self):
-        return self._get_metadata('dtype')
+        return self._get_metadata("dtype")
 
     def _get_metadata(self, name: str):
         if not self.is_disposed:
             return getattr(self._value, name)
-        assert (self._backup_metadata is not None), 'Use backup_metadata flag if you want to use metadata after dispose'
+        assert (
+            self._backup_metadata is not None
+        ), "Use backup_metadata flag if you want to use metadata after dispose"
         return self._backup_metadata[name]
 
-    _BACKUP_METADATA_KEYS = ['shape', 'device', 'dtype']
+    _BACKUP_METADATA_KEYS = ["shape", "device", "dtype"]
 
     @staticmethod
     def _compute_backup_metadata(value: torch.Tensor):
@@ -238,7 +249,7 @@ def compare_version(package: str, operator: Callable, target: str):
 
 def get_amp_custom_fwd_bwd() -> Callable:
     device = infer_device()
-    if compare_version('torch', operator.ge, '2.4.0'):
+    if compare_version("torch", operator.ge, "2.4.0"):
         return (
             functools.partial(torch.amp.custom_fwd, device_type=device),
             functools.partial(torch.amp.custom_bwd, device_type=device),
@@ -247,3 +258,43 @@ def get_amp_custom_fwd_bwd() -> Callable:
 
 
 amp_custom_fwd, amp_custom_bwd = get_amp_custom_fwd_bwd()
+
+
+def tensor_cache(
+    fn: Callable[..., torch.Tensor],
+) -> Callable[..., torch.Tensor]:
+    """
+    A decorator that caches the most recent result of a function with tensor inputs.
+
+    This decorator will store the output of the decorated function for the most recent set of input tensors.
+    If the function is called again with the same input tensors, it will return the cached result.
+
+
+    Args:
+        fn (Callable[..., torch.Tensor]):
+            The function to be decorated. It should take tensor inputs and return tensor outputs.
+
+    Returns:
+        Callable[..., torch.Tensor]:
+            A wrapped version of the input function with single-entry caching.
+    """
+    last_args: tuple | None = None
+    last_kwargs: dict | None = None
+    last_result: Any = None
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        nonlocal last_args, last_kwargs, last_result
+
+        if last_args is not None and last_kwargs is not None:
+            if len(args) == len(last_args) and len(kwargs) == len(last_kwargs):
+                if all(a is b for a, b in zip(args, last_args, strict=False)) and all(
+                    k in last_kwargs and v is last_kwargs[k] for k, v in kwargs.items()
+                ):
+                    return last_result
+
+        result = fn(*args, **kwargs)
+        last_args, last_kwargs, last_result = args, kwargs, result
+        return result
+
+    return wrapper
