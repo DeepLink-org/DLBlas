@@ -21,7 +21,7 @@ requires-python = ">=3.10"
 dynamic = [ "version", "dependencies", "optional-dependencies"]
 
 [project.urls]
-Homepage="https://github.com/DeepLink-org/dlBLAS"
+Homepage="https://github.com/DeepLink-org/DLBlas"
 
 [tool.setuptools.packages.find]
 where = ["."]
