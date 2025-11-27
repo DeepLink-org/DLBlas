@@ -1,6 +1,8 @@
 import triton
 import triton.language as tl
 
+from dlblas.utils.device_utils import is_tma_supported
+
 
 @triton.jit
 def grouped_launch_swizzling(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
@@ -17,7 +19,7 @@ def grouped_launch_swizzling(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
     return pid_m, pid_n
 
 
-'''
+"""
     水平分核方式每个任务块编号如下
     [0,  1,  2,  3,  4,  5,  6,  7]
     [8,  9,  10, 11, 12, 13, 14, 15]
@@ -54,23 +56,81 @@ def grouped_launch_swizzling(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
     M轴方向超过8个基本块时,使用对角线分核可以明显减小Bank冲突 
     当右矩阵大小超过L2Cache大小时,采取对角线分核可以提升L2Cache利用率
     所以当矩阵在M和N方向均超过8块时使能对角线分核即可有优化,当右矩阵大小超过L2Cache大小时优化效果尤为明显
-'''
+"""
+
+
 @triton.jit
 def grouped_launch_diagonal(pid, num_pid_m, num_pid_n, BLOCK_TRESHHOLD: tl.constexpr):
     if (num_pid_m >= BLOCK_TRESHHOLD) and (num_pid_n >= BLOCK_TRESHHOLD):
-        # 对角线分核代码实现 
-        curThresholdM = BLOCK_TRESHHOLD if pid < (num_pid_m // BLOCK_TRESHHOLD * BLOCK_TRESHHOLD) * num_pid_n else num_pid_m % BLOCK_TRESHHOLD
+        # 对角线分核代码实现
+        curThresholdM = (
+            BLOCK_TRESHHOLD
+            if pid < (num_pid_m // BLOCK_TRESHHOLD * BLOCK_TRESHHOLD) * num_pid_n
+            else num_pid_m % BLOCK_TRESHHOLD
+        )
         curThresholdM_thresholdN = curThresholdM * BLOCK_TRESHHOLD
-        curThresholdN = BLOCK_TRESHHOLD if pid % (num_pid_n * BLOCK_TRESHHOLD) < (curThresholdM * num_pid_n) // curThresholdM_thresholdN * curThresholdM_thresholdN else num_pid_n % BLOCK_TRESHHOLD
-        localRelativeBlock = pid % (BLOCK_TRESHHOLD * num_pid_n) % (BLOCK_TRESHHOLD * curThresholdM)
-        task_m_idx = localRelativeBlock % curThresholdM + pid // (BLOCK_TRESHHOLD * num_pid_n) * BLOCK_TRESHHOLD
+        curThresholdN = (
+            BLOCK_TRESHHOLD
+            if pid % (num_pid_n * BLOCK_TRESHHOLD)
+            < (curThresholdM * num_pid_n)
+            // curThresholdM_thresholdN
+            * curThresholdM_thresholdN
+            else num_pid_n % BLOCK_TRESHHOLD
+        )
+        localRelativeBlock = (
+            pid % (BLOCK_TRESHHOLD * num_pid_n) % (BLOCK_TRESHHOLD * curThresholdM)
+        )
+        task_m_idx = (
+            localRelativeBlock % curThresholdM
+            + pid // (BLOCK_TRESHHOLD * num_pid_n) * BLOCK_TRESHHOLD
+        )
         # 求最小公倍数，方便求基本块的坐标
-        x, y = curThresholdM, curThresholdN if curThresholdM > curThresholdN else curThresholdN, curThresholdM
+        x, y = (
+            curThresholdM,
+            curThresholdN if curThresholdM > curThresholdN else curThresholdN,
+            curThresholdM,
+        )
         while y != 0:
             x, y = y, x % y
         lcm = curThresholdM * curThresholdN // x
-        task_n_idx = (localRelativeBlock + (localRelativeBlock // lcm)) % curThresholdN + pid % (BLOCK_TRESHHOLD * num_pid_n) // curThresholdM_thresholdN * BLOCK_TRESHHOLD
+        task_n_idx = (
+            localRelativeBlock + (localRelativeBlock // lcm)
+        ) % curThresholdN + pid % (
+            BLOCK_TRESHHOLD * num_pid_n
+        ) // curThresholdM_thresholdN * BLOCK_TRESHHOLD
     else:
         task_m_idx = pid // num_pid_n
         task_n_idx = pid % num_pid_n
     return task_m_idx, task_n_idx
+
+
+def get_make_tensor_descriptor_func():
+    if is_tma_supported() and hasattr(
+        triton.language, "_experimental_make_tensor_descriptor"
+    ):
+        # For Triton 3.3.x
+        make_tensor_descriptor = triton.language._experimental_make_tensor_descriptor
+    elif is_tma_supported() and hasattr(triton.language, "make_tensor_descriptor"):
+        # For Triton 3.4.x and later
+        make_tensor_descriptor = triton.language.make_tensor_descriptor
+    else:
+        """
+        Fallback implementation when TMA is not supported.
+        Returns None to indicate TMA descriptors are unavailable.
+        Just make triton compiler happy.
+        """
+
+        @triton.jit
+        def make_tensor_descriptor(
+            base,
+            shape,
+            strides,
+            block_shape,
+            _builder=None,
+        ):
+            return None
+
+    return make_tensor_descriptor
+
+
+make_tensor_descriptor = get_make_tensor_descriptor_func()
