@@ -131,14 +131,27 @@ def test_rms_norm_rope():
         return triton.testing.do_bench(lambda: fn(*args), warmup=10, rep=20)
 
     # Triton 版本性能
-    tri_time = benchmark_fn(rms_norm_rope, qkv_base1, positions1, num_heads, num_kv_heads, head_dim, num_tokens)
+    tri_time = benchmark_fn(
+        rms_norm_rope,
+        qkv_base1,
+        positions1,
+        num_heads,
+        num_kv_heads,
+        head_dim,
+        num_tokens,
+    )
 
     # PyTorch 版本性能
-    torch_time = benchmark_fn(_apply_qk_norm_rope, qkv_base, positions, num_heads, num_kv_heads, head_dim)
+    torch_time = benchmark_fn(
+        _apply_qk_norm_rope, qkv_base, positions, num_heads, num_kv_heads, head_dim
+    )
 
     # 打印性能对比结果
     print(f"\n=== 性能对比 ===")
-    print(f"Triton: {tri_time:.4f} ms | PyTorch: {torch_time:.4f} ms | 加速比: {torch_time/tri_time:.2f}x")
+    print(
+        f"Triton: {tri_time:.4f} ms | PyTorch: {torch_time:.4f} ms | 加速比: {torch_time/tri_time:.2f}x"
+    )
+
 
 if __name__ == "__main__":
     test_rms_norm_rope()
