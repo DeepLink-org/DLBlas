@@ -151,8 +151,6 @@ def rms_norm_rope_kernel(
         var_q = tl.expand_dims(var_q, -1)
         q1_sub_data = q1_sub_data * tl.math.rsqrt(var_q + 1e-5)
         q2_sub_data = q2_sub_data * tl.math.rsqrt(var_q + 1e-5)
-        k1_sub_data = tl.view(k1_sub_data, SUB_BLK, kv_size // head_dim, head_dim // 2)
-        k2_sub_data = tl.view(k2_sub_data, SUB_BLK, kv_size // head_dim, head_dim // 2)
         q1_sub_data = weight_data * q1_sub_data
         q2_sub_data = weight_data * q2_sub_data
         var_k1 = tl.sum(k1_sub_data * k1_sub_data, axis=-1) / head_dim
@@ -269,6 +267,7 @@ def rms_norm_rope(
         head_dim,
         BLOCK_SIZE,
         BLOCK_SIZE // 2,
+        enable_auto_bind_sub_block=False,
     )
     q_out = torch.cat([q1_out, q2_out], dim=-1)
     k_out = torch.cat([k1_out, k2_out], dim=-1)
