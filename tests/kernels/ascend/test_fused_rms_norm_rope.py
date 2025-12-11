@@ -98,7 +98,7 @@ def _apply_qk_norm_rope(
 
 def test_rms_norm_rope():
     """test rms norm rope."""
-    num_heads, num_kv_heads, head_dim = 4, 4, 16
+    num_heads, num_kv_heads, head_dim = 16, 4, 128
     num_tokens = 4
 
     total_dim = (num_heads + 2 * num_kv_heads) * head_dim
@@ -122,6 +122,7 @@ def test_rms_norm_rope():
         num_heads_kv=num_kv_heads,
         head_dim=head_dim,
         num_tokens=num_tokens,
+        BLOCK_SIZE=2,
     )
     assert torch.allclose(torch_output, triton_output, atol=1e-2, rtol=0)
     print("test rms_norm_rope passed!")
@@ -139,6 +140,7 @@ def test_rms_norm_rope():
         num_kv_heads,
         head_dim,
         num_tokens,
+        2,
     )
 
     # PyTorch 版本性能
