@@ -12,9 +12,7 @@ def _compute_inv_freq(base: float, head_size) -> torch.Tensor:
     # a slight numerical difference between the HF implementation and ours.
     inv_freq = 1.0 / (
         base
-        ** (
-            torch.arange(0, head_size, 2, dtype=torch.float, device='npu') / head_size
-        )
+        ** (torch.arange(0, head_size, 2, dtype=torch.float, device="npu") / head_size)
     )
     return inv_freq
 
@@ -22,7 +20,7 @@ def _compute_inv_freq(base: float, head_size) -> torch.Tensor:
 def _compute_cos_sin_cache(head_size) -> torch.Tensor:
     """Compute the cos and sin cache."""
     inv_freq = _compute_inv_freq(10000.0, head_size)
-    t = torch.arange(4096, dtype=torch.float32, device='npu')
+    t = torch.arange(4096, dtype=torch.float32, device="npu")
 
     freqs = torch.einsum("i,j -> ij", t, inv_freq)
     cos = freqs.cos()
@@ -68,7 +66,7 @@ def rms_norm_rope_kernel(
     num_tokens: tl.constexpr,
 ):
     half_q_offsets = tl.arange(0, q_size // 2)
-    half_kv_offsets = tl.arange(0, kv_size // 2)    
+    half_kv_offsets = tl.arange(0, kv_size // 2)
     num_q_offsets = tl.arange(0, q_size // head_dim)
     num_kv_offsets = tl.arange(0, kv_size // head_dim)
     head_offsets = tl.arange(0, head_dim)
@@ -79,13 +77,34 @@ def rms_norm_rope_kernel(
     half_dim = head_dim // 2
 
     with dl.async_task(scope=dl.async_task.vector):
-        q1_data = tl.load(q1 + num_token_offsets[:, None] * half_q_size + half_q_offsets[None, :])
-        q2_data = tl.load(q2 + num_token_offsets[:, None] * half_q_size + half_q_offsets[None, :])
-        k1_data = tl.load(k1 + num_token_offsets[:, None] * half_kv_size + half_kv_offsets[None, :])
-        k2_data = tl.load(k2 + num_token_offsets[:, None] * half_kv_size + half_kv_offsets[None, :])
-        v_data = tl.load(v + num_token_offsets[:, None, None] * kv_size + num_kv_offsets[None, :, None] * head_dim + head_offsets[None, None, :])
-        cos_data = tl.load(cos + num_token_offsets[:, None] * head_dim // 2 + half_head_offsets[None, :])
-        sin_data = tl.load(sin + num_token_offsets[:, None] * head_dim // 2 + half_head_offsets[None, :])
+        q1_data = tl.load(
+            q1 + num_token_offsets[:, None] * half_q_size + half_q_offsets[None, :]
+        )
+        q2_data = tl.load(
+            q2 + num_token_offsets[:, None] * half_q_size + half_q_offsets[None, :]
+        )
+        k1_data = tl.load(
+            k1 + num_token_offsets[:, None] * half_kv_size + half_kv_offsets[None, :]
+        )
+        k2_data = tl.load(
+            k2 + num_token_offsets[:, None] * half_kv_size + half_kv_offsets[None, :]
+        )
+        v_data = tl.load(
+            v
+            + num_token_offsets[:, None, None] * kv_size
+            + num_kv_offsets[None, :, None] * head_dim
+            + head_offsets[None, None, :]
+        )
+        cos_data = tl.load(
+            cos
+            + num_token_offsets[:, None] * head_dim // 2
+            + half_head_offsets[None, :]
+        )
+        sin_data = tl.load(
+            sin
+            + num_token_offsets[:, None] * head_dim // 2
+            + half_head_offsets[None, :]
+        )
         weight_data = tl.load(weight + half_head_offsets)
 
     with dl.async_task(scope=dl.async_task.vector):
@@ -111,11 +130,41 @@ def rms_norm_rope_kernel(
         k2_data = weight_data * k2_data
         q1, q2 = _compute_rotary_emb(q1_data, q2_data, cos_data, sin_data)
         k1, k2 = _compute_rotary_emb(k1_data, k2_data, cos_data, sin_data)
-        tl.store(q1_out + num_token_offsets[:, None, None] * half_q_size + num_q_offsets[None, :, None] * half_dim + half_head_offsets[None, None, :], q1)
-        tl.store(q2_out + num_token_offsets[:, None, None] * half_q_size + num_q_offsets[None, :, None] * half_dim + half_head_offsets[None, None, :], q2)
-        tl.store(k1_out + num_token_offsets[:, None, None] * half_kv_size + num_kv_offsets[None, :, None] * half_dim + half_head_offsets[None, None, :], k1)
-        tl.store(k2_out + num_token_offsets[:, None, None] * half_kv_size + num_kv_offsets[None, :, None] * half_dim + half_head_offsets[None, None, :], k2)
-        tl.store(v_out + num_token_offsets[:, None, None] * kv_size + num_kv_offsets[None, :, None] * head_dim + head_offsets[None, None, :], v_data)
+        tl.store(
+            q1_out
+            + num_token_offsets[:, None, None] * half_q_size
+            + num_q_offsets[None, :, None] * half_dim
+            + half_head_offsets[None, None, :],
+            q1,
+        )
+        tl.store(
+            q2_out
+            + num_token_offsets[:, None, None] * half_q_size
+            + num_q_offsets[None, :, None] * half_dim
+            + half_head_offsets[None, None, :],
+            q2,
+        )
+        tl.store(
+            k1_out
+            + num_token_offsets[:, None, None] * half_kv_size
+            + num_kv_offsets[None, :, None] * half_dim
+            + half_head_offsets[None, None, :],
+            k1,
+        )
+        tl.store(
+            k2_out
+            + num_token_offsets[:, None, None] * half_kv_size
+            + num_kv_offsets[None, :, None] * half_dim
+            + half_head_offsets[None, None, :],
+            k2,
+        )
+        tl.store(
+            v_out
+            + num_token_offsets[:, None, None] * kv_size
+            + num_kv_offsets[None, :, None] * head_dim
+            + head_offsets[None, None, :],
+            v_data,
+        )
 
 
 def rms_norm_rope(
@@ -139,11 +188,21 @@ def rms_norm_rope(
     cos_sin = cache.index_select(0, positions)
     cos, sin = cos_sin.chunk(2, dim=-1)
 
-    q1_out = torch.empty((num_tokens, num_heads_q, head_dim // 2), dtype=torch.float32, device='npu')
-    q2_out = torch.empty((num_tokens, num_heads_q, head_dim // 2), dtype=torch.float32, device='npu')
-    k1_out = torch.empty((num_tokens, num_heads_kv, head_dim // 2), dtype=torch.float32, device='npu')
-    k2_out = torch.empty((num_tokens, num_heads_kv, head_dim // 2), dtype=torch.float32, device='npu')
-    v_out = torch.empty((num_tokens, num_heads_kv, head_dim), dtype=torch.float32, device='npu')
+    q1_out = torch.empty(
+        (num_tokens, num_heads_q, head_dim // 2), dtype=torch.float32, device="npu"
+    )
+    q2_out = torch.empty(
+        (num_tokens, num_heads_q, head_dim // 2), dtype=torch.float32, device="npu"
+    )
+    k1_out = torch.empty(
+        (num_tokens, num_heads_kv, head_dim // 2), dtype=torch.float32, device="npu"
+    )
+    k2_out = torch.empty(
+        (num_tokens, num_heads_kv, head_dim // 2), dtype=torch.float32, device="npu"
+    )
+    v_out = torch.empty(
+        (num_tokens, num_heads_kv, head_dim), dtype=torch.float32, device="npu"
+    )
     grid = (1,)
 
     rms_norm_rope_kernel[grid](

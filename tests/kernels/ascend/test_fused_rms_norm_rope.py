@@ -12,9 +12,7 @@ from dlblas.kernels.ascend.fused_rms_norm_rope import rms_norm_rope
 DEVICE = "npu"
 
 
-def _rms_norm_kernel(
-    input: torch.Tensor, weight: torch.Tensor, epsilon: float
-) -> None:
+def _rms_norm_kernel(input: torch.Tensor, weight: torch.Tensor, epsilon: float) -> None:
     # TODO: Remove this contiguous call when the kernel is updated to support non-contiguous input
     # If removed, also need to remove contiguous in MatcherRMSNorm
     input_contiguous = input.contiguous()
@@ -92,7 +90,7 @@ def _apply_qk_norm_rope(
     k_by_head = k.view(*k.shape[:-1], k.shape[-1] // head_dim, head_dim)
     k_by_head = _rms_norm_kernel(k_by_head, k_weight, 1e-5)
     k = k_by_head.view(k.shape)
-    
+
     cache = _compute_cos_sin_cache(head_dim)
     q, k = _rotary_embedding(positions, q, k, head_dim, cache, True)
     return torch.cat([q, k, v], dim=-1)
