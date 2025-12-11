@@ -132,3 +132,7 @@ def infer_device():
         return "cuda"
     else:
         return "cpu"
+
+
+NUM_CORES = get_number_cores()
+DEVICE = infer_device()
