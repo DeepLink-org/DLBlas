@@ -3,9 +3,11 @@ import triton
 import triton.language as tl
 import triton.language.extra.deeplink as dl
 from torch import Tensor
-from dlblas.kernels.ascend.apply_rotary_pos_emb import partial_rotary_emb_kernel
+from dlblas.kernels.ascend.fused_rmsnorm_partial_rope import (
+    fused_single_norm_and_partial_rope_kernel,
+)
+
 from dlblas.utils.op_helper import grouped_launch_diagonal
-from dlblas.kernels.ascend.rms_norm import rms_norm_block_kernel
 from dlblas.utils.device_utils import NUM_CORES
 
 
@@ -104,55 +106,42 @@ def partial_matmul_triton(mat_a: Tensor, mat_b: Tensor, b_n_start: int, n: int):
 
 
 @triton.jit
-def fused_rmsnorm_and_sigmoid_kernel(
+def sigmoid_kernel(
     QQ,
-    W,
-    O_NORM,
     O_SIGMOID,
     n_rows,
-    eps: tl.constexpr,
-    DIM: tl.constexpr,
+    in_stride_row: tl.constexpr,
+    SIGMOID_DIM_START: tl.constexpr,
+    SIGMOID_DIM: tl.constexpr,
     BLOCK: tl.constexpr,
     NUM_CORES: tl.constexpr,
 ):
-    # 拆分QQ，一半做rmsnorm，另一半做sigmoid
+    # 最低维拆分QQ，一半做sigmoid
     pid = tl.program_id(0)
-    HALF_DIM: tl.constexpr = DIM // 2
-    offsets = tl.arange(0, HALF_DIM)
-    w = tl.load(W + offsets)
-    w = tl.expand_dims(w, 0)
-    w = tl.broadcast_to(w, (BLOCK, HALF_DIM))
+    offsets = tl.arange(0, SIGMOID_DIM)
     NUM_BLOCKS = tl.cdiv(n_rows, BLOCK)
     for row_block_id in range(pid, NUM_BLOCKS, NUM_CORES):
         pos_offset = row_block_id * BLOCK + tl.arange(0, BLOCK)
         pos_mask = (pos_offset < n_rows)[:, None]
-        # rms_norm
-        q = tl.load(QQ + pos_offset[:, None] * DIM + offsets[None, :], mask=pos_mask)
-        qf = q.to(tl.float32)
-        var = tl.sum(qf * qf, 1) / HALF_DIM
-
-        qrt = tl.expand_dims(tl.math.rsqrt(var + eps), 1)
-        out = qf * tl.broadcast_to(qrt, (BLOCK, HALF_DIM))
-        out = w * out.to(q.dtype)
-        tl.store(
-            O_NORM + pos_offset[:, None] * HALF_DIM + offsets[None, :],
-            out,
-            mask=pos_mask,
-        )
         # sigmoid
         q = tl.load(
-            QQ + pos_offset[:, None] * DIM + offsets[None, :] + HALF_DIM, mask=pos_mask
+            QQ
+            + pos_offset[:, None] * in_stride_row
+            + offsets[None, :]
+            + SIGMOID_DIM_START,
+            mask=pos_mask,
         )
         out = tl.sigmoid(q.to(tl.float32))
         tl.store(
-            O_SIGMOID + pos_offset[:, None] * HALF_DIM + offsets[None, :],
+            O_SIGMOID + pos_offset[:, None] * SIGMOID_DIM + offsets[None, :],
             out.to(q.dtype),
             mask=pos_mask,
         )
 
 
 @triton.jit
-def fused_matmul_norm_sigmoid_kernel(
+def fused_sigmoid_single_norm_rope_matmul_kernel(
+    # partial_matmul
     MAT_A,
     MAT_B,
     MAT_C,
@@ -166,15 +155,25 @@ def fused_matmul_norm_sigmoid_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     BLOCK_TRESHHOLD: tl.constexpr,
+    # rmsnorm
     QQ,
-    W,
-    O_NORM,
-    O_SIGMOID,
-    n_rows,
+    NORM_WEIGHT,
+    seq_len,
+    qq_stride_s: tl.constexpr,
+    qq_stride_h: tl.constexpr,
     eps: tl.constexpr,
-    DIM: tl.constexpr,
-    BLOCK_VEC: tl.constexpr,
+    NUM_HEADS: tl.constexpr,
+    TOTAL_HEAD_DIM: tl.constexpr,
+    # sigmoid
+    O_SIGMOID,
+    BLOCK_SIGMOID: tl.constexpr,
+    # rotary_pos_emb
+    COS,
+    SIN,
+    OUTPUT,
+    ROPE_HEAD_DIM: tl.constexpr,
 ):
+    # matmul + norm + rotary_pos_emb
     with dl.async_task(scope=dl.async_task.cube):
         partial_matmul_kernel(
             mat_a=MAT_A,
@@ -192,47 +191,74 @@ def fused_matmul_norm_sigmoid_kernel(
             BLOCK_TRESHHOLD=BLOCK_TRESHHOLD,
         )
     with dl.async_task(scope=dl.async_task.vector):
-        fused_rmsnorm_and_sigmoid_kernel(
+        sigmoid_kernel(
             QQ=QQ,
-            W=W,
-            O_NORM=O_NORM,
             O_SIGMOID=O_SIGMOID,
-            n_rows=n_rows,
+            n_rows=seq_len * NUM_HEADS,
+            in_stride_row=qq_stride_h,
+            SIGMOID_DIM_START=TOTAL_HEAD_DIM,
+            SIGMOID_DIM=TOTAL_HEAD_DIM,
+            BLOCK=BLOCK_SIGMOID,
+            NUM_CORES=NUM_CORES,
+        )
+        fused_single_norm_and_partial_rope_kernel(
+            # rmsnorm
+            INPUT=QQ,
+            NORM_WEIGHT=NORM_WEIGHT,
+            seq_len=seq_len,
             eps=eps,
-            DIM=DIM,
-            BLOCK=BLOCK_VEC,
+            input_stride_s=qq_stride_s,
+            input_stride_h=qq_stride_h,
+            NUM_HEADS=NUM_HEADS,
+            TOTAL_HEAD_DIM=TOTAL_HEAD_DIM,
+            # rotary_pos_emb
+            COS=COS,
+            SIN=SIN,
+            OUTPUT=OUTPUT,
+            ROPE_HEAD_DIM=ROPE_HEAD_DIM,
             NUM_CORES=NUM_CORES,
         )
 
 
-def fused_matmul_norm_sigmoid_triton(
+def fused_sigmoid_single_norm_rope_matmul_triton(
+    # partial_matmul
     hidden_states: Tensor,
     weight: Tensor,
     b_n_start: int,
     n: int,
-    num_q_heads: int,
-    head_dim: int,
+    # fused norm and partial rope
     qq: Tensor,
-    rmsnorm_gamma_q: Tensor,
+    norm_weight: Tensor,
+    cos: Tensor,
+    sin: Tensor,
+    partial_rotary_factor: float,
     eps: float = 1e-6,
 ):
-    # k matmul + q norm + gate_sigmoid
+    # partial_matmul
     assert hidden_states.is_contiguous()
-    assert qq.is_contiguous()
     assert hidden_states.size(-1) == weight.size(0)
     assert len(hidden_states.shape) == 2 and len(weight.shape) == 2
     m = hidden_states.shape[0]
     k = hidden_states.shape[1]
     assert b_n_start + n <= weight.shape[1]
-    mat_c = torch.empty(m, n, dtype=hidden_states.dtype, device=hidden_states.device)
-    total_seq_len = hidden_states.numel() // hidden_states.size(-1)
-    o_norm = torch.empty(
-        (total_seq_len, num_q_heads, head_dim), dtype=qq.dtype, device=qq.device
+    mat_c = torch.empty((m, n), dtype=weight.dtype, device=weight.device)
+    # fused norm and partial rope
+    assert qq.is_contiguous()
+    head_dim = norm_weight.shape[0]
+    seq_len = cos.numel() // cos.size(-1)
+    assert seq_len == qq.numel() // qq.size(-1) // qq.size(-2)
+    assert head_dim * 2 == qq.size(-1)
+    assert partial_rotary_factor < 1.0
+    rotary_dim = int(head_dim * partial_rotary_factor)
+    assert rotary_dim == triton.next_power_of_2(rotary_dim)
+    assert rotary_dim == cos.size(-1) and rotary_dim == sin.size(-1)
+    num_heads = qq.size(-2)
+    q_rope = torch.empty(
+        (seq_len, num_heads, head_dim), dtype=qq.dtype, device=qq.device
     )
-    o_sigmoid = torch.empty(
-        (total_seq_len, num_q_heads, head_dim), dtype=qq.dtype, device=qq.device
-    )
-    fused_matmul_norm_sigmoid_kernel[(NUM_CORES,)](
+    gate = torch.empty((seq_len, num_heads, head_dim), dtype=qq.dtype, device=qq.device)
+    fused_sigmoid_single_norm_rope_matmul_kernel[(NUM_CORES,)](
+        # partial_matmul
         MAT_A=hidden_states,
         MAT_B=weight,
         MAT_C=mat_c,
@@ -246,21 +272,30 @@ def fused_matmul_norm_sigmoid_triton(
         BLOCK_N=256,
         BLOCK_K=256,
         BLOCK_TRESHHOLD=6,
+        # rmsnorm
         QQ=qq,
-        W=rmsnorm_gamma_q,
-        O_NORM=o_norm,
-        O_SIGMOID=o_sigmoid,
-        n_rows=total_seq_len * num_q_heads,
+        NORM_WEIGHT=norm_weight,
+        seq_len=seq_len,
+        qq_stride_s=qq.stride(-3),
+        qq_stride_h=qq.stride(-2),
         eps=eps,
-        DIM=head_dim * 2,
-        BLOCK_VEC=32,
+        NUM_HEADS=num_heads,
+        TOTAL_HEAD_DIM=head_dim,
+        # sigmoid
+        O_SIGMOID=gate,
+        BLOCK_SIGMOID=64,
+        # rotary_pos_emb
+        COS=cos,
+        SIN=sin,
+        OUTPUT=q_rope,
+        ROPE_HEAD_DIM=rotary_dim,
     )
-    return mat_c, o_norm, o_sigmoid
+    return mat_c, q_rope, gate
 
 
 @triton.jit
-def fused_matmul_norm_rotary_emb_kernel(
-    # v_partial_matmul
+def fused_single_norm_rope_matmul_kernel(
+    # partial_matmul
     MAT_A,
     MAT_B,
     MAT_C,
@@ -274,31 +309,20 @@ def fused_matmul_norm_rotary_emb_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     BLOCK_TRESHHOLD: tl.constexpr,
-    # k_rmsnorm
-    K_INPUT,
-    K_WEIGHT,
-    K_NORM,
-    n_rows,
+    # rmsnorm
+    INPUT,
+    NORM_WEIGHT,
+    seq_len,
     eps: tl.constexpr,
-    K_DIM: tl.constexpr,
-    # q_k_rotary_pos
-    Q_INPUT,
+    NUM_HEADS: tl.constexpr,
+    TOTAL_HEAD_DIM: tl.constexpr,
+    # rotary_pos_emb
     COS,
     SIN,
-    Q_EMBED,
-    K_EMBED,
-    seq_len,
-    stride_qs: tl.constexpr,
-    stride_qh: tl.constexpr,
-    stride_ks: tl.constexpr,
-    stride_kh: tl.constexpr,
-    DIM_ROPE: tl.constexpr,
-    BLOCK_ROPE: tl.constexpr,
-    BLOCK_NORM: tl.constexpr,
-    NUM_Q_HEADS: tl.constexpr,
-    NUM_K_HEADS: tl.constexpr,
+    OUTPUT,
+    ROPE_HEAD_DIM: tl.constexpr,
 ):
-    # v matmul + k_norm + q_k_rotary_pos
+    # matmul + norm + rotary_pos_emb
     with dl.async_task(scope=dl.async_task.cube):
         partial_matmul_kernel(
             mat_a=MAT_A,
@@ -316,89 +340,68 @@ def fused_matmul_norm_rotary_emb_kernel(
             BLOCK_TRESHHOLD=BLOCK_TRESHHOLD,
         )
     with dl.async_task(scope=dl.async_task.vector):
-        rms_norm_block_kernel(
-            input=K_INPUT,
-            weight=K_WEIGHT,
-            output=K_NORM,
-            n_rows=n_rows,
-            input_row_stride=K_DIM,
+        fused_single_norm_and_partial_rope_kernel(
+            # rmsnorm
+            INPUT=INPUT,
+            NORM_WEIGHT=NORM_WEIGHT,
+            seq_len=seq_len,
             eps=eps,
-            N_COLS=K_DIM,
-            BLOCK=BLOCK_NORM,
-            NUM_CORES=NUM_CORES,
-        )
-        partial_rotary_emb_kernel(
-            Q=Q_INPUT,
-            K=K_INPUT,
+            input_stride_s=NUM_HEADS * TOTAL_HEAD_DIM,
+            input_stride_h=TOTAL_HEAD_DIM,
+            NUM_HEADS=NUM_HEADS,
+            TOTAL_HEAD_DIM=TOTAL_HEAD_DIM,
+            # rotary_pos_emb
             COS=COS,
             SIN=SIN,
-            Q_EMBED=Q_EMBED,
-            K_EMBED=K_EMBED,
-            seq_len=seq_len,
-            stride_qs=stride_qs,
-            stride_qh=stride_qh,
-            stride_ks=stride_ks,
-            stride_kh=stride_kh,
-            DIM=DIM_ROPE,
-            BLOCK=BLOCK_ROPE,
-            NUM_Q_HEADS=NUM_Q_HEADS,
-            NUM_K_HEADS=NUM_K_HEADS,
+            OUTPUT=OUTPUT,
+            ROPE_HEAD_DIM=ROPE_HEAD_DIM,
             NUM_CORES=NUM_CORES,
         )
 
 
-def fused_matmul_norm_rotary_emb_triton(
-    # v_partial_matmul
+def fused_single_norm_rope_matmul_triton(
+    # partial_matmul
     hidden_states: Tensor,
     weight: Tensor,
     b_n_start: int,
     n: int,
-    # k_rmsnorm
-    k_input: Tensor,
-    rmsnorm_gamma_k: Tensor,
-    eps: float,
-    num_kv_heads: int,
-    head_dim: int,
-    # q_k_rotary_pos
-    q_input: Tensor,
+    # fused norm and partial rope
+    x: Tensor,
+    norm_weight: Tensor,
     cos: Tensor,
     sin: Tensor,
     partial_rotary_factor: float,
-    inplace: bool = False,
+    eps: float = 1e-6,
+    inplace: bool = True,
 ):
-    # v_partial_matmul
+    # partial_matmul
     assert hidden_states.is_contiguous()
     assert hidden_states.size(-1) == weight.size(0)
     assert len(hidden_states.shape) == 2 and len(weight.shape) == 2
     m = hidden_states.shape[0]
     k = hidden_states.shape[1]
     assert b_n_start + n <= weight.shape[1]
-    assert n == num_kv_heads * head_dim
-    v = torch.empty(
-        (m, num_kv_heads, head_dim), dtype=weight.dtype, device=weight.device
-    )
-    # k_rmsnorm
-    assert k_input.is_contiguous()
-    k_dim = k_input.size(-1)
-    n_rows = k_input.numel() // k_input.size(-1)
-    # q_k_rotary_pos
-    assert q_input.is_contiguous() and len(q_input.shape) >= 3
-    assert q_input.shape[0] == k_input.shape[0]
-    if inplace:
-        q_embed, k_embed, k_norm = q_input, k_input, k_input
-    else:
-        q_embed = torch.empty_like(q_input)
-        k_embed = torch.empty_like(k_input)
-        k_norm = torch.empty_like(k_input)
+    mat_c = torch.empty((m, n), dtype=weight.dtype, device=weight.device)
+    # fused norm and partial rope
+    assert x.is_contiguous()
+    head_dim = norm_weight.shape[0]
     seq_len = cos.numel() // cos.size(-1)
-    assert seq_len == q_input.numel() // q_input.size(-1) // q_input.size(-2)
-    rotary_dim = int(q_input.size(-1) * partial_rotary_factor)
+    assert seq_len == x.numel() // x.size(-1) // x.size(-2)
+    assert head_dim == x.size(-1)
+    assert partial_rotary_factor < 1.0
+    rotary_dim = int(head_dim * partial_rotary_factor)
+    assert rotary_dim == triton.next_power_of_2(rotary_dim)
     assert rotary_dim == cos.size(-1) and rotary_dim == sin.size(-1)
-    fused_matmul_norm_rotary_emb_kernel[(NUM_CORES,)](
-        # v_partial_matmul
+    num_heads = x.size(-2)
+    if inplace:
+        x_embed = x
+    else:
+        x_embed = torch.empty_like(x)
+    fused_single_norm_rope_matmul_kernel[(NUM_CORES,)](
+        # partial_matmul
         MAT_A=hidden_states,
         MAT_B=weight,
-        MAT_C=v,
+        MAT_C=mat_c,
         M=m,
         N=n,
         K=k,
@@ -409,34 +412,23 @@ def fused_matmul_norm_rotary_emb_triton(
         BLOCK_N=256,
         BLOCK_K=256,
         BLOCK_TRESHHOLD=6,
-        # k_rmsnorm
-        K_INPUT=k_input,
-        K_WEIGHT=rmsnorm_gamma_k,
-        K_NORM=k_norm,
-        n_rows=n_rows,
+        # rmsnorm
+        INPUT=x,
+        NORM_WEIGHT=norm_weight,
+        seq_len=seq_len,
         eps=eps,
-        K_DIM=k_dim,
-        # q_k_rotary_pos
-        Q_INPUT=q_input,
+        NUM_HEADS=num_heads,
+        TOTAL_HEAD_DIM=head_dim,
+        # rotary_pos_emb
         COS=cos,
         SIN=sin,
-        Q_EMBED=q_embed,
-        K_EMBED=k_embed,
-        seq_len=seq_len,
-        stride_qs=q_input.stride(-3),
-        stride_qh=q_input.stride(-2),
-        stride_ks=k_input.stride(-3),
-        stride_kh=k_input.stride(-2),
-        DIM_ROPE=rotary_dim,
-        BLOCK_ROPE=64,
-        BLOCK_NORM=32,
-        NUM_Q_HEADS=q_input.size(-2),
-        NUM_K_HEADS=k_input.size(-2),
+        OUTPUT=x_embed,
+        ROPE_HEAD_DIM=rotary_dim,
     )
-    return v, q_embed, k_embed
+    return mat_c, x_embed
 
 
-def attention_prolog_triton_v1(
+def attention_prolog_triton(
     hidden_states: Tensor,
     weight: Tensor,
     rmsnorm_gamma_q: Tensor,
@@ -449,42 +441,41 @@ def attention_prolog_triton_v1(
     head_dim: int,
     partial_rotary_factor: float,
 ):
-    # q matmul | k matmul + q norm + gate_sigmoid | v matmul + k_norm + q_k_rotary_pos
+    # qaqb matmul | k matmul + qb sigmoid qa norm + qa rope | v matmul + k_norm + k_rope
     seq_len = hidden_states.numel() // hidden_states.size(-1)
     qq = partial_matmul_triton(
         hidden_states, weight, b_n_start=0, n=2 * num_q_heads * head_dim
     )
-    k, q_norm, q_sigmoid = fused_matmul_norm_sigmoid_triton(
-        hidden_states,
-        weight,
+    key, q_rope, gate = fused_sigmoid_single_norm_rope_matmul_triton(
+        # partial_matmul
+        hidden_states=hidden_states,
+        weight=weight,
         b_n_start=2 * num_q_heads * head_dim,
         n=num_kv_heads * head_dim,
-        num_q_heads=num_q_heads,
-        head_dim=head_dim,
-        qq=qq,
-        rmsnorm_gamma_q=rmsnorm_gamma_q,
+        # fused sigmoid, norm and partial rope
+        qq=qq.view(seq_len, num_q_heads, head_dim * 2),
+        norm_weight=rmsnorm_gamma_q,
+        cos=cos,
+        sin=sin,
+        partial_rotary_factor=partial_rotary_factor,
         eps=eps,
     )
-    v, q_rope, k_rope = fused_matmul_norm_rotary_emb_triton(
-        # v_partial_matmul
+    v, k_rope = fused_single_norm_rope_matmul_triton(
+        # partial_matmul
         hidden_states=hidden_states,
         weight=weight,
         b_n_start=2 * num_q_heads * head_dim + num_kv_heads * head_dim,
         n=num_kv_heads * head_dim,
-        # k_rmsnorm
-        k_input=k.view(seq_len, num_kv_heads, head_dim),
-        rmsnorm_gamma_k=rmsnorm_gamma_k,
-        eps=eps,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        # q_k_rotary_pos
-        q_input=q_norm.view(seq_len, num_q_heads, head_dim),
+        # fused norm and partial rope
+        x=key.view(seq_len, num_kv_heads, head_dim),
+        norm_weight=rmsnorm_gamma_k,
         cos=cos,
         sin=sin,
         partial_rotary_factor=partial_rotary_factor,
+        eps=eps,
         inplace=True,
     )
-    return q_rope, k_rope, v, q_sigmoid
+    return q_rope, k_rope, v.view(seq_len, num_kv_heads, head_dim), gate
 
 
 def partial_matmul():
@@ -502,8 +493,9 @@ def sigmoid():
 def attention_prolog_mega(
     hidden_states,
     weight,
-    qq,
+    query_a,
     gate,
+    query_b,
     key,
     value,
     rmsnorm_gamma_q,
@@ -520,13 +512,14 @@ def attention_prolog_mega(
     value_n_size,
 ):
     with dl.async_task(scope=dl.async_task.cube):
-        partial_matmul(hidden_states, weight, qq, query0_n_start, query0_n_size)
+        partial_matmul(hidden_states, weight, query_a, query0_n_start, query0_n_size)
+        partial_matmul(hidden_states, weight, query_b, query1_n_start, query1_n_size)
         partial_matmul(hidden_states, weight, key, key_n_start, key_n_size)
         partial_matmul(hidden_states, weight, value, value_n_start, value_n_size)
 
     with dl.async_task(scope=dl.async_task.vector):
+        sigmoid(query_a, gate)
         dl.sync_block_all()
-        sigmoid(qq, gate)
-        rmsnorm_rotary_pos_emb(qq, rmsnorm_gamma_q, cos, sin)
+        rmsnorm_rotary_pos_emb(query_b, rmsnorm_gamma_q, cos, sin)
         dl.sync_block_all()
         rmsnorm_rotary_pos_emb(key, rmsnorm_gamma_k, cos, sin)

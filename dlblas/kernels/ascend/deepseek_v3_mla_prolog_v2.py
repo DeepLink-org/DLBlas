@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 import triton.language.extra.deeplink as dl
 from torch import Tensor
+from dlblas.kernels.ascend.apply_rotary_pos_emb import partial_rope_qk_kernel
 from dlblas.utils.op_helper import grouped_launch_diagonal
 from dlblas.kernels.ascend.rms_norm import rms_norm_block_kernel
 from dlblas.utils.device_utils import NUM_CORES
@@ -88,6 +89,7 @@ def fused_matmul_ckvkr_and_rms_norm_cq_kernel(
     BLOCK_NORM: tl.constexpr,
     NUM_CORES: tl.constexpr,
 ):
+    # matmul_kv + rmsnorm_q
     with dl.async_task(scope=dl.async_task.cube):
         matmul_kernel(
             mat_a=mat_a,
@@ -197,7 +199,7 @@ def matmul_qn_kernel(
     NUM_BLOCKS_M = tl.cdiv(M, BLOCK_M)
     NUM_BLOCKS_N = tl.cdiv(N, BLOCK_N)
     NUM_BLOCKS = NUM_BLOCKS_M * NUM_BLOCKS_N
-    for head_idx in range(NUM_HEADS):
+    for head_idx in range(NUM_HEADS):  # batch matmul
         for block_idx in range(pid, NUM_BLOCKS, NUM_CORES):
             task_m_idx, task_n_idx = grouped_launch_diagonal(
                 block_idx, NUM_BLOCKS_M, NUM_BLOCKS_N, BLOCK_TRESHHOLD
@@ -269,98 +271,7 @@ def matmul_qn_triton(mat_a: Tensor, weight_uk: Tensor):
 
 
 @triton.jit
-def rotary_pos_emb_qr_kernel(
-    X,
-    COS,
-    SIN,
-    O,
-    total_seq_len,
-    NOPE_DIM: tl.constexpr,
-    ROPE_DIM: tl.constexpr,
-    BLOCK: tl.constexpr,
-    NUM_HEADS: tl.constexpr,
-    NUM_CORES: tl.constexpr,
-):
-    # q = matmul_qc_qr_out.view(total_seq_len, num_heads, q_head_dim)
-    # q_nope, q_pe = torch.split(q, [qk_nope_head_dim, qk_rope_head_dim], dim=-1)
-    # X是q，对q_pe实现rotary_pos_emb
-    pid = tl.program_id(0)
-    NUM_BLOCKS = tl.cdiv(total_seq_len, BLOCK)
-    Q_HEAD_DIM = NOPE_DIM + ROPE_DIM
-    for seq_block_id in range(pid, NUM_BLOCKS, NUM_CORES):
-        pos_offset = seq_block_id * BLOCK + tl.arange(0, BLOCK)
-        pos_mask = pos_offset < total_seq_len
-        half_dim: tl.constexpr = ROPE_DIM // 2
-        cso_dim_offset_l = tl.arange(0, half_dim)
-        cso_dim_offset_h = cso_dim_offset_l + half_dim
-        seq_mask = pos_mask[:, None]
-        cs_offset_l = pos_offset[:, None] * ROPE_DIM + cso_dim_offset_l[None, :]
-        cs_offset_h = pos_offset[:, None] * ROPE_DIM + cso_dim_offset_h[None, :]
-
-        cos_l = tl.load(COS + cs_offset_l, mask=seq_mask)
-        cos_h = tl.load(COS + cs_offset_h, mask=seq_mask)
-        sin_l = tl.load(SIN + cs_offset_l, mask=seq_mask)
-        sin_h = tl.load(SIN + cs_offset_h, mask=seq_mask)
-
-        x_dim_offset_l = NOPE_DIM + tl.arange(0, half_dim)
-        x_dim_offset_h = x_dim_offset_l + half_dim
-        for head_id in range(NUM_HEADS):
-            x_base_offset = (pos_offset[:, None] * NUM_HEADS * Q_HEAD_DIM) + (
-                head_id * Q_HEAD_DIM
-            )
-            x_l = tl.load(X + x_base_offset + x_dim_offset_l[None, :], mask=seq_mask)
-            x_h = tl.load(X + x_base_offset + x_dim_offset_h[None, :], mask=seq_mask)
-            o_l = x_l * cos_l - x_h * sin_l
-            o_h = x_h * cos_h + x_l * sin_h
-            o_base_offset = (pos_offset[:, None] * NUM_HEADS * ROPE_DIM) + (
-                head_id * ROPE_DIM
-            )
-            tl.store(O + o_base_offset + cso_dim_offset_l[None, :], o_l, mask=seq_mask)
-            tl.store(O + o_base_offset + cso_dim_offset_h[None, :], o_h, mask=seq_mask)
-
-
-def rotary_pos_emb_qr_triton(
-    x: Tensor,
-    cos: Tensor,
-    sin: Tensor,
-    nope_dim: int,
-    rope_dim: int,
-):
-    assert x.is_contiguous()
-    assert rope_dim == cos.size(-1) and rope_dim == sin.size(-1)
-    assert x.size(-1) == nope_dim + rope_dim
-    total_seq_len = cos.numel() // cos.size(-1)
-    assert total_seq_len == x.numel() // x.size(-1) // x.size(-2)
-    num_heads = x.size(-2)
-    if len(x.shape) == 4:
-        x_embed = torch.empty(
-            (x.shape[0], x.shape[1], num_heads, rope_dim),
-            dtype=x.dtype,
-            device=x.device,
-        )
-    elif len(x.shape) == 3:
-        x_embed = torch.empty(
-            (total_seq_len, num_heads, rope_dim), dtype=x.dtype, device=x.device
-        )
-    else:
-        raise RuntimeError("not support")
-    rotary_pos_emb_qr_kernel[(NUM_CORES,)](
-        x,
-        cos,
-        sin,
-        x_embed,
-        total_seq_len=total_seq_len,
-        NOPE_DIM=nope_dim,
-        ROPE_DIM=rope_dim,
-        BLOCK=128,
-        NUM_HEADS=num_heads,
-        NUM_CORES=NUM_CORES,
-    )
-    return x_embed
-
-
-@triton.jit
-def fused_matmul_qn_and_rotary_pos_emb_qr_kernel(
+def fused_matmul_qn_and_rotary_pos_emb_qk_kernel(
     # matmul
     Q,
     MAT_B,
@@ -372,30 +283,41 @@ def fused_matmul_qn_and_rotary_pos_emb_qr_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     BLOCK_TRESHHOLD: tl.constexpr,
-    NUM_HEADS: tl.constexpr,
+    NUM_HEADS_Q: tl.constexpr,
     # rotary pos emb
+    Q_INPUT,
+    K_INPUT,
     COS,
     SIN,
-    O,
+    Q_EMBED,
+    K_EMBED,
     total_seq_len,
-    NOPE_DIM: tl.constexpr,
+    NOPE_DIM_Q: tl.constexpr,
+    NOPE_DIM_K: tl.constexpr,
     ROPE_DIM: tl.constexpr,
-    BLOCK: tl.constexpr,
+    BLOCK_ROPE: tl.constexpr,
+    NUM_HEADS_K: tl.constexpr,
 ):
     with dl.async_task(scope=dl.async_task.vector):
-        rotary_pos_emb_qr_kernel(
-            X=Q,
+        # rope_qk
+        partial_rope_qk_kernel(
+            Q=Q_INPUT,
+            K=K_INPUT,
             COS=COS,
             SIN=SIN,
-            O=O,
+            Q_EMBED=Q_EMBED,
+            K_EMBED=K_EMBED,
             total_seq_len=total_seq_len,
-            NOPE_DIM=NOPE_DIM,
+            NOPE_DIM_Q=NOPE_DIM_Q,
+            NOPE_DIM_K=NOPE_DIM_K,
             ROPE_DIM=ROPE_DIM,
-            BLOCK=BLOCK,
-            NUM_HEADS=NUM_HEADS,
+            BLOCK=BLOCK_ROPE,
+            NUM_Q_HEADS=NUM_HEADS_Q,
+            NUM_K_HEADS=NUM_HEADS_K,
             NUM_CORES=NUM_CORES,
         )
     with dl.async_task(scope=dl.async_task.cube):
+        # batch matmul
         matmul_qn_kernel(
             mat_a=Q,
             mat_b=MAT_B,
@@ -408,29 +330,34 @@ def fused_matmul_qn_and_rotary_pos_emb_qr_kernel(
             BLOCK_N=BLOCK_N,
             BLOCK_K=BLOCK_K,
             BLOCK_TRESHHOLD=BLOCK_TRESHHOLD,
-            Q_HEAD_DIM=NOPE_DIM + ROPE_DIM,
-            NUM_HEADS=NUM_HEADS,
+            Q_HEAD_DIM=NOPE_DIM_Q + ROPE_DIM,
+            NUM_HEADS=NUM_HEADS_Q,
         )
 
 
-def fused_matmul_qn_and_rotary_pos_emb_qr_triton(
-    q: Tensor, weight_uk: Tensor, cos: Tensor, sin: Tensor
+def fused_matmul_qn_and_rotary_pos_emb_qk_triton(
+    q: Tensor, weight_uk: Tensor, k: Tensor, cos: Tensor, sin: Tensor
 ):
+    assert cos.shape == sin.shape
     rope_dim = cos.size(-1)
-    assert rope_dim == sin.size(-1)
-    assert q.is_contiguous()
-    num_heads, nope_dim, kv_lora_rank = weight_uk.shape
-    seq_len = q.shape[0]
-    q = q.view(seq_len, num_heads, rope_dim + nope_dim)
-    total_seq_len = cos.numel() // cos.size(-1)
-    assert total_seq_len == q.numel() // q.size(-1) // q.size(-2)
+    seq_len = cos.numel() // cos.size(-1)
+    assert q.is_contiguous() and k.is_contiguous()
+    num_heads_q, nope_dim, kv_lora_rank = weight_uk.shape
+    q = q.view(seq_len, num_heads_q, rope_dim + nope_dim)
+    num_heads_k = 1
+    k = k.view(seq_len, num_heads_k, rope_dim + kv_lora_rank)
+    assert seq_len == q.numel() // q.size(-1) // q.size(-2)
+    assert seq_len == k.numel() // k.size(-1) // k.size(-2)
     mat_c = torch.empty(
-        (seq_len, num_heads, kv_lora_rank), dtype=q.dtype, device=q.device
+        (seq_len, num_heads_q, kv_lora_rank), dtype=q.dtype, device=q.device
     )
     q_embed = torch.empty(
-        (seq_len, num_heads, rope_dim), dtype=q.dtype, device=q.device
+        (seq_len, num_heads_q, rope_dim), dtype=q.dtype, device=q.device
     )
-    fused_matmul_qn_and_rotary_pos_emb_qr_kernel[(NUM_CORES,)](
+    k_embed = torch.empty(
+        (seq_len, num_heads_k, rope_dim), dtype=k.dtype, device=k.device
+    )
+    fused_matmul_qn_and_rotary_pos_emb_qk_kernel[(NUM_CORES,)](
         Q=q,
         MAT_B=weight_uk,
         MAT_C=mat_c,
@@ -441,17 +368,22 @@ def fused_matmul_qn_and_rotary_pos_emb_qr_triton(
         BLOCK_N=256,
         BLOCK_K=nope_dim,
         BLOCK_TRESHHOLD=6,
-        NUM_HEADS=num_heads,
+        NUM_HEADS_Q=num_heads_q,
         # rotary pos emb
+        Q_INPUT=q,
+        K_INPUT=k,
         COS=cos,
         SIN=sin,
-        O=q_embed,
-        total_seq_len=total_seq_len,
-        NOPE_DIM=nope_dim,
+        Q_EMBED=q_embed,
+        K_EMBED=k_embed,
+        total_seq_len=seq_len,
+        NOPE_DIM_Q=q.size(-1) - rope_dim,
+        NOPE_DIM_K=k.size(-1) - rope_dim,
         ROPE_DIM=rope_dim,
-        BLOCK=128,
+        BLOCK_ROPE=256,
+        NUM_HEADS_K=num_heads_k,
     )
-    return mat_c, q_embed
+    return mat_c, q_embed, k_embed
 
 
 @triton.jit
@@ -524,7 +456,7 @@ def rms_norm_ckv_triton(
 
 
 @triton.jit
-def fused_matmul_and_rms_norm_and_rotary_pos_emb_kernel(
+def fused_matmul_qb_and_rmsnorm_kv_kernel(
     MAT_A,
     MAT_B,
     MAT_C,
@@ -543,14 +475,7 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_kernel(
     output_row_stride: tl.constexpr,
     eps: tl.constexpr,
     BLOCK_NORM: tl.constexpr,
-    # rotary pos emb kr
-    COS,
-    SIN,
-    KV_EMB,
     NOPE_DIM: tl.constexpr,
-    ROPE_DIM: tl.constexpr,
-    BLOCK_PE: tl.constexpr,
-    NUM_HEADS: tl.constexpr,
     NUM_CORES: tl.constexpr,
 ):
     with dl.async_task(scope=dl.async_task.cube):
@@ -580,27 +505,10 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_kernel(
             BLOCK=BLOCK_NORM,
             NUM_CORES=NUM_CORES,
         )
-        rotary_pos_emb_qr_kernel(
-            X=KV,
-            COS=COS,
-            SIN=SIN,
-            O=KV_EMB,
-            total_seq_len=total_seq_len,
-            NOPE_DIM=NOPE_DIM,
-            ROPE_DIM=ROPE_DIM,
-            BLOCK=BLOCK_PE,
-            NUM_HEADS=NUM_HEADS,
-            NUM_CORES=NUM_CORES,
-        )
 
 
-def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
-    mat_a: Tensor,
-    weight_uq_qr: Tensor,
-    kv: Tensor,
-    rmsnormGammaCkv: Tensor,
-    cos: Tensor,
-    sin: Tensor,
+def fused_matmul_qb_and_rmsnorm_kv_triton(
+    mat_a: Tensor, weight_uq_qr: Tensor, kv: Tensor, rmsnormGammaCkv: Tensor
 ):
     mat_b = weight_uq_qr
     assert mat_a.is_contiguous()
@@ -617,20 +525,9 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
     kv_lora_rank = rmsnormGammaCkv.size(-1)
     assert kv_lora_rank <= kv.size(-1)
     rms_norm_output = torch.empty(
-        (seq_len, 1, kv_lora_rank),
-        dtype=mat_a.dtype,
-        device=mat_a.device,
+        (seq_len, 1, kv_lora_rank), dtype=mat_a.dtype, device=mat_a.device
     )
-    # rotary pos emb kr
-    rope_dim = sin.size(-1)
-    nope_dim = kv_lora_rank
-    assert cos.size(-1) == sin.size(-1)
-    assert kv.size(-1) == nope_dim + rope_dim
-    num_heads_kv = 1
-    x_embed = torch.empty(
-        (seq_len, num_heads_kv, rope_dim), dtype=mat_a.dtype, device=mat_a.device
-    )
-    fused_matmul_and_rms_norm_and_rotary_pos_emb_kernel[(NUM_CORES,)](
+    fused_matmul_qb_and_rmsnorm_kv_kernel[(NUM_CORES,)](
         MAT_A=mat_a,
         MAT_B=mat_b,
         MAT_C=mat_c,
@@ -649,14 +546,39 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
         output_row_stride=rms_norm_output.stride(-2),
         eps=1e-6,
         BLOCK_NORM=16,
-        # rotary pos emb kr
-        COS=cos,
-        SIN=sin,
-        KV_EMB=x_embed,
-        NOPE_DIM=nope_dim,
-        ROPE_DIM=rope_dim,
-        BLOCK_PE=32,
-        NUM_HEADS=num_heads_kv,
+        NOPE_DIM=kv_lora_rank,
         NUM_CORES=NUM_CORES,
     )
-    return mat_c.view(seq_len, n), rms_norm_output, x_embed
+    return mat_c.view(seq_len, n), rms_norm_output
+
+
+def mla_prolog_triton_v2(
+    out_matmul_cq,
+    hidden_states,
+    weightDkvKr,
+    weight_uq_qr,
+    rmsnormGammaCq,
+    rmsnormGammaCkv,
+    cos,
+    sin,
+    weight_uk,
+):
+    kv, rmsnorm_out = fused_matmul_ckvkr_and_rms_norm_cq_triton(
+        mat_a=hidden_states,
+        mat_b=weightDkvKr,
+        input=out_matmul_cq,
+        weight=rmsnormGammaCq,
+        eps=1e-06,
+    )
+    matmul_qc_qr_out, kv_cache = fused_matmul_qb_and_rmsnorm_kv_triton(
+        rmsnorm_out, weight_uq_qr, kv, rmsnormGammaCkv
+    )
+    q, q_rope, kr_cache = fused_matmul_qn_and_rotary_pos_emb_qk_triton(
+        q=matmul_qc_qr_out, weight_uk=weight_uk, k=kv, cos=cos, sin=sin
+    )
+    return (
+        q,
+        q_rope,
+        kv_cache,
+        kr_cache,
+    )
