@@ -130,7 +130,7 @@ def fused_matmul_ckvkr_and_rms_norm_cq_triton(
     m = mat_a.shape[0]
     k = mat_a.shape[1]
     n = mat_b.shape[1]
-    mat_c = torch.empty(b, seq_len, n, dtype=mat_a.dtype, device=mat_a.device)
+    mat_c = torch.empty(b * seq_len, n, dtype=mat_a.dtype, device=mat_a.device)
 
     assert input.is_contiguous()
     feat_size = weight.shape[0]
@@ -420,15 +420,15 @@ def fused_matmul_qn_and_rotary_pos_emb_qr_triton(
     assert rope_dim == sin.size(-1)
     assert q.is_contiguous()
     num_heads, nope_dim, kv_lora_rank = weight_uk.shape
-    b, seq_len = q.shape[0], q.shape[1]
-    q = q.view(b, seq_len, num_heads, rope_dim + nope_dim)
+    seq_len = q.shape[0]
+    q = q.view(seq_len, num_heads, rope_dim + nope_dim)
     total_seq_len = cos.numel() // cos.size(-1)
     assert total_seq_len == q.numel() // q.size(-1) // q.size(-2)
     mat_c = torch.empty(
-        (b, seq_len, num_heads, kv_lora_rank), dtype=q.dtype, device=q.device
+        (seq_len, num_heads, kv_lora_rank), dtype=q.dtype, device=q.device
     )
     q_embed = torch.empty(
-        (b, seq_len, num_heads, rope_dim), dtype=q.dtype, device=q.device
+        (seq_len, num_heads, rope_dim), dtype=q.dtype, device=q.device
     )
     fused_matmul_qn_and_rotary_pos_emb_qr_kernel[(NUM_CORES,)](
         Q=q,
@@ -605,12 +605,7 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
     mat_b = weight_uq_qr
     assert mat_a.is_contiguous()
     assert mat_a.size(0) == kv.size(0)
-    assert mat_a.size(1) == kv.size(1)
-    if len(mat_a.shape) == 3:
-        b, seq_len = mat_a.size(0), mat_a.size(1)
-        mat_a = mat_a.view(-1, mat_a.shape[-1])
-    elif len(mat_a.shape) == 2:
-        b, seq_len = 1, mat_a.size(0)
+    seq_len = mat_a.size(0)
     assert mat_a.size(-1) == mat_b.size(0)
     assert len(mat_a.shape) == 2 and len(mat_b.shape) == 2
     m = mat_a.shape[0]
@@ -622,7 +617,7 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
     kv_lora_rank = rmsnormGammaCkv.size(-1)
     assert kv_lora_rank <= kv.size(-1)
     rms_norm_output = torch.empty(
-        (b, seq_len, 1, kv_lora_rank),
+        (seq_len, 1, kv_lora_rank),
         dtype=mat_a.dtype,
         device=mat_a.device,
     )
@@ -633,7 +628,7 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
     assert kv.size(-1) == nope_dim + rope_dim
     num_heads_kv = 1
     x_embed = torch.empty(
-        (b, seq_len, num_heads_kv, rope_dim), dtype=mat_a.dtype, device=mat_a.device
+        (seq_len, num_heads_kv, rope_dim), dtype=mat_a.dtype, device=mat_a.device
     )
     fused_matmul_and_rms_norm_and_rotary_pos_emb_kernel[(NUM_CORES,)](
         MAT_A=mat_a,
@@ -664,4 +659,4 @@ def fused_matmul_and_rms_norm_and_rotary_pos_emb_triton(
         NUM_HEADS=num_heads_kv,
         NUM_CORES=NUM_CORES,
     )
-    return mat_c.view(b, seq_len, n), rms_norm_output, x_embed
+    return mat_c.view(seq_len, n), rms_norm_output, x_embed
