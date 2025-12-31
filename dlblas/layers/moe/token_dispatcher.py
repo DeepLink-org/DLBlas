@@ -35,6 +35,20 @@ class DeepEPBuffer:
     _latest_mode = DeepEPMode.AUTO
     _hidden_size = -1
     _num_experts = -1
+    _explicitly_destroy: bool = False
+
+    @classmethod
+    def set_explicitly_destroy(cls):
+        if not cls._explicitly_destroy:
+            cls._explicitly_destroy = True
+
+    @classmethod
+    def destroy(cls):
+        if cls._explicitly_destroy:
+            if cls._buffer_common is not None:
+                cls._buffer_common.destroy()
+            if cls._buffer_low_latency is not None:
+                cls._buffer_low_latency.destroy()
 
     @classmethod
     def update_parameters(cls, hidden_size, num_experts):
@@ -131,6 +145,7 @@ class DeepEPBuffer:
             low_latency_mode=True,
             num_qps_per_rank=num_qps_per_rank,
             allow_mnnvl=cls._allow_mnnvl,
+            explicitly_destroy=cls._explicitly_destroy,
         )
         cls._buffer_common.set_num_sms(cls._deepep_sms)
         return cls._buffer_common
@@ -161,7 +176,7 @@ class DeepEPBuffer:
             or _buffer_normal.num_nvl_bytes < num_nvl_bytes
             or _buffer_normal.num_rdma_bytes < num_rdma_bytes
         ):
-            cls._buffer_normal = Buffer(group, num_nvl_bytes, num_rdma_bytes)
+            cls._buffer_normal = Buffer(group, num_nvl_bytes, num_rdma_bytes, explicitly_destroy=cls._explicitly_destroy)
         return cls._buffer_normal
 
     @classmethod
@@ -195,6 +210,7 @@ class DeepEPBuffer:
                 num_rdma_bytes=num_rdma_bytes,
                 low_latency_mode=True,
                 num_qps_per_rank=max(num_experts // group.size(), Buffer.num_sms // 2),
+                explicitly_destroy=cls._explicitly_destroy,
             )
         return cls._buffer_low_latency
 
@@ -248,6 +264,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         topk_weights: torch.Tensor,
         expert_list: List[int] = None,
         previous_event=None,
+        expert_alignment: int = 128,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         hidden_states, x_scales = x if isinstance(x, tuple) else (x, None)
         self.hidden_shape = hidden_states.shape
@@ -260,7 +277,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             handle,
             event,
         ) = self.dispatch_normal(
-            x, topk_idx, topk_weights, self.num_experts, previous_event
+            x, topk_idx, topk_weights, self.num_experts, previous_event, expert_alignment=expert_alignment,
         )
 
         self.handle = handle
@@ -275,6 +292,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         topk_weights: torch.Tensor,
         num_experts: int,
         previous_event=None,
+        expert_alignment: int = 128,
     ):
         (
             num_tokens_per_rank,
@@ -308,7 +326,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=False,
             allocate_on_comm_stream=False,
-            expert_alignment=128,
+            expert_alignment=expert_alignment,
         )  # Note: expert_alignment = 128 if deepgemm else 1
 
         return (
@@ -328,6 +346,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_experts: Optional[int] = None,
         previous_event=None,
         async_finish=True,
+        expert_alignment: int = 128,
     ):
         (
             num_tokens_per_rank,
@@ -361,7 +380,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=async_finish,
             allocate_on_comm_stream=previous_event is not None and async_finish,
-            expert_alignment=128,
+            expert_alignment=expert_alignment,
         )
 
         return (
