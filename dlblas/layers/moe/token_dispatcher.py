@@ -8,8 +8,8 @@ except ImportError:
     use_deepep = False
 
 import os
-from typing import List, Optional, Tuple, Union
 from enum import Enum
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -19,9 +19,9 @@ from dlblas.utils.utils import DisposibleTensor
 
 
 class DeepEPMode(Enum):
-    NORMAL = "normal"
-    LOW_LATENCY = "low_latency"
-    AUTO = "auto"
+    NORMAL = 'normal'
+    LOW_LATENCY = 'low_latency'
+    AUTO = 'auto'
 
 
 class DeepEPBuffer:
@@ -39,42 +39,56 @@ class DeepEPBuffer:
 
     @classmethod
     def set_explicitly_destroy(cls):
+        if cls._buffer_common is not None:
+            return False
+        if cls._buffer_normal is not None:
+            return False
+        if cls._buffer_low_latency is not None:
+            return False
         if not cls._explicitly_destroy:
             cls._explicitly_destroy = True
+            return True
+        return False
+
+    @classmethod
+    def get_explicitly_destroy(cls):
+        return cls._explicitly_destroy
 
     @classmethod
     def destroy(cls):
         if cls._explicitly_destroy:
+            # Note: more than one buffer is not allowed in deepep now.
             if cls._buffer_common is not None:
                 cls._buffer_common.destroy()
+                return True
             if cls._buffer_low_latency is not None:
                 cls._buffer_low_latency.destroy()
+                return True
+            if cls._buffer_normal is not None:
+                cls._buffer_normal.destroy()
+                return True
+        return False
 
     @classmethod
     def update_parameters(cls, hidden_size, num_experts):
         cls._hidden_size = hidden_size
         cls._num_experts = num_experts
-        cls._deepep_sms = int(os.getenv("DEEPEP_SMS", Buffer.num_sms))
-        cls._num_max_dispatch_tokens_per_rank = int(
-            os.getenv("DEEPEP_MAX_TOKENS_PER_RANK", 128)
-        )
-        allow_mnnvl = int(os.getenv("DEEPEP_ENABLE_MNNVL", 1))
+        cls._deepep_sms = int(os.getenv('DEEPEP_SMS', Buffer.num_sms))
+        cls._num_max_dispatch_tokens_per_rank = int(os.getenv('DEEPEP_MAX_TOKENS_PER_RANK', 128))
+        allow_mnnvl = int(os.getenv('DEEPEP_ENABLE_MNNVL', 1))
         if allow_mnnvl == 0:
             cls._allow_mnnvl = False
-        env_deepep_mode = os.getenv("DEEPEP_MODE", "auto").strip().lower()
-        if env_deepep_mode == "normal":
+        env_deepep_mode = os.getenv('DEEPEP_MODE', 'auto').strip().lower()
+        if env_deepep_mode == 'normal':
             cls._deepep_mode = DeepEPMode.NORMAL
-        if env_deepep_mode == "low_latency":
+        if env_deepep_mode == 'low_latency':
             cls._deepep_mode = DeepEPMode.LOW_LATENCY
 
     @classmethod
     def set_deepep_mode(cls, mode):
         low_latency_buffer_cleaned = False
-        if (
-            cls._deepep_mode == DeepEPMode.AUTO
-            and mode == DeepEPMode.LOW_LATENCY
-            and cls._latest_mode == DeepEPMode.NORMAL
-        ):
+        if (cls._deepep_mode == DeepEPMode.AUTO and mode == DeepEPMode.LOW_LATENCY
+                and cls._latest_mode == DeepEPMode.NORMAL):
             cls.clean_low_latency_buffer(cls._buffer_common)
             low_latency_buffer_cleaned = True
         cls._latest_mode = mode
@@ -107,8 +121,8 @@ class DeepEPBuffer:
 
         num_nvl_bytes, num_rdma_bytes = 0, 0
         for config in (
-            Buffer.get_dispatch_config(group.size()),
-            Buffer.get_combine_config(group.size()),
+                Buffer.get_dispatch_config(group.size()),
+                Buffer.get_combine_config(group.size()),
         ):
             num_nvl_bytes = max(
                 config.get_nvl_buffer_size_hint(hidden_bytes, group.size()),
@@ -158,8 +172,8 @@ class DeepEPBuffer:
         """
         num_nvl_bytes, num_rdma_bytes = 0, 0
         for config in (
-            Buffer.get_dispatch_config(group.size()),
-            Buffer.get_combine_config(group.size()),
+                Buffer.get_dispatch_config(group.size()),
+                Buffer.get_combine_config(group.size()),
         ):
             num_nvl_bytes = max(
                 config.get_nvl_buffer_size_hint(hidden_bytes, group.size()),
@@ -170,13 +184,13 @@ class DeepEPBuffer:
                 num_rdma_bytes,
             )
 
-        if (
-            _buffer_normal is None
-            or _buffer_normal.group != group
-            or _buffer_normal.num_nvl_bytes < num_nvl_bytes
-            or _buffer_normal.num_rdma_bytes < num_rdma_bytes
-        ):
-            cls._buffer_normal = Buffer(group, num_nvl_bytes, num_rdma_bytes, explicitly_destroy=cls._explicitly_destroy)
+        if (cls._buffer_normal is None or cls._buffer_normal.group != group
+                or cls._buffer_normal.num_nvl_bytes < num_nvl_bytes
+                or cls._buffer_normal.num_rdma_bytes < num_rdma_bytes):
+            cls._buffer_normal = Buffer(group,
+                                        num_nvl_bytes,
+                                        num_rdma_bytes,
+                                        explicitly_destroy=cls._explicitly_destroy)
         return cls._buffer_normal
 
     @classmethod
@@ -192,19 +206,14 @@ class DeepEPBuffer:
         https://github.com/deepseek-ai/DeepEP?tab=readme-ov-file#example-use-in-inference-decoding
         """
 
-        num_rdma_bytes = Buffer.get_low_latency_rdma_size_hint(
-            num_max_dispatch_tokens_per_rank, hidden, group.size(), num_experts
-        )
+        num_rdma_bytes = Buffer.get_low_latency_rdma_size_hint(num_max_dispatch_tokens_per_rank, hidden, group.size(),
+                                                               num_experts)
 
-        if (
-            _buffer_low_latency is None
-            or _buffer_low_latency.group != group
-            or not _buffer_low_latency.low_latency_mode
-            or _buffer_low_latency.num_rdma_bytes < num_rdma_bytes
-        ):
-            assert (
-                num_experts % group.size() == 0
-            ), f"num_experts: {num_experts} must be divisible by ep_size: {group.size()}"
+        if (cls._buffer_low_latency is None or cls._buffer_low_latency.group != group
+                or not cls._buffer_low_latency.low_latency_mode
+                or cls._buffer_low_latency.num_rdma_bytes < num_rdma_bytes):
+            assert (num_experts %
+                    group.size() == 0), f'num_experts: {num_experts} must be divisible by ep_size: {group.size()}'
             cls._buffer_low_latency = Buffer(
                 group,
                 num_rdma_bytes=num_rdma_bytes,
@@ -227,6 +236,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_local_experts: int = None,
         hidden_size: int = None,
         params_dtype: torch.dtype = None,
+        expert_alignment: int = 128,
     ):
         self.dispatch_count = 0
         self.group = group
@@ -234,16 +244,12 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         self.num_local_experts = num_local_experts
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
-        self.num_max_dispatch_tokens_per_rank = (
-            DeepEPBuffer._num_max_dispatch_tokens_per_rank
-        )
+        self.num_max_dispatch_tokens_per_rank = (DeepEPBuffer._num_max_dispatch_tokens_per_rank)
         # Handle used for combine operation
         self.handle = None
         if not use_deepep:
-            raise ImportError(
-                "DeepEP is not installed. Please install DeepEP package from "
-                "https://github.com/deepseek-ai/deepep."
-            )
+            raise ImportError('DeepEP is not installed. Please install DeepEP package from '
+                              'https://github.com/deepseek-ai/deepep.')
         self.buffer_normal = DeepEPBuffer.get_buffer_common(
             self.group,
             self.num_max_dispatch_tokens_per_rank,
@@ -251,6 +257,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             self.num_experts,
             hidden_bytes=self.hidden_size * self.params_bytes,
         )
+        self.expert_alignment = expert_alignment
         # self.buffer_normal = DeepEPBuffer.get_buffer_normal(self.group,
         #                                        hidden_bytes=self.hidden_size * self.params_bytes)
 
@@ -264,7 +271,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         topk_weights: torch.Tensor,
         expert_list: List[int] = None,
         previous_event=None,
-        expert_alignment: int = 128,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         hidden_states, x_scales = x if isinstance(x, tuple) else (x, None)
         self.hidden_shape = hidden_states.shape
@@ -276,9 +282,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             recv_tokens_per_expert,
             handle,
             event,
-        ) = self.dispatch_normal(
-            x, topk_idx, topk_weights, self.num_experts, previous_event, expert_alignment=expert_alignment,
-        )
+        ) = self.dispatch_normal(x, topk_idx, topk_weights, self.num_experts, previous_event)
 
         self.handle = handle
         self.topk_idx = topk_idx
@@ -292,7 +296,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         topk_weights: torch.Tensor,
         num_experts: int,
         previous_event=None,
-        expert_alignment: int = 128,
     ):
         (
             num_tokens_per_rank,
@@ -326,7 +329,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=False,
             allocate_on_comm_stream=False,
-            expert_alignment=expert_alignment,
+            expert_alignment=self.expert_alignment,
         )  # Note: expert_alignment = 128 if deepgemm else 1
 
         return (
@@ -346,7 +349,6 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_experts: Optional[int] = None,
         previous_event=None,
         async_finish=True,
-        expert_alignment: int = 128,
     ):
         (
             num_tokens_per_rank,
@@ -380,7 +382,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=async_finish,
             allocate_on_comm_stream=previous_event is not None and async_finish,
-            expert_alignment=expert_alignment,
+            expert_alignment=self.expert_alignment,
         )
 
         return (
@@ -407,9 +409,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         )
         return combined_x, event
 
-    def combine_normal_async(
-        self, x: torch.Tensor, handle: Tuple, previous_event=None, async_finish=True
-    ):
+    def combine_normal_async(self, x: torch.Tensor, handle: Tuple, previous_event=None, async_finish=True):
         combined_x, _, event = self.get_buffer().combine(
             x,
             handle,
@@ -427,6 +427,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
 
 
 class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
+
     def __init__(
         self,
         group: torch.distributed.ProcessGroup,
@@ -437,19 +438,15 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
         return_recv_hook: bool = False,
     ):
         if not use_deepep:
-            raise ImportError(
-                "DeepEP is not installed. Please install DeepEP package from "
-                "https://github.com/deepseek-ai/deepep."
-            )
+            raise ImportError('DeepEP is not installed. Please install DeepEP package from '
+                              'https://github.com/deepseek-ai/deepep.')
         self.group = group
         self.num_experts = num_experts
         self.num_local_experts = num_local_experts
         self.hidden_size = hidden_size
         self.params_bytes = params_dtype.itemsize
         self.handle = None
-        self.num_max_dispatch_tokens_per_rank = (
-            DeepEPBuffer._num_max_dispatch_tokens_per_rank
-        )
+        self.num_max_dispatch_tokens_per_rank = (DeepEPBuffer._num_max_dispatch_tokens_per_rank)
         self.buffer_low_latency = DeepEPBuffer.get_buffer_common(
             self.group,
             self.num_max_dispatch_tokens_per_rank,
@@ -477,10 +474,8 @@ class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
         if num_experts is not None and self.num_experts is not None:
             assert self.num_experts == num_experts
         topk_idx = topk_idx.to(torch.int64)
-        expected_m = (
-            hidden_states.shape[0] * self.get_buffer().group_size * topk_idx.shape[1]
-            + num_experts
-        ) // num_experts
+        expected_m = (hidden_states.shape[0] * self.get_buffer().group_size * topk_idx.shape[1] +
+                      num_experts) // num_experts
 
         (
             packed_recv_hidden,

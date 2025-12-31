@@ -1,12 +1,13 @@
 # Copyright (c) 2025, DeepLink.
 import os
 from typing import List, Optional, Tuple, Union
+
 import torch
 import torch.distributed as dist
 
 from dlblas.kernels.fp8 import per_token_group_quant_fp8
 from dlblas.kernels.fused_moe_v3 import fused_moe_v3
-from dlblas.kernels.moe import map_logic_to_physical_idx_hash_random, quant_fp8, silu_and_mul_masked_post_quant_fwd
+from dlblas.kernels.moe import quant_fp8, silu_and_mul_masked_post_quant_fwd
 from dlblas.layers.moe.experts_distribution_recorder import ExpertsDistributionRecorder
 from dlblas.layers.moe.kernels.blocked_fp8_fused_moe import dlblas_fused_moe_blocked_fp8
 from dlblas.layers.moe.token_dispatcher import DeepEPTokenDispatcherLowLatency, DeepEPTokenDispatcherNormal
@@ -26,6 +27,7 @@ enable_moe_load_stats = os.environ.get('DLBLAS_MOE_LOAD_STATS', 'false').lower()
 
 class FusedMoENormal:
     recorder = ExpertsDistributionRecorder(output_dir='/tmp/dlblas/prefill_moe_stats')
+
     def __init__(
         self,
         ep_size: int,
@@ -37,6 +39,7 @@ class FusedMoENormal:
         top_k: int = 8,
         out_dtype: torch.dtype = torch.bfloat16,
         chunk_size: Optional[int] = 32 * 1024,
+        expert_alignment: int = 128,
     ):
         self.layer_index = layer_index
         self.top_k = top_k
@@ -49,6 +52,7 @@ class FusedMoENormal:
             num_local_experts=self.num_local_experts,
             hidden_size=hidden_dim,
             params_dtype=out_dtype,
+            expert_alignment=expert_alignment,
         )
 
     def forward(
@@ -118,6 +122,7 @@ class FusedMoENormal:
 
 class FusedMoELowLatency:
     recorder = ExpertsDistributionRecorder(output_dir='/tmp/dlblas/decode_moe_stats')
+
     def __init__(self,
                  ep_size: int,
                  ep_group: dist.ProcessGroup,
@@ -137,6 +142,7 @@ class FusedMoELowLatency:
             hidden_size=hidden_dim,
             params_dtype=out_dtype,
         )
+
     def deepgemm_grouped_fp8_nt_masked(
         self,
         input_tuple: Tuple[torch.Tensor, torch.Tensor],
@@ -146,11 +152,11 @@ class FusedMoELowLatency:
         expected_m: int,
     ):
         assert use_deep_gemm, 'Please install deep_gemm'
-        if hasattr(deep_gemm, "m_grouped_fp8_gemm_nt_masked"):
+        if hasattr(deep_gemm, 'm_grouped_fp8_gemm_nt_masked'):
             return deep_gemm.m_grouped_fp8_gemm_nt_masked(input_tuple, w_tuple, out, masked_m, expected_m)
-        if hasattr(deep_gemm, "m_grouped_gemm_fp8_fp8_bf16_nt_masked"):
+        if hasattr(deep_gemm, 'm_grouped_gemm_fp8_fp8_bf16_nt_masked'):
             return deep_gemm.m_grouped_gemm_fp8_fp8_bf16_nt_masked(input_tuple, w_tuple, out, masked_m, expected_m)
-        raise RuntimeError("deep_gemm version mismatch")
+        raise RuntimeError('deep_gemm version mismatch')
 
     def experts(
         self,
@@ -293,7 +299,8 @@ def build_deepep_moe(low_latency_mode: bool,
                      top_k: int,
                      out_dtype: torch.dtype,
                      layer_idx: int = 0,
-                     chunk_size: Optional[int] = 32 * 1024):
+                     chunk_size: Optional[int] = 32 * 1024,
+                     expert_alignment: int = 128):
     if low_latency_mode:
         return FusedMoELowLatency(ep_size=ep_size,
                                   ep_group=ep_group,
@@ -311,7 +318,8 @@ def build_deepep_moe(low_latency_mode: bool,
                               block_size=block_size,
                               top_k=top_k,
                               out_dtype=out_dtype,
-                              chunk_size=chunk_size)
+                              chunk_size=chunk_size,
+                              expert_alignment=expert_alignment)
 
 
 class DlblasTritonFusedMoEBlockedF8Impl(FusedMoEBlockedF8Impl):
