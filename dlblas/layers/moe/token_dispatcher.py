@@ -8,8 +8,8 @@ except ImportError:
     use_deepep = False
 
 import os
-from typing import List, Optional, Tuple, Union
 from enum import Enum
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -35,6 +35,39 @@ class DeepEPBuffer:
     _latest_mode = DeepEPMode.AUTO
     _hidden_size = -1
     _num_experts = -1
+    _explicitly_destroy: bool = False
+
+    @classmethod
+    def set_explicitly_destroy(cls):
+        if cls._buffer_common is not None:
+            return False
+        if cls._buffer_normal is not None:
+            return False
+        if cls._buffer_low_latency is not None:
+            return False
+        if not cls._explicitly_destroy:
+            cls._explicitly_destroy = True
+            return True
+        return False
+
+    @classmethod
+    def get_explicitly_destroy(cls):
+        return cls._explicitly_destroy
+
+    @classmethod
+    def destroy(cls):
+        if cls._explicitly_destroy:
+            # Note: more than one buffer is not allowed in deepep now.
+            if cls._buffer_common is not None:
+                cls._buffer_common.destroy()
+                return True
+            if cls._buffer_low_latency is not None:
+                cls._buffer_low_latency.destroy()
+                return True
+            if cls._buffer_normal is not None:
+                cls._buffer_normal.destroy()
+                return True
+        return False
 
     @classmethod
     def update_parameters(cls, hidden_size, num_experts):
@@ -131,6 +164,7 @@ class DeepEPBuffer:
             low_latency_mode=True,
             num_qps_per_rank=num_qps_per_rank,
             allow_mnnvl=cls._allow_mnnvl,
+            explicitly_destroy=cls._explicitly_destroy,
         )
         cls._buffer_common.set_num_sms(cls._deepep_sms)
         return cls._buffer_common
@@ -156,12 +190,17 @@ class DeepEPBuffer:
             )
 
         if (
-            _buffer_normal is None
-            or _buffer_normal.group != group
-            or _buffer_normal.num_nvl_bytes < num_nvl_bytes
-            or _buffer_normal.num_rdma_bytes < num_rdma_bytes
+            cls._buffer_normal is None
+            or cls._buffer_normal.group != group
+            or cls._buffer_normal.num_nvl_bytes < num_nvl_bytes
+            or cls._buffer_normal.num_rdma_bytes < num_rdma_bytes
         ):
-            cls._buffer_normal = Buffer(group, num_nvl_bytes, num_rdma_bytes)
+            cls._buffer_normal = Buffer(
+                group,
+                num_nvl_bytes,
+                num_rdma_bytes,
+                explicitly_destroy=cls._explicitly_destroy,
+            )
         return cls._buffer_normal
 
     @classmethod
@@ -182,10 +221,10 @@ class DeepEPBuffer:
         )
 
         if (
-            _buffer_low_latency is None
-            or _buffer_low_latency.group != group
-            or not _buffer_low_latency.low_latency_mode
-            or _buffer_low_latency.num_rdma_bytes < num_rdma_bytes
+            cls._buffer_low_latency is None
+            or cls._buffer_low_latency.group != group
+            or not cls._buffer_low_latency.low_latency_mode
+            or cls._buffer_low_latency.num_rdma_bytes < num_rdma_bytes
         ):
             assert (
                 num_experts % group.size() == 0
@@ -195,6 +234,7 @@ class DeepEPBuffer:
                 num_rdma_bytes=num_rdma_bytes,
                 low_latency_mode=True,
                 num_qps_per_rank=max(num_experts // group.size(), Buffer.num_sms // 2),
+                explicitly_destroy=cls._explicitly_destroy,
             )
         return cls._buffer_low_latency
 
@@ -211,6 +251,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
         num_local_experts: int = None,
         hidden_size: int = None,
         params_dtype: torch.dtype = None,
+        expert_alignment: int = 128,
     ):
         self.dispatch_count = 0
         self.group = group
@@ -235,6 +276,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             self.num_experts,
             hidden_bytes=self.hidden_size * self.params_bytes,
         )
+        self.expert_alignment = expert_alignment
         # self.buffer_normal = DeepEPBuffer.get_buffer_normal(self.group,
         #                                        hidden_bytes=self.hidden_size * self.params_bytes)
 
@@ -308,7 +350,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=False,
             allocate_on_comm_stream=False,
-            expert_alignment=128,
+            expert_alignment=self.expert_alignment,
         )  # Note: expert_alignment = 128 if deepgemm else 1
 
         return (
@@ -361,7 +403,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
             previous_event=previous_event,
             async_finish=async_finish,
             allocate_on_comm_stream=previous_event is not None and async_finish,
-            expert_alignment=128,
+            expert_alignment=self.expert_alignment,
         )
 
         return (
@@ -408,6 +450,7 @@ class DeepEPTokenDispatcherNormal(TokenDispatcherBase):
 
 
 class DeepEPTokenDispatcherLowLatency(TokenDispatcherBase):
+
     def __init__(
         self,
         group: torch.distributed.ProcessGroup,
