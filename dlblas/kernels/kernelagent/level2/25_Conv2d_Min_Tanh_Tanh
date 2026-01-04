@@ -1,0 +1,65 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+from triton.language.extra import libdevice
+
+@triton.jit
+def min_tanh_tanh_kernel(
+    input_ptr,
+    output_ptr,
+    B, C, H, W,
+    stride_b, stride_c,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_b = tl.program_id(0)
+    pid_tile = tl.program_id(1)
+    
+    tile_start = pid_tile * BLOCK_SIZE
+    spatial_index = tile_start + tl.arange(0, BLOCK_SIZE)
+    mask = spatial_index < (H * W)
+    
+    min_vals = tl.full((BLOCK_SIZE,), float('inf'), dtype=tl.float32)
+    
+    for c in range(C):
+        channel_base = input_ptr + pid_b * stride_b + c * stride_c
+        ptrs = channel_base + spatial_index
+        vals = tl.load(ptrs, mask=mask, other=float('inf'))
+        min_vals = tl.minimum(min_vals, vals)
+    
+    temp = libdevice.tanh(min_vals)
+    results = libdevice.tanh(temp)
+    
+    output_indices = pid_b * (H * W) + spatial_index
+    tl.store(output_ptr + output_indices, results, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        B, C, H, W = x.shape
+        output = torch.empty(B, 1, H, W, device=x.device, dtype=x.dtype)
+        
+        grid = (B, (H * W + 63) // 64)
+        min_tanh_tanh_kernel[grid](
+            x, output, 
+            B, C, H, W,
+            x.stride(0), x.stride(1),
+            BLOCK_SIZE=64
+        )
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

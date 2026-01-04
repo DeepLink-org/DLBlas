@@ -1,0 +1,125 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _fused_ops_kernel(
+    x_ptr,
+    output_ptr,
+    bias_ptr,
+    B, C, D, H, W,
+    stride_b, stride_c, stride_d, stride_h, stride_w,
+    out_stride_b, out_stride_c, out_stride_d, out_stride_h, out_stride_w,
+    BLOCK_SIZE_C: tl.constexpr,
+    TOTAL_W_BLOCKS: tl.constexpr
+):
+    pid = tl.program_id(0)
+    if pid >= B * D * H * TOTAL_W_BLOCKS:
+        return
+
+    # Calculate 4D indices with 4-element W blocks
+    w_block_idx = pid % TOTAL_W_BLOCKS
+    pid //= TOTAL_W_BLOCKS
+    h = pid % H
+    pid //= H
+    d = pid % D
+    pid //= D
+    b = pid
+
+    w_start = w_block_idx * 4
+    w_offsets = w_start + tl.arange(0, 4)
+    w_mask = w_offsets < W
+
+    # Preload entire bias vector once
+    c_offsets = tl.arange(0, BLOCK_SIZE_C)
+    bias_mask = c_offsets < C
+    bias_vals = tl.load(bias_ptr + c_offsets, mask=bias_mask, other=0)
+
+    # Initialize LogSumExp accumulators
+    max_val = tl.full((4,), float('-inf'), tl.float32)
+    sum_exp = tl.zeros((4,), tl.float32)
+
+    # Process channels in blocks
+    for c in range(0, C, BLOCK_SIZE_C):
+        c_mask = (c_offsets + c) < C
+        
+        # Base pointer for spatial location
+        base = b * stride_b + d * stride_d + h * stride_h + c * stride_c
+        ptrs = base + w_offsets * stride_w + c_offsets[:, None] * stride_c
+        
+        # Vectorized load [BLOCK_SIZE_C, 4]
+        vals = tl.load(x_ptr + ptrs, mask=c_mask[:, None] & w_mask[None, :], other=float('-inf'))
+        
+        # Update LogSumExp state
+        block_max = tl.max(vals, axis=0)
+        new_max = tl.maximum(max_val, block_max)
+        alpha = tl.exp(max_val - new_max)
+        beta = tl.exp(vals - new_max)
+        sum_exp = sum_exp * alpha + tl.sum(beta, axis=0)
+        max_val = new_max
+
+    # Finalize LogSumExp
+    log_sum_exp = tl.log(sum_exp) + max_val
+    
+    # Apply HardSwish
+    hswish = log_sum_exp * tl.sigmoid(log_sum_exp + 3.0) / 6.0
+    
+    # Compute and reduce bias subtraction
+    candidate = hswish[None, :] - bias_vals[:, None]
+    candidate = tl.minimum(tl.maximum(candidate, -1.0), 1.0)
+    result = tl.max(tl.where(bias_mask[:, None], candidate, float('-inf')), axis=0)
+    
+    # Vectorized store
+    out_base = b * out_stride_b + 0 * out_stride_c + d * out_stride_d + h * out_stride_h + w_start * out_stride_w
+    tl.store(output_ptr + out_base + tl.arange(0, 4) * out_stride_w, result, mask=w_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.out_channels = out_channels
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        B, C, D, H, W = x.shape
+        x = x.contiguous()
+        output = torch.empty((B, 1, D, H, W), device=x.device, dtype=x.dtype)
+        
+        # Prepare bias
+        bias_contig = self.bias.view(-1).contiguous()
+        
+        # Calculate grid dimensions
+        total_w_blocks = (W + 3) // 4
+        grid = (B * D * H * total_w_blocks,)
+        BLOCK_SIZE_C = triton.next_power_of_2(C)
+        
+        if grid[0] == 0:
+            return output
+            
+        _fused_ops_kernel[grid](
+            x, output, bias_contig,
+            B, C, D, H, W,
+            x.stride(0), x.stride(1), x.stride(2), x.stride(3), x.stride(4),
+            output.stride(0), output.stride(1), output.stride(2), output.stride(3), output.stride(4),
+            BLOCK_SIZE_C,
+            TOTAL_W_BLOCKS=total_w_blocks
+        )
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+bias_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, bias_shape]

@@ -1,0 +1,99 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE': 1024}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 2048}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 4096}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 8192}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 16384}, num_warps=8),
+    ],
+    key=['total_elements']
+)
+@triton.jit
+def _layer_norm_forward_kernel(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    total_elements,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row_offset = pid * total_elements
+    
+    # Initialize accumulators
+    sum_val = 0.0
+    sum_sq_val = 0.0
+
+    # First pass: compute mean and variance
+    for off in range(0, total_elements, BLOCK_SIZE):
+        offs = off + tl.arange(0, BLOCK_SIZE)
+        mask = offs < total_elements
+        x_vals = tl.load(x_ptr + row_offset + offs, mask=mask, other=0.0)
+        
+        sum_val += tl.sum(x_vals, axis=0)
+        sum_sq_val += tl.sum(x_vals * x_vals, axis=0)
+
+    mean = sum_val / total_elements
+    variance = (sum_sq_val / total_elements) - (mean * mean)
+    rstd = tl.math.rsqrt(variance + eps)
+
+    # Second pass: normalize and scale
+    for off in range(0, total_elements, BLOCK_SIZE):
+        offs = off + tl.arange(0, BLOCK_SIZE)
+        mask = offs < total_elements
+        x_vals = tl.load(x_ptr + row_offset + offs, mask=mask, other=0.0)
+        w_vals = tl.load(weight_ptr + offs, mask=mask, other=0.0)
+        b_vals = tl.load(bias_ptr + offs, mask=mask, other=0.0)
+        
+        normalized = (x_vals - mean) * rstd
+        y_vals = normalized * w_vals + b_vals
+        tl.store(output_ptr + row_offset + offs, y_vals, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, normalized_shape: tuple):
+        super(ModelNew, self).__init__()
+        self.normalized_shape = normalized_shape
+        self.weight = nn.Parameter(torch.ones(*normalized_shape))
+        self.bias = nn.Parameter(torch.zeros(*normalized_shape))
+        self.eps = 1e-5
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        normalized_dims = len(self.normalized_shape)
+        total_elements = math.prod(self.normalized_shape)
+        
+        input_shape = x.shape
+        num_leading = input_shape[:-normalized_dims]
+        num_leading_elements = math.prod(num_leading) if num_leading else 1
+        
+        x_flat = x.contiguous().view(num_leading_elements, total_elements)
+        weight_flat = self.weight.contiguous().view(-1)
+        bias_flat = self.bias.contiguous().view(-1)
+        output_flat = torch.empty_like(x_flat)
+        
+        n_rows = num_leading_elements
+        
+        _layer_norm_forward_kernel[(n_rows,)](
+            x_flat, weight_flat, bias_flat, output_flat, 
+            total_elements, self.eps
+        )
+        
+        return output_flat.view(input_shape)
+
+batch_size = 16
+features = 64
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [(features, dim1, dim2)]

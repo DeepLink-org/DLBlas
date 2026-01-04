@@ -1,0 +1,130 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def min_softmax_kernel(
+    input_ptr,
+    output_ptr,
+    n_channels,
+    depth,
+    height,
+    width,
+    input_stride_n, input_stride_c, input_stride_d, input_stride_h, input_stride_w,
+    output_stride_n, output_stride_c, output_stride_h, output_stride_w,
+    BLOCK_SIZE_C: tl.constexpr,
+    BLOCK_SIZE_H: tl.constexpr,
+    BLOCK_SIZE_W: tl.constexpr,
+):
+    pid_n = tl.program_id(0)
+    pid_hi = tl.program_id(1)
+    pid_wi = tl.program_id(2)
+    
+    # Spatial block offsets
+    h_offsets = pid_hi * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
+    w_offsets = pid_wi * BLOCK_SIZE_W + tl.arange(0, BLOCK_SIZE_W)
+    
+    # Channel block
+    c_offsets = tl.arange(0, BLOCK_SIZE_C)
+    
+    # Create masks for boundaries
+    h_mask = h_offsets < height
+    w_mask = w_offsets < width
+    c_mask = c_offsets < n_channels
+    spatial_mask = h_mask[:, None] & w_mask[None, :]
+    full_mask = spatial_mask[:, :, None] & c_mask[None, None, :]
+    
+    # Initialize min_vals to infinity
+    min_vals = tl.full((BLOCK_SIZE_H, BLOCK_SIZE_W, BLOCK_SIZE_C), float('inf'), dtype=tl.float32)
+    
+    # Loop over depth dimension
+    for d in range(depth):
+        # Compute input offsets for the current depth
+        input_offsets = (
+            pid_n * input_stride_n + 
+            c_offsets[None, None, :] * input_stride_c + 
+            d * input_stride_d + 
+            h_offsets[:, None, None] * input_stride_h + 
+            w_offsets[None, :, None] * input_stride_w
+        )
+        
+        # Load values with masking
+        vals = tl.load(input_ptr + input_offsets, mask=full_mask, other=float('inf'))
+        
+        # Update min values
+        min_vals = tl.minimum(min_vals, vals)
+    
+    # Compute softmax over channels
+    max_val = tl.max(min_vals, axis=2)
+    exp_vals = tl.exp(min_vals - max_val[:, :, None])
+    sum_exp = tl.sum(exp_vals, axis=2)
+    softmax_out = exp_vals / sum_exp[:, :, None]
+    
+    # Compute output offsets
+    output_offsets = (
+        pid_n * output_stride_n + 
+        c_offsets[None, None, :] * output_stride_c + 
+        h_offsets[:, None, None] * output_stride_h + 
+        w_offsets[None, :, None] * output_stride_w
+    )
+    
+    # Store results
+    tl.store(output_ptr + output_offsets, softmax_out, mask=full_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dim):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.dim = dim
+
+    def forward(self, x):
+        x = self.conv(x)
+        
+        if self.dim != 2:
+            x = torch.min(x, dim=self.dim)[0]
+            return torch.softmax(x, dim=1)
+        
+        N, C, D, H, W = x.shape
+        x_contig = x.contiguous()
+        output = torch.empty((N, C, H, W), device=x.device, dtype=x.dtype)
+        
+        # Tuning parameters
+        BLOCK_SIZE_C = 16
+        BLOCK_SIZE_H = 8
+        BLOCK_SIZE_W = 8
+        
+        grid = (
+            N,
+            triton.cdiv(H, BLOCK_SIZE_H),
+            triton.cdiv(W, BLOCK_SIZE_W)
+        )
+        
+        min_softmax_kernel[grid](
+            x_contig,
+            output,
+            C,
+            D,
+            H,
+            W,
+            x_contig.stride(0), x_contig.stride(1), x_contig.stride(2), 
+            x_contig.stride(3), x_contig.stride(4),
+            output.stride(0), output.stride(1), output.stride(2), output.stride(3),
+            BLOCK_SIZE_C=BLOCK_SIZE_C,
+            BLOCK_SIZE_H=BLOCK_SIZE_H,
+            BLOCK_SIZE_W=BLOCK_SIZE_W
+        )
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+D, H, W = 16, 32, 32
+kernel_size = 3
+dim = 2
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, dim]

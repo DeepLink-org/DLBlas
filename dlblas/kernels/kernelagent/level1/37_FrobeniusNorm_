@@ -1,0 +1,73 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _frobenius_norm_reduction_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    x_square = x * x
+    partial_sum = tl.sum(x_square, axis=0)
+    tl.atomic_add(output_ptr, partial_sum)
+
+@triton.jit
+def _divide_kernel(
+    x_ptr,
+    output_ptr,
+    norm_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    norm_val = tl.load(norm_ptr)
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    output = x / norm_val
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.numel() == 0:
+            return x
+            
+        x_cont = x.contiguous()
+        total_elements = x_cont.numel()
+        BLOCK_SIZE = 4096
+        total_sq = torch.zeros(1, device=x.device, dtype=torch.float32)
+        
+        grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
+        _frobenius_norm_reduction_kernel[grid](x_cont, total_sq, total_elements, BLOCK_SIZE=BLOCK_SIZE)
+        
+        norm = torch.sqrt(total_sq)
+        
+        output = torch.empty_like(x_cont)
+        grid_divide = (triton.cdiv(total_elements, BLOCK_SIZE),)
+        _divide_kernel[grid_divide](x_cont, output, total_sq, total_elements, BLOCK_SIZE=BLOCK_SIZE)
+        
+        return output.view_as(x)
+
+batch_size = 16
+features = 64
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return []

@@ -1,0 +1,66 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_gelu_pool_kernel(
+    input_ptr,
+    output_ptr,
+    B, C, H, W,
+    n_elements: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= B * C:
+        return
+    
+    b = pid // C
+    c = pid % C
+    base_ptr = input_ptr + (b * C * H * W) + (c * H * W)
+    total = 0.0
+    
+    for offset in range(0, n_elements, BLOCK_SIZE):
+        idx = offset + tl.arange(0, BLOCK_SIZE)
+        mask = idx < n_elements
+        data = tl.load(base_ptr + idx, mask=mask, other=0.0)
+        gelu = data * 0.5 * (1.0 + tl.erf(data * 0.7071067811865476))
+        total += tl.sum(gelu, axis=0)
+    
+    result = total / n_elements
+    tl.store(output_ptr + pid, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        
+    def forward(self, x):
+        x = self.conv(x)
+        B, C, H, W = x.shape
+        x = x.contiguous()
+        n_elements = H * W
+        output = torch.empty(B * C, device=x.device, dtype=x.dtype)
+        
+        grid = (B * C,)
+        BLOCK_SIZE = 1024
+        fused_gelu_pool_kernel[grid](
+            x, output, 
+            B, C, H, W,
+            n_elements=n_elements,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=32
+        )
+        return output.view(B, C)
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]
