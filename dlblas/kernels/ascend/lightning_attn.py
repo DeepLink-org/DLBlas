@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 import triton.language.extra.deeplink as dl
 
+
 class BackendType(enum.Enum):
     """Backend type."""
 
@@ -20,12 +21,12 @@ def lightning_attention_prefill_forward_torch(
     past_key_value: torch.Tensor,
     slope_rate: torch.Tensor,
     BLOCK_SIZE=64,
-    in_place=True
+    in_place=True,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention prefill.
     modify from: https://github.com/MiniMax-AI/MiniMax-M1/blob/main/modeling_minimax_m1.py
-    
+
     Args:
         q: Query tensor of shape [B, H, N, D]
         k: Key tensor of shape [B, H, N, D]
@@ -51,10 +52,13 @@ def lightning_attention_prefill_forward_torch(
     q_decay = torch.exp(-s * array.reshape(-1, 1))
     k_decay = torch.exp(-s * (BLOCK_SIZE - array.reshape(-1, 1)))
     index = array[:, None] - array[None, :]
-    s_index = s * index[
-        None,
-        None,
-    ]
+    s_index = (
+        s
+        * index[
+            None,
+            None,
+        ]
+    )
     s_index = torch.where(index >= 0, -s_index, float("-inf"))
     diag_decay = torch.exp(s_index)
 
@@ -72,16 +76,22 @@ def lightning_attention_prefill_forward_torch(
         ki = k[:, :, si:ei].contiguous()
         vi = v[:, :, si:ei].contiguous()
         qkv_none_diag = torch.matmul(qi * q_decay[:, :m], kv).to(torch.float32)
-        qk = torch.matmul(qi, ki.transpose(-1, -2)).to(torch.float32) * diag_decay[:, :, :m, :m]
+        qk = (
+            torch.matmul(qi, ki.transpose(-1, -2)).to(torch.float32)
+            * diag_decay[:, :, :m, :m]
+        )
         qkv_diag = torch.matmul(qk, vi.to(torch.float32))
         output[:, :, si:ei] = qkv_none_diag + qkv_diag
         block_decay = torch.exp(-s * m)
-        kv = block_decay * kv + torch.matmul((ki * k_decay[:, -m:]).transpose(-1, -2).to(vi.dtype), vi)
+        kv = block_decay * kv + torch.matmul(
+            (ki * k_decay[:, -m:]).transpose(-1, -2).to(vi.dtype), vi
+        )
     if in_place:
         past_key_value.copy_(kv)
         return output, past_key_value
     else:
         return output, kv
+
 
 @triton.jit
 def _fwd_loop_kernel(
@@ -123,29 +133,38 @@ def _fwd_loop_kernel(
             # get block ptr
             Q_block_ptr = q_ptr + qk_offset + tl.arange(0, d)[None, :]
             K_trans_block_ptr = k_ptr + qk_offset + tl.arange(0, d)[:, None]
-            V_block_ptr = v_ptr + v_offset + e_offset + tl.arange(0, BLOCK_MODEL)[None, :]
-            O_block_ptr = output_ptr + o_offset + e_offset + tl.arange(0, BLOCK_MODEL)[None, :]
+            V_block_ptr = (
+                v_ptr + v_offset + e_offset + tl.arange(0, BLOCK_MODEL)[None, :]
+            )
+            O_block_ptr = (
+                output_ptr + o_offset + e_offset + tl.arange(0, BLOCK_MODEL)[None, :]
+            )
             S_block_ptr = slope_rate + off_h
 
             with dl.async_task(scope=dl.async_task.vector):
                 # init decay
                 s = tl.load(S_block_ptr).to(tl.float32)
-                off_block = tl.arange(
-                    0, BLOCK
-                )
+                off_block = tl.arange(0, BLOCK)
                 q_decay = tl.exp(-s.to(tl.float32) * (off_block[:, None] + 1))
-                k_trans_decay = tl.exp(-s.to(tl.float32) * (BLOCK - 1 - off_block[None, :]))
+                k_trans_decay = tl.exp(
+                    -s.to(tl.float32) * (BLOCK - 1 - off_block[None, :])
+                )
                 block_decay = tl.exp(-s.to(tl.float32) * BLOCK)
 
                 tl.store(workspace_q_decay_ptr + off_block[:, None], q_decay)
-                tl.store(workspace_k_trans_decay_ptr + off_block[None, :], k_trans_decay)
+                tl.store(
+                    workspace_k_trans_decay_ptr + off_block[None, :], k_trans_decay
+                )
                 tl.store(workspace_block_decay_ptr, block_decay)
 
                 index = off_block[:, None] - off_block[None, :]
                 s_index = s * index
                 s_index = tl.where(index >= 0, -s_index, float("-inf"))
                 diag_decay = tl.exp(s_index)
-                tl.store(workspace_diag_decay_ptr + off_block[:, None] * BLOCK + off_block, diag_decay)
+                tl.store(
+                    workspace_diag_decay_ptr + off_block[:, None] * BLOCK + off_block,
+                    diag_decay,
+                )
 
                 dl.set_cross_flag(dl.SyncFlag.V2C, 0)
 
@@ -154,19 +173,27 @@ def _fwd_loop_kernel(
 
                 kv = tl.zeros([d, BLOCK_MODEL], dtype=tl.float32)
                 q_decay = tl.load(workspace_q_decay_ptr + off_block[:, None])
-                k_trans_decay = tl.load(workspace_k_trans_decay_ptr + off_block[None, :])
+                k_trans_decay = tl.load(
+                    workspace_k_trans_decay_ptr + off_block[None, :]
+                )
                 block_decay = tl.load(workspace_block_decay_ptr)
-                diag_decay = tl.load(workspace_diag_decay_ptr + off_block[:, None] * BLOCK + off_block)
+                diag_decay = tl.load(
+                    workspace_diag_decay_ptr + off_block[:, None] * BLOCK + off_block
+                )
 
                 # loop compute
                 for i in range(NUM_BLOCK):
                     if n < BLOCK * (i + 1):
                         block_decay = tl.exp(-s.to(tl.float32) * (n - BLOCK * i))
                         # (BLOCK - 1 - off_block[None, :] + n - BLOCK)
-                        k_trans_decay = tl.exp(-s.to(tl.float32) * (n - 1 - off_block[None, :]))
+                        k_trans_decay = tl.exp(
+                            -s.to(tl.float32) * (n - 1 - off_block[None, :])
+                        )
                     # load
                     q = tl.load(
-                        Q_block_ptr + off_block[:, None] * d, mask=off_block[:, None] < n, other=0.0
+                        Q_block_ptr + off_block[:, None] * d,
+                        mask=off_block[:, None] < n,
+                        other=0.0,
                     ).to(tl.float32)
                     k_trans = tl.load(
                         K_trans_block_ptr + off_block[None, :] * d,
@@ -174,7 +201,9 @@ def _fwd_loop_kernel(
                         other=0.0,
                     ).to(tl.float32)
                     v = tl.load(
-                        V_block_ptr + off_block[:, None] * e, mask=off_block[:, None] < n, other=0.0
+                        V_block_ptr + off_block[:, None] * e,
+                        mask=off_block[:, None] < n,
+                        other=0.0,
                     ).to(tl.float32)
 
                     # compute
@@ -196,13 +225,14 @@ def _fwd_loop_kernel(
                 kv_cache_ptr
                 + kv_offset
                 + e_offset
-                + tl.arange(0, d)[:,None] * e
+                + tl.arange(0, d)[:, None] * e
                 + tl.arange(0, BLOCK_MODEL)[None, :]
             )
             tl.store(
                 KV_block_ptr,
                 kv.to(KV_block_ptr.dtype.element_ty),
             )
+
 
 def lightning_attention_prefill_forward_triton_loop(
     q: torch.Tensor,
@@ -211,12 +241,12 @@ def lightning_attention_prefill_forward_triton_loop(
     past_key_value: torch.Tensor,
     slope_rate: torch.Tensor,
     BLOCK_SIZE=64,
-    BLOCK_MODEL=32
+    BLOCK_MODEL=32,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention prefill.
     modify from: https://github.com/OpenNLPLab/lightning-attention/blob/main/lightning_attn/ops/triton/lightning_attn2.py
-    
+
     Args:
         q: Query tensor of shape [B, H, N, D]
         k: Key tensor of shape [B, H, N, D]
@@ -225,7 +255,7 @@ def lightning_attention_prefill_forward_triton_loop(
         slope_rate: Decay rate tensor
         BLOCK_SIZE: Size of blocks for processing
         BLOCK_MODEL: Size of blocks for parallel processing
-        
+
     Returns:
         output: Attention output tensor [B, H, N, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
@@ -256,9 +286,13 @@ def lightning_attention_prefill_forward_triton_loop(
         kv = torch.zeros(b, h, d, e).to(torch.float32).to(q.device)
 
     workspace_q_decay = torch.empty((BLOCK_SIZE,), dtype=torch.float32, device=q.device)
-    workspace_k_trans_decay = torch.empty((BLOCK_SIZE,), dtype=torch.float32, device=q.device)
+    workspace_k_trans_decay = torch.empty(
+        (BLOCK_SIZE,), dtype=torch.float32, device=q.device
+    )
     workspace_block_decay = torch.empty((1,), dtype=torch.float32, device=q.device)
-    workspace_diag_decay = torch.empty((BLOCK_SIZE,), dtype=torch.float32, device=q.device)
+    workspace_diag_decay = torch.empty(
+        (BLOCK_SIZE,), dtype=torch.float32, device=q.device
+    )
 
     _fwd_loop_kernel[grid](
         q,
@@ -290,19 +324,19 @@ def lightning_attention_decode_forward_torch(
     v: torch.Tensor,
     past_key_value: torch.Tensor,
     slope_rate: torch.Tensor,
-    in_place=True
+    in_place=True,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Perform lightning attention decoding.
     modify from: https://github.com/MiniMax-AI/MiniMax-M1/blob/main/modeling_minimax_m1.py
-    
+
     Args:
         q: Query tensor of shape [B, H, 1, D]
         k: Key tensor of shape [B, H, 1, D]
         v: Value tensor of shape [B, H, 1, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
         slope_rate: Decay rate tensor
-        
+
     Returns:
         output: Attention output tensor [B, H, 1, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
@@ -315,11 +349,14 @@ def lightning_attention_decode_forward_torch(
     assert past_key_value.shape == (B, H, D, E)
     kv = past_key_value
     s = torch.exp(-slope_rate)
-    kv = torch.einsum(
-        "... n d, ... n e -> ... d e",
-        k,
-        v,
-    ) + s * kv
+    kv = (
+        torch.einsum(
+            "... n d, ... n e -> ... d e",
+            k,
+            v,
+        )
+        + s * kv
+    )
     qkv = torch.einsum("... n d, ... d e -> ... n e", q, kv.to(q.dtype))
     past_key_value.copy_(kv)
     if in_place:
@@ -327,6 +364,7 @@ def lightning_attention_decode_forward_torch(
         return qkv, past_key_value
     else:
         return qkv, kv
+
 
 @triton.jit
 def _lightningattn_attn_decode_kernel(
@@ -365,8 +403,10 @@ def _lightningattn_attn_decode_kernel(
                 # Calculate offsets for dimensions
                 qk_d_offsets = tl.arange(0, D)
                 v_d_offsets = tl.arange(0, BLOCK_SIZE) + pid_d * BLOCK_SIZE
-                cache_d_offsets = qk_d_offsets[:, None] * cache_d_stride + v_d_offsets[
-                    None, :] * cache_e_stride
+                cache_d_offsets = (
+                    qk_d_offsets[:, None] * cache_d_stride
+                    + v_d_offsets[None, :] * cache_e_stride
+                )
 
                 # Calculate offsets for the current batch and head
                 q_offset = batch_id * qkv_b_stride + head_id * qkv_h_stride
@@ -400,6 +440,7 @@ def _lightningattn_attn_decode_kernel(
                 tl.store(kv_ptr, kv_outer, mask=kv_mask)
                 tl.store(output_ptr + q_offset + v_d_offsets, output, mask=v_mask)
 
+
 def lightning_attention_decode_forward_triton(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -419,7 +460,7 @@ def lightning_attention_decode_forward_triton(
         kv_caches: Key-value cache tensor
         slope_rate: Decay rate tensor
         BLOCK_SIZE: Size of blocks for processing
-        
+
     Returns:
         output: Attention output tensor [B, H, 1, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
@@ -488,15 +529,23 @@ def lightning_attention_prefill_forward(
         slope_rate: Decay rate tensor
         BLOCK_SIZE: Size of blocks for processing
         BLOCK_MODEL: Size of blocks for parallel processing
-        
+
     Returns:
         output: Attention output tensor [B, H, N, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
     """
     if BackendType == BackendType.TRITON:
-        return lightning_attention_prefill_forward_triton_loop(q, k, v, past_key_value, slope_rate, BLOCK_SIZE)
+        return lightning_attention_prefill_forward_triton_loop(
+            q, k, v, past_key_value, slope_rate, BLOCK_SIZE
+        )
     else:
-        return lightning_attention_prefill_forward_torch(q, k, v, past_key_value, slope_rate,)
+        return lightning_attention_prefill_forward_torch(
+            q,
+            k,
+            v,
+            past_key_value,
+            slope_rate,
+        )
 
 
 def lightning_attention_decode_forward(
@@ -517,12 +566,16 @@ def lightning_attention_decode_forward(
         slope_rate: Decay rate tensor
         BLOCK_SIZE: Size of blocks for processing in triton
         BackendType: torch or triton
-        
+
     Returns:
         output: Attention output tensor [B, H, 1, E]
         kv_caches: Key-value cache tensor [B, H, D, E]
     """
     if BackendType == BackendType.TRITON:
-        return lightning_attention_decode_forward_triton(q, k, v, past_key_value, slope_rate, BLOCK_SIZE)
+        return lightning_attention_decode_forward_triton(
+            q, k, v, past_key_value, slope_rate, BLOCK_SIZE
+        )
     else:
-        return lightning_attention_decode_forward_torch(q, k, v, past_key_value, slope_rate)
+        return lightning_attention_decode_forward_torch(
+            q, k, v, past_key_value, slope_rate
+        )

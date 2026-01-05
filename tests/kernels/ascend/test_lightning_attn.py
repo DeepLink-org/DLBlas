@@ -60,23 +60,27 @@ class TestLightningAttn:
         def get_slopes(n):
 
             def get_slopes_power_of_2(n):
-                start = 2**(-(2**-(math.log2(n) - 3)))
+                start = 2 ** (-(2 ** -(math.log2(n) - 3)))
                 ratio = start
                 return [start * ratio**i for i in range(n)]
 
             if math.log2(n).is_integer():
                 return get_slopes_power_of_2(n)
             else:
-                closest_power_of_2 = 2**math.floor(math.log2(n))
-                return (get_slopes_power_of_2(closest_power_of_2) + get_slopes(
-                    2 * closest_power_of_2)[0::2][:n - closest_power_of_2])
+                closest_power_of_2 = 2 ** math.floor(math.log2(n))
+                return (
+                    get_slopes_power_of_2(closest_power_of_2)
+                    + get_slopes(2 * closest_power_of_2)[0::2][: n - closest_power_of_2]
+                )
 
-        slope_rate = torch.tensor(get_slopes(H), dtype=dtype, device=infer_device()).reshape(H, 1, 1)
+        slope_rate = torch.tensor(
+            get_slopes(H), dtype=dtype, device=infer_device()
+        ).reshape(H, 1, 1)
         yield slope_rate * (1 + 1e-5)
 
     # float32 only
     @pytest.mark.parametrize(
-        ['B', 'H', 'N', 'D', 'E', 'dtype', 'BLOCK_SIZE'],
+        ["B", "H", "N", "D", "E", "dtype", "BLOCK_SIZE"],
         [
             (1, 64, 5, 128, 128, torch.float32, 16),
         ],
@@ -94,15 +98,31 @@ class TestLightningAttn:
     ):
         past_key_value_torch = torch.zeros_like(past_key_value.clone())
         past_key_value_triton = torch.zeros_like(past_key_value.clone())
-        out_torch, _ = lightning_attention_prefill_forward(q_states, k_states, v_states, past_key_value_torch, slope_rate, BLOCK_SIZE, BackendType=BackendType.TORCH)
-        out_triton, _ = lightning_attention_prefill_forward(q_states, k_states, v_states, past_key_value_triton, slope_rate, BLOCK_SIZE, BackendType=BackendType.TRITON)
+        out_torch, _ = lightning_attention_prefill_forward(
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_torch,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType=BackendType.TORCH,
+        )
+        out_triton, _ = lightning_attention_prefill_forward(
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_triton,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType=BackendType.TRITON,
+        )
 
         if dtype == torch.float32:
-            rtol=1e-03
-            atol=1e-02
+            rtol = 1e-03
+            atol = 1e-02
         else:
-            rtol=1e-03
-            atol=1e-02
+            rtol = 1e-03
+            atol = 1e-02
 
         kv_check = torch.allclose(
             past_key_value_torch,
@@ -124,13 +144,25 @@ class TestLightningAttn:
         # Triton 版本性能
         tri_time = benchmark_fn(
             lightning_attention_prefill_forward,
-            q_states, k_states, v_states, past_key_value_triton, slope_rate, BLOCK_SIZE, BackendType.TRITON
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_triton,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType.TRITON,
         )
 
         # PyTorch 版本性能
         torch_time = benchmark_fn(
             lightning_attention_prefill_forward,
-            q_states, k_states, v_states, past_key_value_torch, slope_rate, BLOCK_SIZE, BackendType.TORCH
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_torch,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType.TORCH,
         )
 
         # 打印性能对比结果
@@ -145,7 +177,7 @@ class TestLightningAttn:
 
     # float32 only
     @pytest.mark.parametrize(
-        ['B', 'H', 'N', 'D', 'E', 'dtype', 'BLOCK_SIZE'],
+        ["B", "H", "N", "D", "E", "dtype", "BLOCK_SIZE"],
         [
             (8, 64, 1, 128, 128, torch.float32, 64),
         ],
@@ -163,15 +195,31 @@ class TestLightningAttn:
     ):
         past_key_value_torch = torch.zeros_like(past_key_value.clone())
         past_key_value_triton = torch.zeros_like(past_key_value.clone())
-        out_torch, _ = lightning_attention_decode_forward(q_states, k_states, v_states, past_key_value_torch, slope_rate, BLOCK_SIZE, BackendType=BackendType.TORCH)
-        out_triton, _ = lightning_attention_decode_forward(q_states, k_states, v_states, past_key_value_triton, slope_rate, BLOCK_SIZE, BackendType=BackendType.TRITON)
+        out_torch, _ = lightning_attention_decode_forward(
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_torch,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType=BackendType.TORCH,
+        )
+        out_triton, _ = lightning_attention_decode_forward(
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_triton,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType=BackendType.TRITON,
+        )
 
         if dtype == torch.float32:
-            rtol=1e-03
-            atol=1e-02
+            rtol = 1e-03
+            atol = 1e-02
         else:
-            rtol=1e-03
-            atol=1e-02
+            rtol = 1e-03
+            atol = 1e-02
 
         kv_check = torch.allclose(
             past_key_value_torch,
@@ -193,13 +241,25 @@ class TestLightningAttn:
         # Triton 版本性能
         tri_time = benchmark_fn(
             lightning_attention_decode_forward,
-            q_states, k_states, v_states, past_key_value_triton, slope_rate, BLOCK_SIZE, BackendType.TRITON
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_triton,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType.TRITON,
         )
 
         # PyTorch 版本性能
         torch_time = benchmark_fn(
             lightning_attention_decode_forward,
-            q_states, k_states, v_states, past_key_value_torch, slope_rate, BLOCK_SIZE, BackendType.TORCH
+            q_states,
+            k_states,
+            v_states,
+            past_key_value_torch,
+            slope_rate,
+            BLOCK_SIZE,
+            BackendType.TORCH,
         )
 
         # 打印性能对比结果
@@ -208,10 +268,12 @@ class TestLightningAttn:
             f"Triton: {tri_time:.4f} ms | PyTorch: {torch_time:.4f} ms | 加速比: {torch_time/tri_time:.2f}x"
         )
 
-        assert kv_check, f"past_key_value torch:{past_key_value_torch}, past_key_value triton:{past_key_value_triton}"
+        assert (
+            kv_check
+        ), f"past_key_value torch:{past_key_value_torch}, past_key_value triton:{past_key_value_triton}"
         assert output_check, f"output torch:{out_torch}, output triton:{out_triton}"
         print("lightning_attention_decode_forward test pass!")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main([__file__])
