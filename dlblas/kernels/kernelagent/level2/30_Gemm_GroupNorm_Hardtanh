@@ -1,0 +1,148 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def linear_kernel(
+    input_ptr, weight_ptr, bias_ptr, output_ptr,
+    in_features, out_features, batch_size,
+    stride_input, stride_output,
+    BLOCK_SIZE_K: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_batch = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    n_offs = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    mask_n = n_offs < out_features
+    
+    acc = tl.zeros((BLOCK_SIZE_N,), dtype=tl.float32)
+    for k in range(0, in_features, BLOCK_SIZE_K):
+        k_offs = k + tl.arange(0, BLOCK_SIZE_K)
+        mask_k = k_offs < in_features
+        
+        input_vals = tl.load(
+            input_ptr + pid_batch * stride_input + k_offs,
+            mask=mask_k, other=0.0
+        )
+        
+        weight_vals = tl.load(
+            weight_ptr + (n_offs[:, None] * in_features + k_offs[None, :]),
+            mask=mask_k[None, :] & mask_n[:, None], other=0.0
+        )
+        
+        acc += tl.sum(input_vals[None, :] * weight_vals, axis=1)
+    
+    if bias_ptr is not None:
+        bias_vals = tl.load(bias_ptr + n_offs, mask=mask_n, other=0.0)
+        acc += bias_vals
+    
+    tl.store(
+        output_ptr + pid_batch * stride_output + n_offs,
+        acc, mask=mask_n
+    )
+
+@triton.jit
+def group_norm_kernel(
+    input_ptr, weight_ptr, bias_ptr, output_ptr,
+    num_channels, num_groups, eps,
+    batch_size, stride_input, stride_output,
+    BLOCK_SIZE_C: tl.constexpr
+):
+    pid_batch = tl.program_id(0)
+    pid_group = tl.program_id(1)
+    
+    group_size = num_channels // num_groups
+    start_channel = pid_group * group_size
+    channel_offs = start_channel + tl.arange(0, BLOCK_SIZE_C)
+    mask = channel_offs < (start_channel + group_size)
+    
+    # Load input data
+    input_vals = tl.load(
+        input_ptr + pid_batch * stride_input + channel_offs,
+        mask=mask, other=0.0
+    )
+    
+    # Compute mean and variance
+    mean = tl.sum(input_vals, axis=0) / group_size
+    centered = input_vals - mean
+    var = tl.sum(centered * centered, axis=0) / group_size + eps
+    
+    # Normalize and apply affine transformation
+    norm_vals = centered * tl.math.rsqrt(var)
+    
+    if weight_ptr is not None:
+        weight_vals = tl.load(weight_ptr + channel_offs, mask=mask, other=1.0)
+        norm_vals *= weight_vals
+    
+    if bias_ptr is not None:
+        bias_vals = tl.load(bias_ptr + channel_offs, mask=mask, other=0.0)
+        norm_vals += bias_vals
+    
+    # Store results
+    tl.store(
+        output_ptr + pid_batch * stride_output + channel_offs,
+        norm_vals, mask=mask
+    )
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, hardtanh_min, hardtanh_max):
+        super(ModelNew, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.num_groups = num_groups
+        self.hardtanh_min = hardtanh_min
+        self.hardtanh_max = hardtanh_max
+        
+        # Initialize parameters
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features))
+        self.gn_weight = nn.Parameter(torch.ones(out_features))
+        self.gn_bias = nn.Parameter(torch.zeros(out_features))
+        
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=5**0.5)
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / (fan_in ** 0.5) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x):
+        # Linear transformation with Triton
+        output = torch.empty((x.size(0), self.out_features), 
+                            device=x.device, dtype=x.dtype)
+        
+        grid_linear = (x.size(0), triton.cdiv(self.out_features, 128))
+        linear_kernel[grid_linear](
+            x, self.weight, self.bias, output,
+            self.in_features, self.out_features, x.size(0),
+            x.stride(0), output.stride(0),
+            BLOCK_SIZE_K=64, BLOCK_SIZE_N=128
+        )
+        
+        # Group normalization with Triton
+        norm_output = torch.empty_like(output)
+        group_size = self.out_features // self.num_groups
+        grid_norm = (output.size(0), self.num_groups)
+        
+        group_norm_kernel[grid_norm](
+            output, self.gn_weight, self.gn_bias, norm_output,
+            self.out_features, self.num_groups, 1e-5,
+            output.size(0), output.stride(0), norm_output.stride(0),
+            BLOCK_SIZE_C=group_size
+        )
+        
+        # Apply HardTanh
+        return torch.clamp(norm_output, self.hardtanh_min, self.hardtanh_max)
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+num_groups = 8
+hardtanh_min = -2.0
+hardtanh_max = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, num_groups, hardtanh_min, hardtanh_max]

@@ -1,0 +1,70 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr, stride, n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    row_idx = tl.program_id(0)
+    row_start = row_idx * stride
+    
+    # First pass: compute row max
+    row_max = tl.full((), float('-inf'), tl.float32)
+    for offset in range(0, n_cols, BLOCK_SIZE):
+        col_offsets = offset + tl.arange(0, BLOCK_SIZE)
+        mask = col_offsets < n_cols
+        ptr = input_ptr + row_start + col_offsets
+        x = tl.load(ptr, mask=mask, other=float('-inf'))
+        row_max = tl.maximum(row_max, tl.max(x, 0))
+    
+    # Second pass: compute row sum
+    row_sum = tl.full((), 0.0, tl.float32)
+    for offset in range(0, n_cols, BLOCK_SIZE):
+        col_offsets = offset + tl.arange(0, BLOCK_SIZE)
+        mask = col_offsets < n_cols
+        ptr = input_ptr + row_start + col_offsets
+        x = tl.load(ptr, mask=mask, other=0.0)
+        x = tl.exp(x - row_max)
+        row_sum += tl.sum(x, 0)
+    
+    # Third pass: compute and store softmax
+    for offset in range(0, n_cols, BLOCK_SIZE):
+        col_offsets = offset + tl.arange(0, BLOCK_SIZE)
+        mask = col_offsets < n_cols
+        ptr = input_ptr + row_start + col_offsets
+        x = tl.load(ptr, mask=mask, other=0.0)
+        x = tl.exp(x - row_max)
+        softmax_val = x / row_sum
+        out_ptr = output_ptr + row_start + col_offsets
+        tl.store(out_ptr, softmax_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_contig = x.contiguous()
+        output = torch.empty_like(x_contig)
+        n_rows, n_cols = x_contig.shape
+        grid = (n_rows,)
+        BLOCK_SIZE = 1024
+        softmax_kernel[grid](
+            output, x_contig, 
+            x_contig.stride(0), 
+            n_cols, 
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []

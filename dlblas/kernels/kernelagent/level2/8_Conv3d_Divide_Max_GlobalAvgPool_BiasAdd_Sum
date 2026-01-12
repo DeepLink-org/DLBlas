@@ -1,0 +1,81 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_reduction_kernel(
+    x_ptr,
+    output_ptr,
+    bias_sum,
+    num_elements,
+    spatial_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offset = pid * num_elements
+    thread_id = tl.arange(0, BLOCK_SIZE)
+    partial = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Each thread accumulates its own partial sum
+    for i in range(0, num_elements, BLOCK_SIZE):
+        idx = i + thread_id
+        mask = idx < num_elements
+        ptr = x_ptr + offset + idx
+        x_val = tl.load(ptr, mask=mask, other=0.0)
+        partial += x_val
+    
+    # Single efficient reduction at the end
+    total = tl.sum(partial, axis=0)
+    result = total / spatial_size + bias_sum
+    tl.store(output_ptr + pid, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divisor, pool_size, bias_shape, sum_dim):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.divisor = divisor
+        self.max_pool = nn.MaxPool3d(pool_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.sum_dim = sum_dim
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x / self.divisor
+        x = self.max_pool(x)
+        
+        x = x.contiguous()
+        batch_size, out_channels, D1, H1, W1 = x.shape
+        spatial_size = D1 * H1 * W1
+        num_elements = out_channels * spatial_size
+        
+        bias_sum_val = self.bias.sum().item()
+        output_tensor = torch.empty(batch_size, device=x.device, dtype=x.dtype)
+        
+        if num_elements > 0:
+            grid = (batch_size,)
+            fused_reduction_kernel[grid](
+                x, output_tensor, bias_sum_val, 
+                num_elements, spatial_size, 
+                BLOCK_SIZE=1024
+            )
+        else:
+            output_tensor.fill_(bias_sum_val)
+            
+        return output_tensor.view(-1, 1, 1, 1)
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = (3, 3, 3)
+divisor = 2.0
+pool_size = (2, 2, 2)
+bias_shape = (out_channels, 1, 1, 1)
+sum_dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, divisor, pool_size, bias_shape, sum_dim]

@@ -1,0 +1,170 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _depthwise_conv2d_forward(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    batch_size, in_channels, height, width,
+    stride_h, stride_w,
+    padding_h, padding_w,
+    dilation_h, dilation_w,
+    output_height, output_width,
+    use_bias: tl.constexpr,
+    OUTPUT_DTYPE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    kernel_size_h: tl.constexpr,
+    kernel_size_w: tl.constexpr,
+):
+    # 2D grid: (batch*channels, spatial_blocks)
+    pid_bc = tl.program_id(0)
+    pid_s = tl.program_id(1)
+    
+    # Reconstruct batch and channel indices
+    out_channels = in_channels  # depthwise conv property
+    batch_idx = pid_bc // out_channels
+    channel_idx = pid_bc % out_channels
+    
+    # Spatial base index for this block
+    base_idx = pid_s * BLOCK_SIZE
+    offsets = base_idx + tl.arange(0, BLOCK_SIZE)
+    
+    # Compute 2D output positions
+    w_out = offsets % output_width
+    h_out = offsets // output_width
+    mask = offsets < (output_height * output_width)
+    
+    # Initialize output block
+    output_block = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Loop over kernel elements (unrolled at compile-time)
+    for kh in tl.static_range(0, kernel_size_h):
+        for kw in tl.static_range(0, kernel_size_w):
+            # Compute input positions with dilation
+            h_in = h_out * stride_h - padding_h + kh * dilation_h
+            w_in = w_out * stride_w - padding_w + kw * dilation_w
+            
+            # Check input boundaries
+            in_bounds = (h_in >= 0) & (h_in < height) & (w_in >= 0) & (w_in < width)
+            valid_mask = mask & in_bounds
+            
+            # Compute memory locations
+            x_offset = (batch_idx * in_channels * height * width + 
+                        channel_idx * height * width + 
+                        h_in * width + w_in)
+            weight_offset = channel_idx * (kernel_size_h * kernel_size_w) + kh * kernel_size_w + kw
+            
+            # Load input and weight
+            x_val = tl.load(x_ptr + x_offset, mask=valid_mask, other=0.0)
+            w_val = tl.load(weight_ptr + weight_offset)
+            
+            # Accumulate
+            output_block += x_val * w_val
+    
+    # Add bias if enabled
+    if use_bias:
+        bias_val = tl.load(bias_ptr + channel_idx)
+        output_block += bias_val
+    
+    # Convert to output dtype and store
+    output_block = output_block.to(OUTPUT_DTYPE)
+    out_offset = (batch_idx * out_channels * output_height * output_width + 
+                  channel_idx * output_height * output_width + offsets)
+    tl.store(output_ptr + out_offset, output_block, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size_h: int, kernel_size_w: int, 
+                 stride_h: int = 1, stride_w: int = 1, padding_h: int = 0, padding_w: int = 0, 
+                 dilation_h: int = 1, dilation_w: int = 1, groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        assert groups == in_channels and in_channels == out_channels, "Depthwise conv requires in_channels=out_channels=groups"
+        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size_h = kernel_size_h
+        self.kernel_size_w = kernel_size_w
+        self.stride_h = stride_h
+        self.stride_w = stride_w
+        self.padding_h = padding_h
+        self.padding_w = padding_w
+        self.dilation_h = dilation_h
+        self.dilation_w = dilation_w
+        
+        # Initialize parameters
+        self.weight = nn.Parameter(torch.empty(out_channels, 1, kernel_size_h, kernel_size_w))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        
+        # Reset parameters
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = x.shape
+        
+        # Compute output dimensions
+        output_height = ((height + 2 * self.padding_h - 
+                         self.dilation_h * (self.kernel_size_h - 1) - 1) // self.stride_h) + 1
+        output_width = ((width + 2 * self.padding_w - 
+                        self.dilation_w * (self.kernel_size_w - 1) - 1) // self.stride_w) + 1
+        
+        # Preallocate output tensor
+        output = torch.empty((batch_size, self.out_channels, output_height, output_width), 
+                             device=x.device, dtype=x.dtype)
+        
+        # Kernel configuration
+        num_elements = output_height * output_width
+        grid = (batch_size * self.out_channels, triton.cdiv(num_elements, 256))  # Increased block size to 256
+        
+        # Launch kernel
+        _depthwise_conv2d_forward[grid](
+            x, self.weight, self.bias, output,
+            batch_size, self.in_channels, height, width,
+            self.stride_h, self.stride_w,
+            self.padding_h, self.padding_w,
+            self.dilation_h, self.dilation_w,
+            output_height, output_width,
+            use_bias=self.bias is not None,
+            OUTPUT_DTYPE=tl.float16 if x.dtype == torch.float16 else tl.float32,
+            BLOCK_SIZE=256,  # Increased block size for better memory efficiency
+            kernel_size_h=self.kernel_size_h,
+            kernel_size_w=self.kernel_size_w
+        )
+        
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = in_channels
+kernel_size_h = 3
+kernel_size_w = 5
+width = 256
+height = 128
+stride_h = 1
+stride_w = 1
+padding_h = 0
+padding_w = 0
+dilation_h = 1
+dilation_w = 1
+groups = in_channels
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size_h, kernel_size_w, stride_h, stride_w, padding_h, padding_w, dilation_h, dilation_w, groups]

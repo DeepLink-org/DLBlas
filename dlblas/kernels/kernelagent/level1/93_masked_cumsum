@@ -1,0 +1,61 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def masked_cumsum_kernel(
+    x_ptr,
+    mask_ptr,
+    output_ptr,
+    row_size
+):
+    pid = tl.program_id(0)
+    base = pid * row_size
+    running_sum = 0.0
+    
+    for i in range(row_size):
+        x_val = tl.load(x_ptr + base + i)
+        mask_val = tl.load(mask_ptr + base + i)
+        val = tl.where(mask_val, x_val, 0.0)
+        running_sum += val
+        tl.store(output_ptr + base + i, running_sum)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x, mask):
+        dim = self.dim
+        if dim < 0:
+            dim = x.dim() + dim
+            
+        if x.numel() == 0:
+            return x
+            
+        x_flat = x.movedim(dim, -1).flatten(0, -2)
+        mask_flat = mask.movedim(dim, -1).flatten(0, -2)
+        row_size = x_flat.shape[-1]
+        output_flat = torch.empty_like(x_flat)
+        
+        if row_size == 0:
+            return output_flat.view(x.movedim(dim, -1).shape).movedim(-1, dim)
+        
+        grid = (x_flat.shape[0],)
+        masked_cumsum_kernel[grid](x_flat, mask_flat, output_flat, row_size)
+        
+        output = output_flat.view(x.movedim(dim, -1).shape).movedim(-1, dim)
+        return output
+
+batch_size = 128
+input_shape = (4000,)
+dim = 1
+
+def get_inputs():
+    x = torch.randn(batch_size, *input_shape)
+    mask = torch.randint(0, 2, x.shape).bool()
+    return [x, mask]
+
+def get_init_inputs():
+    return [dim]

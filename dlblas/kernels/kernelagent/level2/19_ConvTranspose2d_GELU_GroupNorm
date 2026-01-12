@@ -1,0 +1,131 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256}, num_warps=4),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128}, num_warps=4),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 512}, num_warps=8),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256}, num_warps=8),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128}, num_warps=8),
+    ],
+    key=['N', 'C', 'H', 'W', 'num_groups'],
+)
+@triton.jit
+def _fused_gelu_groupnorm(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    N, C, H, W,
+    stride_n, stride_c, stride_h, stride_w,
+    num_groups, eps,
+    channels_per_group: tl.constexpr,
+    BLOCK_SIZE_SPATIAL: tl.constexpr
+):
+    pid = tl.program_id(0)
+    n = pid // num_groups
+    g = pid % num_groups
+    G = channels_per_group
+    base_in = x_ptr + n * stride_n + g * G * stride_c
+    base_out = output_ptr + n * stride_n + g * G * stride_c
+    spatial_size = H * W
+    
+    # First pass: compute statistics across group
+    group_sum = 0.0
+    group_sq_sum = 0.0
+    
+    for c in range(0, G):
+        channel_base_in = base_in + c * stride_c
+        for s0 in range(0, spatial_size, BLOCK_SIZE_SPATIAL):
+            s_offsets = s0 + tl.arange(0, BLOCK_SIZE_SPATIAL)
+            s_mask = s_offsets < spatial_size
+            h = s_offsets // W
+            w = s_offsets % W
+            spatial_offset = h * stride_h + w * stride_w
+            ptr = channel_base_in + spatial_offset
+            data = tl.load(ptr, mask=s_mask, other=0.0)
+            
+            # Apply GELU and compute stats
+            gelu_data = data * 0.5 * (1.0 + tl.erf(data * 0.7071067811865475))
+            group_sum += tl.sum(gelu_data, axis=0)
+            group_sq_sum += tl.sum(gelu_data * gelu_data, axis=0)
+    
+    group_mean = group_sum / (G * spatial_size)
+    group_var = group_sq_sum / (G * spatial_size) - group_mean * group_mean
+    rstd = 1.0 / tl.sqrt(group_var + eps)
+    
+    # Second pass: apply normalization
+    for c in range(0, G):
+        channel_base_in = base_in + c * stride_c
+        channel_base_out = base_out + c * stride_c
+        weight_val = tl.load(weight_ptr + g * G + c)
+        bias_val = tl.load(bias_ptr + g * G + c)
+        
+        for s0 in range(0, spatial_size, BLOCK_SIZE_SPATIAL):
+            s_offsets = s0 + tl.arange(0, BLOCK_SIZE_SPATIAL)
+            s_mask = s_offsets < spatial_size
+            h = s_offsets // W
+            w = s_offsets % W
+            spatial_offset = h * stride_h + w * stride_w
+            ptr_in = channel_base_in + spatial_offset
+            data = tl.load(ptr_in, mask=s_mask, other=0.0)
+            
+            # Apply GELU and normalize
+            gelu_data = data * 0.5 * (1.0 + tl.erf(data * 0.7071067811865475))
+            normalized = (gelu_data - group_mean) * rstd
+            out = normalized * weight_val + bias_val
+            ptr_out = channel_base_out + spatial_offset
+            tl.store(ptr_out, out, mask=s_mask)
+
+def fused_gelu_groupnorm(x, weight, bias, num_groups, eps=1e-5):
+    N, C, H, W = x.shape
+    assert C % num_groups == 0, "Channels must be divisible by num_groups"
+    output = torch.empty_like(x)
+    channels_per_group = C // num_groups
+    
+    grid = (N * num_groups,)
+    _fused_gelu_groupnorm[grid](
+        x, weight, bias, output,
+        N, C, H, W,
+        x.stride(0), x.stride(1), x.stride(2), x.stride(3),
+        num_groups, eps,
+        channels_per_group
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, groups, num_groups):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride)
+        self.group_norm = nn.GroupNorm(num_groups=num_groups, num_channels=out_channels)
+        self.num_groups = num_groups
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_gelu_groupnorm(
+            x, 
+            self.group_norm.weight, 
+            self.group_norm.bias, 
+            self.num_groups,
+            self.group_norm.eps
+        )
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+height, width = 32, 32
+kernel_size = 4
+stride = 2
+groups = 8
+num_groups = 8
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, groups, num_groups]

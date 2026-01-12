@@ -1,0 +1,69 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def cosine_loss_kernel(
+    predictions_ptr,
+    targets_ptr,
+    per_row_loss_ptr,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    row_idx = tl.program_id(0)
+    row_start = row_idx * n_cols
+    
+    dot_acc = 0.0
+    norm_p_acc = 0.0
+    norm_t_acc = 0.0
+    
+    for block_start in range(0, n_cols, BLOCK_SIZE):
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_cols
+        
+        p = tl.load(predictions_ptr + row_start + offsets, mask=mask, other=0.0)
+        t = tl.load(targets_ptr + row_start + offsets, mask=mask, other=0.0)
+        
+        dot_acc += tl.sum(p * t)
+        norm_p_acc += tl.sum(p * p)
+        norm_t_acc += tl.sum(t * t)
+    
+    norm_p = tl.sqrt(norm_p_acc)
+    norm_t = tl.sqrt(norm_t_acc)
+    denom = norm_p * norm_t
+    denom = tl.maximum(denom, 1e-8)
+    cosine_sim = dot_acc / denom
+    loss_i = 1.0 - cosine_sim
+    
+    tl.store(per_row_loss_ptr + row_idx, loss_i)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, predictions, targets):
+        predictions = predictions.contiguous()
+        targets = targets.contiguous()
+        batch_size, n_cols = predictions.shape
+        
+        per_row_loss = torch.empty(batch_size, device=predictions.device, dtype=torch.float32)
+        
+        grid = (batch_size,)
+        BLOCK_SIZE = 1024
+        
+        cosine_loss_kernel[grid](
+            predictions, targets, per_row_loss,
+            n_cols, BLOCK_SIZE=BLOCK_SIZE
+        )
+        return torch.mean(per_row_loss)
+
+batch_size = 128
+input_shape = (4096, )
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return []

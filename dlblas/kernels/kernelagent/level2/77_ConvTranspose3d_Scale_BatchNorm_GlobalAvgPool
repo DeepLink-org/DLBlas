@@ -1,0 +1,84 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 1024, "VECTOR_WIDTH": 4}, num_warps=4, num_stages=2),
+        triton.Config({"BLOCK_SIZE": 2048, "VECTOR_WIDTH": 4}, num_warps=4, num_stages=2),
+        triton.Config({"BLOCK_SIZE": 4096, "VECTOR_WIDTH": 4}, num_warps=8, num_stages=3),
+        triton.Config({"BLOCK_SIZE": 8192, "VECTOR_WIDTH": 4}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_SIZE": 1024, "VECTOR_WIDTH": 8}, num_warps=4, num_stages=2),
+        triton.Config({"BLOCK_SIZE": 2048, "VECTOR_WIDTH": 8}, num_warps=4, num_stages=2),
+    ],
+    key=["n_elements"],
+)
+@triton.jit
+def scale_kernel(
+    input_ptr,
+    output_ptr,
+    scale,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    VECTOR_WIDTH: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    total_vectors = tl.cdiv(n_elements, VECTOR_WIDTH)
+    vector_offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    vector_mask = vector_offset < total_vectors
+    
+    element_offset = vector_offset * VECTOR_WIDTH
+    element_offsets = element_offset[:, None] + tl.arange(0, VECTOR_WIDTH)[None, :]
+    element_mask = vector_mask[:, None] & (element_offsets < n_elements)
+    
+    input_data = tl.load(
+        input_ptr + element_offsets,
+        mask=element_mask,
+        other=0.0
+    )
+    scaled = input_data * scale
+    tl.store(
+        output_ptr + element_offsets,
+        scaled,
+        mask=element_mask
+    )
+
+def triton_scale(x: torch.Tensor, scale: float) -> torch.Tensor:
+    x = x.contiguous()
+    output = torch.empty_like(x)
+    n_elements = output.numel()
+    grid = lambda meta: (triton.cdiv(
+        (n_elements + meta['VECTOR_WIDTH'] - 1) // meta['VECTOR_WIDTH'], 
+        meta['BLOCK_SIZE']
+    ),)
+    scale_kernel[grid](x, output, scale, n_elements)
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scale_factor, eps=1e-5, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size)
+        self.scale_factor = scale_factor
+        self.batch_norm = nn.BatchNorm3d(out_channels, eps=eps, momentum=momentum)
+        self.global_avg_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = triton_scale(x, self.scale_factor)
+        x = self.batch_norm(x)
+        x = self.global_avg_pool(x)
+        return x
+
+batch_size = 16
+in_channels = 64
+out_channels = 32
+depth, height, width = 16, 32, 32
+kernel_size = 3
+scale_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, scale_factor]

@@ -1,0 +1,100 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_softmax_sigmoid_kernel(
+    input_ptr,
+    output_ptr,
+    row_stride,
+    n_rows,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr,
+    ROWS_PER_BLOCK: tl.constexpr
+):
+    # Calculate starting row index for this block
+    row_block_idx = tl.program_id(0)
+    row_start = row_block_idx * ROWS_PER_BLOCK
+    row_offsets = row_start + tl.arange(0, ROWS_PER_BLOCK)
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    
+    # Create 2D masks for rows and columns
+    row_mask = row_offsets < n_rows
+    col_mask = col_offsets < n_cols
+    full_mask = row_mask[:, None] & col_mask[None, :]
+    
+    # Calculate pointers with vectorized access
+    block_ptrs = input_ptr + row_offsets[:, None] * row_stride + col_offsets[None, :]
+    
+    # Vectorized load with masking
+    x = tl.load(block_ptrs, mask=full_mask, other=float('-inf'))
+    
+    # Compute max per row (with proper masking)
+    row_max = tl.max(x, axis=1)
+    x_shifted = x - row_max[:, None]
+    
+    # Compute exponentials and sum
+    exp_vals = tl.exp(x_shifted)
+    row_sum = tl.sum(exp_vals, axis=1)
+    
+    # Compute softmax and sigmoid
+    softmax_out = exp_vals / row_sum[:, None]
+    sigmoid_out = 1.0 / (1.0 + tl.exp(-softmax_out))
+    
+    # Vectorized store
+    output_ptrs = output_ptr + row_offsets[:, None] * row_stride + col_offsets[None, :]
+    tl.store(output_ptrs, sigmoid_out, mask=full_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias=True):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding,
+            output_padding=output_padding, bias=bias
+        )
+        
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        B, C, D, H, W = x.shape
+        n_rows = B * D * H * W
+        
+        # Prepare contiguous tensors
+        x_contig = x.contiguous()
+        output = torch.empty_like(x_contig)
+        
+        # Reshape to 2D tensor (rows, channels)
+        x_2d = x_contig.view(n_rows, C)
+        output_2d = output.view(n_rows, C)
+        
+        # Configure kernel launch - process 16 rows per block
+        BLOCK_SIZE = triton.next_power_of_2(C)
+        ROWS_PER_BLOCK = 16
+        grid = (triton.cdiv(n_rows, ROWS_PER_BLOCK),)
+        
+        fused_softmax_sigmoid_kernel[grid](
+            x_2d, output_2d, 
+            row_stride=C,
+            n_rows=n_rows,
+            n_cols=C,
+            BLOCK_SIZE=BLOCK_SIZE,
+            ROWS_PER_BLOCK=ROWS_PER_BLOCK
+        )
+        
+        return output.view(B, C, D, H, W)
+
+batch_size = 16
+in_channels = 32
+out_channels = 64
+D, H, W = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding]

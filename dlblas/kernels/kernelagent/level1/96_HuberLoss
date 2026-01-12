@@ -1,0 +1,67 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def smooth_l1_kernel(
+    pred_ptr,
+    targ_ptr,
+    out_ptr,
+    n_elements,
+    beta: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    p = tl.load(pred_ptr + offsets, mask=mask)
+    t = tl.load(targ_ptr + offsets, mask=mask)
+    
+    diff = p - t
+    abs_diff = tl.abs(diff)
+    loss = tl.where(
+        abs_diff < beta,
+        0.5 * diff * diff / beta,
+        abs_diff - 0.5 * beta
+    )
+    
+    block_loss = tl.sum(loss, axis=0)
+    tl.atomic_add(out_ptr, block_loss)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, predictions, targets):
+        predictions = predictions.contiguous()
+        targets = targets.contiguous()
+        total_elements = predictions.numel()
+        
+        if total_elements == 0:
+            return torch.tensor(0.0, device=predictions.device)
+        
+        total_loss = torch.zeros(1, device=predictions.device, dtype=torch.float32)
+        beta = 1.0  # Default smooth L1 beta value
+        
+        BLOCK_SIZE = 1024
+        grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
+        
+        smooth_l1_kernel[grid](
+            predictions, targets, total_loss,
+            total_elements, beta, BLOCK_SIZE
+        )
+        
+        return (total_loss / total_elements).squeeze()
+
+batch_size = 128
+input_shape = (4096, )
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return []

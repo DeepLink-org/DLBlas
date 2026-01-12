@@ -1,0 +1,165 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def conv_transpose2d_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    y_ptr,
+    stride_h, stride_w,
+    padding_h, padding_w,
+    dilation_h, dilation_w,
+    output_padding_h, output_padding_w,
+    B, C_in, C_out,
+    H_in, W_in,
+    H_out, W_out,
+    K_h, K_w,
+    stride_x_b, stride_x_c, stride_x_h, stride_x_w,
+    stride_w_ic, stride_w_oc, stride_w_h, stride_w_w,
+    stride_y_b, stride_y_c, stride_y_h, stride_y_w,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    elements_per_program = B * C_out * H_out * W_out
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < elements_per_program
+    
+    # Compute output indices
+    b = offsets // (C_out * H_out * W_out)
+    rest = offsets % (C_out * H_out * W_out)
+    c_out = rest // (H_out * W_out)
+    rest2 = rest % (H_out * W_out)
+    h_out = rest2 // W_out
+    w_out = rest2 % W_out
+    
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Loop through input channels and kernel
+    for c_in in range(0, C_in):
+        for k_h in range(0, K_h):
+            for k_w in range(0, K_w):
+                # Compute input position
+                h_in = (h_out + padding_h - k_h * dilation_h) // stride_h
+                w_in = (w_out + padding_w - k_w * dilation_w) // stride_w
+                
+                # Check divisibility and boundaries
+                cond_h = (h_out + padding_h - k_h * dilation_h) % stride_h == 0
+                cond_w = (w_out + padding_w - k_w * dilation_w) % stride_w == 0
+                in_bounds = (h_in >= 0) & (h_in < H_in) & (w_in >= 0) & (w_in < W_in)
+                valid_mask = mask & cond_h & cond_w & in_bounds
+                
+                # Calculate offsets
+                x_offset = b * stride_x_b + c_in * stride_x_c + h_in * stride_x_h + w_in * stride_x_w
+                w_offset = c_in * stride_w_ic + c_out * stride_w_oc + k_h * stride_w_h + k_w * stride_w_w
+                
+                # Load data with validity mask
+                x_val = tl.load(x_ptr + x_offset, mask=valid_mask, other=0.0)
+                w_val = tl.load(w_ptr + w_offset)
+                acc = tl.where(valid_mask, acc + x_val * w_val, acc)
+    
+    # Add bias if present
+    if b_ptr is not None:
+        bias = tl.load(b_ptr + c_out, mask=mask, other=0.0)
+        acc += bias
+    
+    # Store result
+    y_offset = b * stride_y_b + c_out * stride_y_c + h_out * stride_y_h + w_out * stride_y_w
+    tl.store(y_ptr + y_offset, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, stride: tuple = (1, 1), padding: tuple = (0, 0), output_padding: tuple = (0, 0), dilation: tuple = (1, 1), groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.output_padding = output_padding
+        self.dilation = dilation
+        self.groups = groups
+        
+        # Initialize weight
+        self.weight = nn.Parameter(torch.empty(
+            in_channels, 
+            out_channels,
+            kernel_size[0],
+            kernel_size[1]
+        ))
+        
+        # Initialize bias if needed
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.bias = None
+            
+        # Reset parameters
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+            
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Calculate output dimensions
+        def calc_size(dim_in, kernel, stride, padding, dilation, output_padding):
+            return (dim_in - 1) * stride - 2 * padding + dilation * (kernel - 1) + output_padding + 1
+        
+        H_in, W_in = x.shape[2], x.shape[3]
+        H_out = calc_size(H_in, self.kernel_size[0], self.stride[0], 
+                         self.padding[0], self.dilation[0], self.output_padding[0])
+        W_out = calc_size(W_in, self.kernel_size[1], self.stride[1], 
+                         self.padding[1], self.dilation[1], self.output_padding[1])
+        
+        # Create output tensor
+        y = torch.empty((x.size(0), self.out_channels, H_out, W_out), 
+                       device=x.device, dtype=x.dtype)
+        
+        # Get strides for tensors
+        stride_x = x.stride()
+        stride_w = self.weight.stride()
+        stride_y = y.stride()
+        
+        # Launch kernel with optimized grid
+        total_elements = y.numel()
+        grid = lambda meta: (triton.cdiv(total_elements, meta['BLOCK_SIZE']),)
+        
+        conv_transpose2d_kernel[grid](
+            x, self.weight, self.bias, y,
+            self.stride[0], self.stride[1],
+            self.padding[0], self.padding[1],
+            self.dilation[0], self.dilation[1],
+            self.output_padding[0], self.output_padding[1],
+            x.size(0), self.in_channels, self.out_channels,
+            H_in, W_in, H_out, W_out,
+            self.kernel_size[0], self.kernel_size[1],
+            stride_x[0], stride_x[1], stride_x[2], stride_x[3],
+            stride_w[0], stride_w[1], stride_w[2], stride_w[3],
+            stride_y[0], stride_y[1], stride_y[2], stride_y[3],
+            BLOCK_SIZE=1024
+        )
+        
+        return y
+
+# Test code
+batch_size = 16
+in_channels = 32
+out_channels = 64
+kernel_size = (3, 5)
+height_in = 16
+width_in = 32
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height_in, width_in)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]  # Provide in_channels, out_channels, kernel_size for initialization

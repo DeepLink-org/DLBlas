@@ -1,0 +1,155 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE': 256}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 512}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 1024}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 2048}, num_warps=8),
+    ],
+    key=['out_length'],
+)
+@triton.jit
+def conv1d_kernel(
+    x_ptr, weight_ptr, output_ptr,
+    length, in_channels, kernel_size,
+    stride, dilation, out_length,
+    out_channels,
+    x_batch_stride, x_channel_stride, x_length_stride,
+    w_out_stride, w_in_stride, w_kernel_stride,
+    out_batch_stride, out_channel_stride, out_length_stride,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_out_channel = tl.program_id(1)
+    pid_block = tl.program_id(2)
+    
+    # Create block offsets
+    offset_base = pid_block * BLOCK_SIZE
+    offsets = offset_base + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < out_length
+    
+    # Initialize accumulator
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Precompute weight base pointer
+    weight_base = weight_ptr + pid_out_channel * w_out_stride
+    
+    # Loop over input channels and kernel positions
+    for c in range(in_channels):
+        for k in range(kernel_size):
+            # Calculate input positions with dilation
+            input_idx = offsets * stride + k * dilation
+            input_mask = (input_idx < length) & mask
+            
+            # Load input values (vectorized)
+            x_offset = pid_batch * x_batch_stride + c * x_channel_stride + input_idx
+            x_val = tl.load(
+                x_ptr + x_offset,
+                mask=input_mask, 
+                other=0.0
+            )
+            
+            # Load weight value
+            w_offset = c * w_in_stride + k * w_kernel_stride
+            w_val = tl.load(weight_base + w_offset)
+            
+            # Update accumulator
+            acc = tl.where(mask, acc + x_val * w_val, acc)
+    
+    # Compute output pointer offsets
+    out_offsets = (
+        pid_batch * out_batch_stride + 
+        pid_out_channel * out_channel_stride + 
+        offsets * out_length_stride
+    )
+    
+    # Store results (vectorized)
+    tl.store(
+        output_ptr + out_offsets,
+        acc,
+        mask=mask
+    )
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, dilation: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.dilation = dilation
+        
+        # Initialize weights
+        self.weight = nn.Parameter(torch.empty(out_channels, in_channels, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+            
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, length = x.shape
+        # Calculate output length
+        out_length = (length - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        
+        # Prepare output tensor
+        output = torch.zeros(batch_size, self.out_channels, out_length, 
+                            device=x.device, dtype=x.dtype)
+        
+        # Compute strides
+        x_stride = x.stride()
+        w_stride = self.weight.stride()
+        out_stride = output.stride()
+        
+        # Configure kernel grid using autotuned BLOCK_SIZE
+        grid = lambda meta: (
+            batch_size, 
+            self.out_channels, 
+            triton.cdiv(out_length, meta['BLOCK_SIZE'])
+        )
+        
+        # Launch kernel
+        conv1d_kernel[grid](
+            x, self.weight, output,
+            length, self.in_channels, self.kernel_size,
+            self.stride, self.dilation, out_length,
+            self.out_channels,
+            x_stride[0], x_stride[1], x_stride[2],
+            w_stride[0], w_stride[1], w_stride[2],
+            out_stride[0], out_stride[1], out_stride[2],
+        )
+        
+        # Add bias if present
+        if self.bias is not None:
+            output += self.bias.view(1, -1, 1)
+            
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = 3
+length = 256
+stride = 3
+dilation = 4
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, length)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, dilation]

@@ -1,0 +1,221 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def conv_transpose3d_kernel(
+    input_ptr, weight_ptr, output_ptr,
+    in_channels, out_channels,
+    depth_in, height_in, width_in,
+    depth_out, height_out, width_out,
+    stride: tl.constexpr, padding: tl.constexpr, 
+    dilation: tl.constexpr, kernel_size: tl.constexpr,
+    stride_ic, stride_id, stride_ih, stride_iw,
+    stride_oc, stride_od, stride_oh, stride_ow,
+    stride_wic, stride_woc, stride_wkd, stride_wkh, stride_wkw,
+    BLOCK_D: tl.constexpr, BLOCK_H: tl.constexpr, BLOCK_W: tl.constexpr
+):
+    # Combined program IDs: batch-channels, depth, height-width
+    pid_bc = tl.program_id(0)
+    pid_d = tl.program_id(1)
+    pid_hw = tl.program_id(2)
+    
+    # Decompose batch and channel
+    batch_size = pid_bc // out_channels
+    c = pid_bc % out_channels
+    
+    # Decompose height and width
+    n_blocks_w = (width_out + BLOCK_W - 1) // BLOCK_W
+    pid_h = pid_hw // n_blocks_w
+    pid_w = pid_hw % n_blocks_w
+
+    # Compute spatial offsets
+    d_offsets = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    h_offsets = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
+    w_offsets = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
+    
+    # Create masks for boundary checks
+    d_mask = d_offsets < depth_out
+    h_mask = h_offsets < height_out
+    w_mask = w_offsets < width_out
+    spatial_mask = d_mask[:, None, None] & h_mask[None, :, None] & w_mask[None, None, :]
+    
+    # Initialize output block
+    output_block = tl.zeros((BLOCK_D, BLOCK_H, BLOCK_W), dtype=tl.float32)
+    
+    # Calculate batch strides
+    stride_ib = in_channels * stride_ic
+    stride_ob = out_channels * stride_oc
+    
+    # Main computation loop
+    for c_in in range(in_channels):
+        for kd in range(kernel_size):
+            for kh in range(kernel_size):
+                for kw in range(kernel_size):
+                    # Compute input positions
+                    d_val = d_offsets[:, None, None] + padding - kd * dilation
+                    h_val = h_offsets[None, :, None] + padding - kh * dilation
+                    w_val = w_offsets[None, None, :] + padding - kw * dilation
+                    
+                    # Check divisibility by stride
+                    d_val_condition = (d_val % stride == 0) & (d_val >= 0)
+                    h_val_condition = (h_val % stride == 0) & (h_val >= 0)
+                    w_val_condition = (w_val % stride == 0) & (w_val >= 0)
+                    
+                    valid_mask = d_val_condition & h_val_condition & w_val_condition
+                    
+                    # Calculate input coordinates
+                    d_in = tl.where(d_val_condition, d_val // stride, 0)
+                    h_in = tl.where(h_val_condition, h_val // stride, 0)
+                    w_in = tl.where(w_val_condition, w_val // stride, 0)
+                    
+                    # Check boundaries
+                    in_bounds = (d_in < depth_in) & (h_in < height_in) & (w_in < width_in)
+                    full_mask = valid_mask & in_bounds & spatial_mask
+                    
+                    # Calculate input index
+                    input_idx = (
+                        batch_size * stride_ib +
+                        c_in * stride_ic + 
+                        d_in * stride_id + 
+                        h_in * stride_ih + 
+                        w_in * stride_iw
+                    )
+                    input_val = tl.load(input_ptr + input_idx, mask=full_mask, other=0.0)
+                    
+                    # Calculate weight index
+                    weight_idx = (
+                        c_in * stride_wic +
+                        c * stride_woc +
+                        kd * stride_wkd +
+                        kh * stride_wkh +
+                        kw * stride_wkw
+                    )
+                    weight_val = tl.load(weight_ptr + weight_idx)
+                    
+                    # Accumulate results
+                    output_block += input_val * weight_val
+
+    # Calculate output index
+    output_idx = (
+        batch_size * stride_ob + 
+        c * stride_oc + 
+        d_offsets[:, None, None] * stride_od + 
+        h_offsets[None, :, None] * stride_oh + 
+        w_offsets[None, None, :] * stride_ow
+    )
+    tl.store(output_ptr + output_idx, output_block, mask=spatial_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, 
+                 stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        
+        self.weight = nn.Parameter(torch.empty(
+            in_channels, out_channels, kernel_size, kernel_size, kernel_size
+        ))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+            
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if bias:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, in_channels, depth_in, height_in, width_in = x.shape
+        
+        # Calculate output dimensions
+        depth_out = (depth_in - 1) * self.stride - 2 * self.padding + \
+                    self.dilation * (self.kernel_size - 1) + 1
+        height_out = (height_in - 1) * self.stride - 2 * self.padding + \
+                     self.dilation * (self.kernel_size - 1) + 1
+        width_out = (width_in - 1) * self.stride - 2 * self.padding + \
+                    self.dilation * (self.kernel_size - 1) + 1
+        
+        # Initialize output tensor
+        output = torch.empty(
+            batch_size, self.out_channels, depth_out, height_out, width_out,
+            device=x.device, dtype=x.dtype
+        )
+        
+        # Precompute strides
+        stride_ic = depth_in * height_in * width_in
+        stride_id = height_in * width_in
+        stride_ih = width_in
+        stride_iw = 1
+        
+        stride_oc = depth_out * height_out * width_out
+        stride_od = height_out * width_out
+        stride_oh = width_out
+        stride_ow = 1
+        
+        stride_wic = self.out_channels * self.kernel_size**3
+        stride_woc = self.kernel_size**3
+        stride_wkd = self.kernel_size**2
+        stride_wkh = self.kernel_size
+        stride_wkw = 1
+        
+        # Block dimensions
+        BLOCK_D, BLOCK_H, BLOCK_W = 4, 8, 8
+        
+        # Calculate number of blocks
+        depth_blocks = (depth_out + BLOCK_D - 1) // BLOCK_D
+        height_blocks = (height_out + BLOCK_H - 1) // BLOCK_H
+        width_blocks = (width_out + BLOCK_W - 1) // BLOCK_W
+        
+        # Create 3D grid (batch-channels, depth, height-width)
+        grid = (
+            batch_size * self.out_channels,
+            depth_blocks,
+            height_blocks * width_blocks
+        )
+        
+        # Launch kernel
+        conv_transpose3d_kernel[grid](
+            x, self.weight, output,
+            in_channels, self.out_channels,
+            depth_in, height_in, width_in,
+            depth_out, height_out, width_out,
+            self.stride, self.padding, self.dilation, self.kernel_size,
+            stride_ic, stride_id, stride_ih, stride_iw,
+            stride_oc, stride_od, stride_oh, stride_ow,
+            stride_wic, stride_woc, stride_wkd, stride_wkh, stride_wkw,
+            BLOCK_D, BLOCK_H, BLOCK_W
+        )
+        
+        # Add bias if needed
+        if self.bias is not None:
+            output += self.bias.view(1, -1, 1, 1, 1)
+            
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 32
+out_channels = 64
+kernel_size = 3
+depth = 16
+height = 32
+width = 32
+stride = 2
+padding = 1
+dilation = 2
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, depth, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, dilation]

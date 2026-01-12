@@ -1,0 +1,81 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_pointwise_kernel(
+    input_ptr,
+    output_ptr,
+    add_value,
+    scale,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    x = tl.load(input_ptr + offsets, mask=mask)
+
+    # Stable Mish activation: x * tanh(softplus(x))
+    abs_x = tl.abs(x)
+    max_x = tl.maximum(x, 0.0)
+    log_exp = tl.log(1.0 + tl.exp(-abs_x))
+    softplus = max_x + log_exp
+    sigmoid = 1.0 / (1.0 + tl.exp(-2.0 * softplus))
+    tanh_softplus = 2.0 * sigmoid - 1.0
+    mish_x = x * tanh_softplus
+
+    # Add value
+    x = mish_x + add_value
+
+    # Hardtanh activation: clamp between -1 and 1
+    x = tl.minimum(tl.maximum(x, -1.0), 1.0)
+
+    # Scale output
+    x = x * scale
+
+    tl.store(output_ptr + offsets, x, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, add_value, scale):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, output_padding)
+        self.add_value = add_value
+        self.scale = scale
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        
+        # Apply fused pointwise operations
+        n_elements = x.numel()
+        if n_elements > 0:
+            x_cont = x.contiguous()
+            grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+            fused_pointwise_kernel[grid](
+                x_cont, x_cont, self.add_value, self.scale, n_elements, 
+                BLOCK_SIZE=1024
+            )
+            x = x_cont
+        
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+height, width = 16, 16
+kernel_size = 4
+stride = 2
+padding = 1
+output_padding = 1
+add_value = 0.5
+scale = 2
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, add_value, scale]

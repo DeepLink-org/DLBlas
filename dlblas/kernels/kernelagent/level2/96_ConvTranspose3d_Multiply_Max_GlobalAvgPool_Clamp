@@ -1,0 +1,72 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def global_avg_pool_clamp_kernel(
+    x_ptr,
+    output_ptr,
+    clamp_min,
+    clamp_max,
+    reduction_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    total = 0.0
+    for offset_base in range(0, reduction_size, BLOCK_SIZE):
+        offsets = offset_base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < reduction_size
+        data = tl.load(x_ptr + pid * reduction_size + offsets, mask=mask, other=0.0)
+        total += tl.sum(data, axis=0)
+    avg = total / reduction_size
+    clamped_avg = tl.minimum(tl.maximum(avg, clamp_min), clamp_max)
+    tl.store(output_ptr + pid, clamped_avg)
+
+class ModelNew(nn.Module):
+    """
+    Model that performs a transposed 3D convolution, multiplies by a scalar, applies max pooling, 
+    global average pooling, and clamps the output.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride, padding)
+        self.scale = scale
+        self.maxpool = nn.MaxPool3d(maxpool_kernel_size)
+        self.clamp_min = 0
+        self.clamp_max = 1
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = x * self.scale
+        x = self.maxpool(x)
+        
+        n_batch, n_channel = x.shape[0], x.shape[1]
+        reduction_size = x.shape[2] * x.shape[3] * x.shape[4]
+        x_flat = x.reshape(n_batch * n_channel, reduction_size)
+        output = torch.empty(n_batch * n_channel, device=x.device, dtype=x.dtype)
+        grid = (n_batch * n_channel,)
+        BLOCK_SIZE = 1024
+        global_avg_pool_clamp_kernel[grid](
+            x_flat, output, self.clamp_min, self.clamp_max, 
+            reduction_size, BLOCK_SIZE=BLOCK_SIZE
+        )
+        x = output.view(n_batch, n_channel, 1, 1, 1)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+scale = 0.5
+maxpool_kernel_size = 2
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, scale, maxpool_kernel_size]
