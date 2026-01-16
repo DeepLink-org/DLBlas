@@ -60,12 +60,15 @@ class DeepEPBuffer:
             # Note: more than one buffer is not allowed in deepep now.
             if cls._buffer_common is not None:
                 cls._buffer_common.destroy()
+                cls._buffer_common = None
                 return True
             if cls._buffer_low_latency is not None:
                 cls._buffer_low_latency.destroy()
+                cls._buffer_low_latency = None
                 return True
             if cls._buffer_normal is not None:
                 cls._buffer_normal.destroy()
+                cls._buffer_normal = None
                 return True
         return False
 
