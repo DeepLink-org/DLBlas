@@ -8,7 +8,7 @@ from torch import Tensor
 import dlblas.kernels  # noqa
 from dlblas.utils import get_op
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 
 # output: l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx
