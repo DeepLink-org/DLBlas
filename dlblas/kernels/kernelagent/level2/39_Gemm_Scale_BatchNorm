@@ -1,0 +1,103 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_scale_bn_kernel(
+    x_ptr,
+    scale_ptr,
+    bn_mean_ptr,
+    bn_invstd_ptr,
+    bn_weight_ptr,
+    bn_bias_ptr,
+    output_ptr,
+    n_cols,
+    stride_x,
+    stride_out,
+    BLOCK_SIZE: tl.constexpr,
+    VECTOR_WIDTH: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    tid = tl.arange(0, BLOCK_SIZE)
+    
+    # Calculate column offsets for vectorized access
+    col_offsets = tid * VECTOR_WIDTH + tl.arange(0, VECTOR_WIDTH)
+    mask = col_offsets < n_cols
+
+    # Calculate pointers for current row
+    x_row = x_ptr + row_idx * stride_x
+    out_row = output_ptr + row_idx * stride_out
+
+    # Vectorized loads
+    x_vals = tl.load(x_row + col_offsets, mask=mask, other=0.0)
+    scale_vals = tl.load(scale_ptr + col_offsets, mask=mask, other=0.0)
+    bn_mean_vals = tl.load(bn_mean_ptr + col_offsets, mask=mask, other=0.0)
+    bn_invstd_vals = tl.load(bn_invstd_ptr + col_offsets, mask=mask, other=0.0)
+    bn_weight_vals = tl.load(bn_weight_ptr + col_offsets, mask=mask, other=0.0)
+    bn_bias_vals = tl.load(bn_bias_ptr + col_offsets, mask=mask, other=0.0)
+
+    # Fused operations: scale + batch norm
+    scaled = x_vals * scale_vals
+    normalized = (scaled - bn_mean_vals) * bn_invstd_vals
+    output = normalized * bn_weight_vals + bn_bias_vals
+
+    # Vectorized store
+    tl.store(out_row + col_offsets, output, mask=mask)
+
+def fused_scale_bn(x, scale, bn_mean, bn_invstd, bn_weight, bn_bias):
+    assert x.is_contiguous()
+    batch_size, n_cols = x.shape
+    output = torch.empty_like(x)
+    
+    # Optimized configuration: 4 elements per thread
+    VECTOR_WIDTH = 4
+    BLOCK_SIZE = triton.cdiv(n_cols, VECTOR_WIDTH)
+    grid = (batch_size,)
+    
+    fused_scale_bn_kernel[grid](
+        x, scale, bn_mean, bn_invstd, bn_weight, bn_bias, output,
+        n_cols,
+        x.stride(0), output.stride(0),
+        BLOCK_SIZE=BLOCK_SIZE,
+        VECTOR_WIDTH=VECTOR_WIDTH
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scale_shape, eps=1e-5, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scale = nn.Parameter(torch.randn(scale_shape))
+        self.bn = nn.BatchNorm1d(out_features, eps=eps, momentum=momentum)
+        self.eps = eps
+
+    def forward(self, x):
+        x = self.gemm(x)
+        if self.training:
+            x = x * self.scale
+            x = self.bn(x)
+        else:
+            # Precompute values for inference mode
+            bn_invstd = 1 / torch.sqrt(self.bn.running_var + self.eps)
+            x = fused_scale_bn(
+                x, 
+                self.scale, 
+                self.bn.running_mean,
+                bn_invstd,
+                self.bn.weight,
+                self.bn.bias
+            )
+        return x
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+scale_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, scale_shape]

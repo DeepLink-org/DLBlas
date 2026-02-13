@@ -1,0 +1,82 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def min_reduction_kernel(
+    input_ptr,
+    output_ptr,
+    scale_factor,
+    channels,
+    batch_size, height, width,
+    stride_b, stride_c, stride_h, stride_w,
+    out_stride_b, out_stride_c, out_stride_h, out_stride_w,
+    BLOCK_SIZE: tl.constexpr,
+):
+    batch_idx = tl.program_id(0)
+    h = tl.program_id(1)
+    w_block = tl.program_id(2)
+    
+    w_offsets = tl.arange(0, BLOCK_SIZE)
+    w = w_block * BLOCK_SIZE + w_offsets
+    mask = w < width
+    
+    min_val = tl.full((BLOCK_SIZE,), float('inf'), dtype=tl.float32)
+    
+    for c in range(0, channels):
+        base_ptr = input_ptr + batch_idx * stride_b + h * stride_h + c * stride_c
+        ptrs = base_ptr + w * stride_w
+        vals = tl.load(ptrs, mask=mask, other=float('inf'))
+        scaled_vals = vals * scale_factor
+        min_val = tl.minimum(min_val, scaled_vals)
+    
+    out_base = output_ptr + batch_idx * out_stride_b + h * out_stride_h
+    tl.store(out_base + w * out_stride_w, min_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, scale_factor):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.scale_factor = scale_factor
+
+    def forward(self, x):
+        x = self.conv(x)
+        batch, channels, height, width = x.shape
+        output = torch.empty((batch, 1, height, width), device=x.device, dtype=x.dtype)
+        
+        if channels == 0:
+            return output
+        
+        stride_b = x.stride(0)
+        stride_c = x.stride(1)
+        stride_h = x.stride(2)
+        stride_w = x.stride(3)
+        out_stride_b = output.stride(0)
+        out_stride_c = output.stride(1)
+        out_stride_h = output.stride(2)
+        out_stride_w = output.stride(3)
+        
+        BLOCK_SIZE = 32
+        grid = (batch, height, triton.cdiv(width, BLOCK_SIZE))
+        min_reduction_kernel[grid](
+            x, output, self.scale_factor, channels, 
+            batch, height, width,
+            stride_b, stride_c, stride_h, stride_w,
+            out_stride_b, out_stride_c, out_stride_h, out_stride_w,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+scale_factor = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, scale_factor]

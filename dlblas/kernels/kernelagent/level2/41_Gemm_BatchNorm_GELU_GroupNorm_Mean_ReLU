@@ -1,0 +1,121 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64}, num_warps=4, num_stages=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 128}, num_warps=4, num_stages=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 256}, num_warps=8, num_stages=3),
+    ],
+    key=['batch_size', 'in_features', 'out_features'],
+)
+@triton.jit
+def fused_linear_bn_gelu_kernel(
+    x_ptr, weight_ptr, bias_ptr,
+    bn_weight_ptr, bn_bias_ptr, running_mean_ptr, running_var_ptr,
+    output_ptr,
+    batch_size, in_features, out_features,
+    eps: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    
+    x_ptrs = x_ptr + (offs_m[:, None] * in_features + offs_k[None, :])
+    w_ptrs = weight_ptr + (offs_n[:, None] * in_features + offs_k[None, :])
+    
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    
+    for k in range(0, in_features, BLOCK_SIZE_K):
+        k_remaining = in_features - k
+        k_mask = offs_k < k_remaining
+        
+        x_mask = (offs_m[:, None] < batch_size) & k_mask[None, :]
+        w_mask = (offs_n[:, None] < out_features) & k_mask[None, :]
+        
+        # Vectorized loads
+        x = tl.load(x_ptrs, mask=x_mask, other=0.0, cache_modifier=".cg")
+        w = tl.load(w_ptrs, mask=w_mask, other=0.0, cache_modifier=".cg")
+        
+        acc += tl.dot(x, w, allow_tf32=True)
+        x_ptrs += BLOCK_SIZE_K
+        w_ptrs += BLOCK_SIZE_K
+    
+    # Vectorized bias load
+    b = tl.load(bias_ptr + offs_n, mask=offs_n < out_features, other=0.0)
+    acc += b[None, :]
+    
+    # Vectorized BN params load
+    gamma = tl.load(bn_weight_ptr + offs_n, mask=offs_n < out_features, other=0.0)
+    beta = tl.load(bn_bias_ptr + offs_n, mask=offs_n < out_features, other=0.0)
+    mean = tl.load(running_mean_ptr + offs_n, mask=offs_n < out_features, other=0.0)
+    inv_std = 1.0 / tl.sqrt(tl.load(running_var_ptr + offs_n, mask=offs_n < out_features, other=0.0) + eps)
+    
+    bn_output = (acc - mean[None, :]) * (gamma[None, :] * inv_std[None, :]) + beta[None, :]
+    
+    # Optimized GELU with reduced operations
+    x_cubed = bn_output * bn_output * bn_output
+    k = 0.7978845608028654 * (bn_output + 0.044715 * x_cubed)
+    gelu_out = 0.5 * bn_output * (1.0 + tl.tanh(k))
+    
+    # Vectorized store
+    out_ptrs = output_ptr + (offs_m[:, None] * out_features + offs_n[None, :])
+    out_mask = (offs_m[:, None] < batch_size) & (offs_n[None, :] < out_features)
+    tl.store(out_ptrs, gelu_out, mask=out_mask, cache_modifier=".cg")
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.batch_norm = nn.BatchNorm1d(out_features)
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+        self.batch_norm.eval()
+
+    def forward(self, x):
+        if self.training:
+            x = self.gemm(x)
+            x = self.batch_norm(x)
+            x = torch.nn.functional.gelu(x)
+        else:
+            batch_size, _ = x.shape
+            output = torch.empty((batch_size, self.gemm.out_features), device=x.device, dtype=x.dtype)
+            
+            def grid(meta):
+                return (
+                    triton.cdiv(batch_size, meta['BLOCK_SIZE_M']),
+                    triton.cdiv(self.gemm.out_features, meta['BLOCK_SIZE_N'])
+                )
+            
+            fused_linear_bn_gelu_kernel[grid](
+                x, self.gemm.weight, self.gemm.bias,
+                self.batch_norm.weight, self.batch_norm.bias,
+                self.batch_norm.running_mean, self.batch_norm.running_var,
+                output,
+                batch_size, self.gemm.in_features, self.gemm.out_features,
+                self.batch_norm.eps
+            )
+            x = output
+
+        x = self.group_norm(x)
+        x = torch.mean(x, dim=1, keepdim=True)
+        x = torch.relu(x)
+        return x
+
+batch_size = 128
+in_features = 512
+out_features = 1024
+num_groups = 8
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, num_groups]

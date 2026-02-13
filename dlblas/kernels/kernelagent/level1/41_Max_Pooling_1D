@@ -1,0 +1,110 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def max_pool_1d_kernel(
+    x_ptr,
+    output_ptr,
+    sequence_length,
+    features,
+    L_out,
+    stride: tl.constexpr,
+    padding: tl.constexpr,
+    dilation: tl.constexpr,
+    kernel_size: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    
+    # Calculate indices
+    batch_feature_idx = pid // L_out
+    output_position = pid % L_out
+    
+    batch_idx = batch_feature_idx // features
+    feature_idx = batch_feature_idx % features
+    
+    # Compute window start and indices
+    start_idx = output_position * stride - padding
+    k = tl.arange(0, kernel_size)
+    window_indices = start_idx + k * dilation
+    
+    # Optimized mask calculation
+    mask = (window_indices >= 0) & (window_indices < sequence_length)
+    
+    # Precompute base offsets
+    batch_offset = batch_idx * features * sequence_length
+    feature_offset = feature_idx * sequence_length
+    base_ptr = x_ptr + batch_offset + feature_offset
+    
+    # Load values with optimized memory access
+    values = tl.load(base_ptr + window_indices, mask=mask, other=-float('inf'))
+    max_value = tl.max(values, axis=0)
+    
+    # Optimized output storage
+    out_offset = (batch_idx * features + feature_idx) * L_out + output_position
+    tl.store(output_ptr + out_offset, max_value)
+
+class ModelNew(nn.Module):
+    def __init__(self, kernel_size: int, stride: int = None, padding: int = 0, 
+                 dilation: int = 1, return_indices: bool = False):
+        super(ModelNew, self).__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride if stride is not None else kernel_size
+        self.padding = padding
+        self.dilation = dilation
+        self.return_indices = return_indices
+        
+        if return_indices:
+            self.maxpool = nn.MaxPool1d(
+                kernel_size=kernel_size, 
+                stride=self.stride, 
+                padding=padding, 
+                dilation=dilation, 
+                return_indices=True
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.return_indices:
+            return self.maxpool(x)
+            
+        x = x.contiguous()
+        batch_size, num_features, seq_len = x.shape
+        
+        L_out = (seq_len + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        output = torch.empty((batch_size, num_features, L_out), device=x.device, dtype=x.dtype)
+        
+        if output.numel() == 0:
+            return output
+            
+        total_ops = batch_size * num_features * L_out
+        grid = (total_ops,)
+        
+        max_pool_1d_kernel[grid](
+            x,
+            output,
+            seq_len,
+            num_features,
+            L_out,
+            self.stride,
+            self.padding,
+            self.dilation,
+            self.kernel_size,
+        )
+        return output
+
+batch_size = 16
+features = 64
+sequence_length = 128
+kernel_size = 4
+stride = 2
+padding = 2
+dilation = 3
+return_indices = False
+
+def get_inputs():
+    x = torch.randn(batch_size, features, sequence_length)
+    return [x]
+
+def get_init_inputs():
+    return [kernel_size, stride, padding, dilation, return_indices]

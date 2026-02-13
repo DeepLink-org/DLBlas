@@ -1,0 +1,123 @@
+import torch
+import torch.nn as nn
+import math
+import triton
+import triton.language as tl
+
+@triton.jit
+def conv_transpose1d_kernel(
+    x_ptr,
+    weight_ptr,
+    bias_ptr,
+    output_ptr,
+    stride,
+    padding,
+    dilation,
+    L_in,
+    L_out,
+    in_channels,
+    out_channels,
+    kernel_size,
+    batch_size,
+    has_bias: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    num_pid_n = tl.cdiv(L_out, BLOCK_SIZE)
+    pid_b = pid // (out_channels * num_pid_n)
+    pid_oc = (pid % (out_channels * num_pid_n)) // num_pid_n
+    pid_l = pid % num_pid_n
+    
+    lo = pid_l * BLOCK_SIZE
+    hi = tl.minimum(lo + BLOCK_SIZE, L_out)
+    pos = lo + tl.arange(0, BLOCK_SIZE)
+    mask = pos < hi
+
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    for in_channel in range(in_channels):
+        for k in range(kernel_size):
+            i_val = pos + padding - k * dilation
+            cond = (i_val >= 0) & (i_val < L_in * stride) & (i_val % stride == 0)
+            i = tl.where(cond, i_val // stride, 0)
+            
+            x_idx = pid_b * in_channels * L_in + in_channel * L_in + i
+            x_val = tl.load(x_ptr + x_idx, mask=cond & mask, other=0.0)
+            
+            w_idx = in_channel * out_channels * kernel_size + pid_oc * kernel_size + k
+            w_val = tl.load(weight_ptr + w_idx)
+            
+            acc += tl.where(cond, x_val * w_val, 0.0)
+
+    if has_bias:
+        bias_val = tl.load(bias_ptr + pid_oc)
+        acc += bias_val
+
+    out_idx = pid_b * out_channels * L_out + pid_oc * L_out + pos
+    tl.store(output_ptr + out_idx, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+        self.weight = nn.Parameter(torch.empty(in_channels, out_channels, kernel_size))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.bias = None
+
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, in_channels, L_in = x.shape
+        assert in_channels == self.in_channels
+
+        L_out = (L_in - 1) * self.stride - 2 * self.padding + self.dilation * (self.kernel_size - 1) + 1
+        output = torch.empty(batch_size, self.out_channels, L_out, device=x.device, dtype=x.dtype)
+
+        if output.numel() == 0:
+            return output
+
+        grid = lambda meta: (batch_size * self.out_channels * triton.cdiv(L_out, meta['BLOCK_SIZE']),)
+        bias_ptr = self.bias.data_ptr() if self.bias is not None else 0
+        has_bias = self.bias is not None
+
+        BLOCK_SIZE = min(triton.next_power_of_2(L_out), 128) if L_out > 1 else 1
+        
+        conv_transpose1d_kernel[grid](
+            x, self.weight, bias_ptr, output,
+            self.stride, self.padding, self.dilation,
+            L_in, L_out, self.in_channels, self.out_channels, self.kernel_size,
+            batch_size,
+            has_bias,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = 5
+length = 256
+stride = 1
+padding = 0
+dilation = 3
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, length)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, dilation]

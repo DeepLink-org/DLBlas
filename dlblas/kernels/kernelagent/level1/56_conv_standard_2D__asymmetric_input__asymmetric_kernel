@@ -1,0 +1,130 @@
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import triton
+import triton.language as tl
+
+@triton.jit
+def _matmul_kernel(
+    a_ptr, b_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
+    
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        k_remaining = K - k * BLOCK_K
+        a_mask = (offs_m[:, None] < M) & (offs_k[None, :] < k_remaining)
+        b_mask = (offs_k[:, None] < k_remaining) & (offs_n[None, :] < N)
+        
+        a = tl.load(a_ptrs, mask=a_mask, other=0.0)
+        b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+        accumulator += tl.dot(a, b)
+        
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+    
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptrs, accumulator, mask=c_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: tuple, 
+                 stride: tuple = (1, 1), padding: tuple = (0, 0), 
+                 dilation: tuple = (1, 1), groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        
+        self.weight = nn.Parameter(torch.empty(
+            out_channels, 
+            in_channels // groups, 
+            kernel_size[0], 
+            kernel_size[1]
+        ))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.groups != 1:
+            return F.conv2d(x, self.weight, self.bias, self.stride, 
+                           self.padding, self.dilation, self.groups)
+        
+        B, C_in, H, W = x.shape
+        K_h, K_w = self.kernel_size
+        
+        H_out = (H + 2 * self.padding[0] - self.dilation[0] * (K_h - 1) - 1) // self.stride[0] + 1
+        W_out = (W + 2 * self.padding[1] - self.dilation[1] * (K_w - 1) - 1) // self.stride[1] + 1
+        
+        x_col = F.unfold(x, self.kernel_size, self.dilation, self.padding, self.stride)
+        x_col = x_col.permute(0, 2, 1).reshape(B * H_out * W_out, C_in * K_h * K_w)
+        
+        weight_flat = self.weight.view(self.out_channels, -1)
+        output_flat = torch.empty(B * H_out * W_out, self.out_channels, 
+                                 device=x.device, dtype=x.dtype)
+        
+        M, K = x_col.shape
+        N = weight_flat.shape[0]
+        
+        grid_m = triton.cdiv(M, 64)
+        grid_n = triton.cdiv(N, 64)
+        grid = (grid_m * grid_n,)
+        _matmul_kernel[grid](
+            x_col, weight_flat.t(), output_flat,
+            M, N, K,
+            x_col.stride(0), x_col.stride(1),
+            weight_flat.t().stride(0), weight_flat.t().stride(1),
+            output_flat.stride(0), output_flat.stride(1),
+            BLOCK_M=64, BLOCK_N=64, BLOCK_K=32
+        )
+        
+        output = output_flat.view(B, H_out, W_out, N).permute(0, 3, 1, 2)
+        
+        if self.bias is not None:
+            output += self.bias[None, :, None, None]
+            
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = (3, 5)
+height = 256
+width = 128
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

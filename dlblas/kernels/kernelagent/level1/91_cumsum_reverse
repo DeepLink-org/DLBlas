@@ -1,0 +1,65 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+# Custom addition operator for associative scan
+@triton.jit
+def add(a, b):
+    return a + b
+
+@triton.jit
+def reverse_cumsum_kernel(
+    x_ptr,
+    output_ptr,
+    n_cols,
+    stride,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = pid * stride
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_cols
+    
+    # Create reversed offsets for loading
+    rev_offsets = row_start + (n_cols - 1 - offsets)
+    
+    # Load row in reverse order
+    rev_val = tl.load(x_ptr + rev_offsets, mask=mask, other=0.0)
+    
+    # Compute inclusive prefix sums on reversed data
+    prefix = tl.associative_scan(rev_val, 0, add)
+    
+    # Store results at reversed positions
+    tl.store(output_ptr + rev_offsets, prefix, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        if self.dim != 1:
+            return torch.cumsum(x.flip(self.dim), dim=self.dim).flip(self.dim)
+        
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        n_rows, n_cols = x.shape
+        
+        BLOCK_SIZE = triton.next_power_of_2(n_cols)
+        grid = (n_rows,)
+        reverse_cumsum_kernel[grid](
+            x, output, n_cols, x.stride(0), BLOCK_SIZE
+        )
+        return output
+
+batch_size = 128
+input_shape = (4000,)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return [dim]

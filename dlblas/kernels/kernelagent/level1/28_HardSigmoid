@@ -1,0 +1,57 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+VECTOR_WIDTH = 4  # Optimize for 128-bit memory transactions
+
+@triton.jit
+def hardsigmoid_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Vectorized load
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    
+    # Compute HardSigmoid: clamp((x + 3) / 6, 0, 1)
+    result = (x + 3.0) * (1.0 / 6.0)
+    result = tl.minimum(tl.maximum(result, 0.0), 1.0)
+    
+    # Vectorized store
+    tl.store(output_ptr + offsets, result, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n_elements = x.numel()
+        if n_elements == 0:
+            return x.clone()
+        
+        output = torch.empty_like(x)
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        
+        # Optimized block size with vectorization
+        hardsigmoid_kernel[grid](
+            x, output, n_elements,
+            BLOCK_SIZE=4096
+        )
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []

@@ -1,0 +1,81 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def max_reduce_kernel(
+    input_ptr,
+    output_ptr,
+    reduction_size: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base_idx = pid * reduction_size
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < reduction_size
+    
+    # Load data with boundary checks
+    ptr = input_ptr + base_idx + offsets
+    vals = tl.load(ptr, mask=mask, other=-float('inf'))
+    
+    # Parallel max reduction
+    max_val = tl.max(vals, axis=0)
+    
+    # Store result
+    tl.store(output_ptr + pid, max_val)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.dim < 0:
+            dim = x.dim() + self.dim
+        else:
+            dim = self.dim
+            
+        if x.numel() == 0:
+            return x
+            
+        orig_shape = x.shape
+        # Move reduction dimension to last position
+        if dim != x.dim() - 1:
+            perm = list(range(x.dim()))
+            perm[dim] = x.dim() - 1
+            perm[-1] = dim
+            x = x.permute(perm).contiguous()
+        
+        # Flatten non-reduction dimensions
+        reduction_size = x.size(-1)
+        x_2d = x.view(-1, reduction_size)
+        output = torch.empty(x_2d.size(0), device=x.device, dtype=x.dtype)
+        
+        # Compute kernel parameters
+        n_rows = x_2d.size(0)
+        BLOCK_SIZE_val = triton.next_power_of_2(reduction_size)
+        if BLOCK_SIZE_val > 1024:
+            BLOCK_SIZE_val = 1024
+        
+        # Launch kernel
+        grid = (n_rows,)
+        max_reduce_kernel[grid](
+            x_2d, output, reduction_size, BLOCK_SIZE=BLOCK_SIZE_val
+        )
+        
+        # Restore original shape (without reduced dimension)
+        output_shape = list(orig_shape)
+        del output_shape[dim]
+        return output.view(output_shape)
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [1]

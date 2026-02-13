@@ -1,0 +1,148 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def fused_scale_pool_bias_scale_kernel(
+    input_ptr,
+    output_ptr,
+    scale1_val,
+    bias_ptr,
+    scale2_val,
+    input_batch_stride, input_channel_stride, input_depth_stride, input_height_stride, input_width_stride,
+    output_batch_stride, output_channel_stride, output_depth_stride, output_height_stride, output_width_stride,
+    input_depth, input_height, input_width,
+    output_depth, output_height, output_width,
+    out_channels,
+    num_output_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_output_elements
+    
+    # Decompose flat index into 5D tensor indices
+    channel_size = output_depth * output_height * output_width
+    batch_idx = offsets // (out_channels * channel_size)
+    remainder = offsets % (out_channels * channel_size)
+    channel_idx = remainder // channel_size
+    spatial_idx = remainder % channel_size
+    
+    depth_idx = spatial_idx // (output_height * output_width)
+    remainder = spatial_idx % (output_height * output_width)
+    height_idx = remainder // output_width
+    width_idx = remainder % output_width
+
+    # Compute input window start indices
+    input_depth_start = 2 * depth_idx
+    input_height_start = 2 * height_idx
+    input_width_start = 2 * width_idx
+
+    # Initialize accumulators
+    window_sum = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    count = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+
+    # Process 2x2x2 window with boundary checks
+    for dd in range(2):
+        for hh in range(2):
+            for ww in range(2):
+                input_d = input_depth_start + dd
+                input_h = input_height_start + hh
+                input_w = input_width_start + ww
+                
+                # Boundary check for each element in block
+                in_bounds = (input_d < input_depth) & (input_h < input_height) & (input_w < input_width)
+                valid_mask = mask & in_bounds
+                
+                # Calculate input offset
+                input_offset = (batch_idx * input_batch_stride + 
+                                channel_idx * input_channel_stride + 
+                                input_d * input_depth_stride + 
+                                input_h * input_height_stride + 
+                                input_w * input_width_stride)
+                
+                # Load and scale input value
+                input_val = tl.load(input_ptr + input_offset, mask=valid_mask, other=0.0)
+                window_sum += input_val * scale1_val
+                count += tl.where(valid_mask, 1, 0)
+
+    # Compute average pooling with valid count
+    divisor = tl.where(count == 0, 1, count)
+    average_val = window_sum / divisor
+    
+    # Load bias and apply
+    bias_val = tl.load(bias_ptr + channel_idx, mask=mask, other=0.0)
+    result = (average_val + bias_val) * scale2_val
+
+    # Calculate output offset
+    output_offset = (batch_idx * output_batch_stride + 
+                     channel_idx * output_channel_stride + 
+                     depth_idx * output_depth_stride + 
+                     height_idx * output_height_stride + 
+                     width_idx * output_width_stride)
+    
+    # Store result
+    tl.store(output_ptr + output_offset, result, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, scale1, scale2, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.scale1 = nn.Parameter(torch.tensor(scale1))
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.scale2 = nn.Parameter(torch.tensor(scale2))
+        
+    def forward(self, x):
+        # Transposed convolution
+        x = self.conv_transpose(x)
+        
+        # Fused operations parameters
+        B, C, D, H, W = x.shape
+        out_depth = (D - 2) // 2 + 1
+        out_height = (H - 2) // 2 + 1
+        out_width = (W - 2) // 2 + 1
+        
+        # Create output tensor
+        output = torch.empty((B, C, out_depth, out_height, out_width), 
+                            device=x.device, dtype=x.dtype)
+        
+        num_output_elements = output.numel()
+        grid = lambda meta: (triton.cdiv(num_output_elements, meta['BLOCK_SIZE']),)
+        
+        # Launch fused kernel with scalar scale values
+        fused_scale_pool_bias_scale_kernel[grid](
+            x,
+            output,
+            self.scale1.item(),  # Pass as scalar
+            self.bias.view(-1),  # Flattened bias
+            self.scale2.item(),  # Pass as scalar
+            x.stride(0), x.stride(1), x.stride(2), x.stride(3), x.stride(4),
+            output.stride(0), output.stride(1), output.stride(2), output.stride(3), output.stride(4),
+            D, H, W,
+            out_depth, out_height, out_width,
+            C,
+            num_output_elements,
+            BLOCK_SIZE=256  # Optimized block size
+        )
+        
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+scale1 = 0.5
+scale2 = 1.0
+bias_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, scale1, scale2, bias_shape]

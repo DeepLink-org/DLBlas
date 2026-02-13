@@ -1,0 +1,43 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _swish_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    sigmoid = 1.0 / (1.0 + tl.exp(-x))
+    output = x * sigmoid
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        output = torch.empty_like(x)
+        n_elements = x.numel()
+        if n_elements == 0:
+            return output
+        grid = (triton.cdiv(n_elements, 1024), )
+        _swish_kernel[grid](x, output, n_elements, BLOCK_SIZE=1024)
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []  # No special initialization inputs needed
