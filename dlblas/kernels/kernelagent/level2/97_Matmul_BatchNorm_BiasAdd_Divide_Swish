@@ -1,0 +1,115 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_forward_kernel(
+    x_ptr, w_ptr, b_linear_ptr, bn_weight_ptr, bn_bias_ptr,
+    bn_mean_ptr, bn_var_ptr, extra_bias_ptr, output_ptr,
+    in_features, out_features, bn_eps, divide_val,
+    stride_x0, stride_x1,
+    BLOCK_FEATURES: tl.constexpr
+):
+    pid = tl.program_id(0)
+    pid_batch = pid // out_features
+    pid_feature = pid % out_features
+    
+    # Calculate offsets
+    x_offset = pid_batch * stride_x0 + tl.arange(0, BLOCK_FEATURES)
+    w_offset = pid_feature * in_features + tl.arange(0, BLOCK_FEATURES)
+    mask = tl.arange(0, BLOCK_FEATURES) < in_features
+    
+    # Initialize accumulator
+    acc = 0.0
+    for block_start in range(0, in_features, BLOCK_FEATURES):
+        block_mask = block_start + tl.arange(0, BLOCK_FEATURES) < in_features
+        mask &= block_mask
+        
+        # Load input and weight tiles
+        x_val = tl.load(x_ptr + x_offset + block_start, mask=mask, other=0.0)
+        w_val = tl.load(w_ptr + w_offset + block_start, mask=mask, other=0.0)
+        
+        # Compute partial dot product
+        acc += tl.sum(x_val * w_val)
+    
+    # Add linear bias
+    linear_bias = tl.load(b_linear_ptr + pid_feature)
+    acc += linear_bias
+    
+    # BatchNorm parameters
+    bn_weight = tl.load(bn_weight_ptr + pid_feature)
+    bn_bias = tl.load(bn_bias_ptr + pid_feature)
+    bn_mean = tl.load(bn_mean_ptr + pid_feature)
+    bn_var = tl.load(bn_var_ptr + pid_feature)
+    
+    # Apply BatchNorm
+    inv_std = 1.0 / tl.sqrt(bn_var + bn_eps)
+    normalized = bn_weight * ((acc - bn_mean) * inv_std) + bn_bias
+    
+    # Add extra bias and divide
+    bias_val = tl.load(extra_bias_ptr)
+    normalized = (normalized + bias_val) / divide_val
+    
+    # Swish activation
+    sig = 1.0 / (1.0 + tl.exp(-normalized))
+    result = normalized * sig
+    
+    # Store result
+    output_offset = pid_batch * out_features + pid_feature
+    tl.store(output_ptr + output_offset, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, bn_eps=1e-5, bn_momentum=0.1, bias_shape=(1,), divide_value=1.0):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.bn = nn.BatchNorm1d(out_features, eps=bn_eps, momentum=bn_momentum)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.divide_value = divide_value
+        self.in_features = in_features
+        self.out_features = out_features
+
+    def forward(self, x):
+        if self.training:
+            x = self.matmul(x)
+            x = self.bn(x)
+            x = x + self.bias
+            x = x / self.divide_value
+            x = x * torch.sigmoid(x)
+            return x
+        
+        # Inference path with fused kernel
+        batch_size = x.shape[0]
+        output = torch.empty((batch_size, self.out_features), device=x.device, dtype=x.dtype)
+        
+        # Calculate total elements
+        total_elements = batch_size * self.out_features
+        
+        # Launch kernel with optimal block size
+        block_size = min(triton.next_power_of_2(self.in_features), 1024)
+        grid = (total_elements,)
+        
+        fused_forward_kernel[grid](
+            x, self.matmul.weight, self.matmul.bias,
+            self.bn.weight, self.bn.bias,
+            self.bn.running_mean, self.bn.running_var,
+            self.bias, output,
+            self.in_features, self.out_features, self.bn.eps, self.divide_value,
+            x.stride(0), x.stride(1),
+            BLOCK_FEATURES=block_size
+        )
+        return output
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+bn_eps = 1e-5
+bn_momentum = 0.1
+bias_shape = (1,)
+divide_value = 1.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, bn_eps, bn_momentum, bias_shape, divide_value]

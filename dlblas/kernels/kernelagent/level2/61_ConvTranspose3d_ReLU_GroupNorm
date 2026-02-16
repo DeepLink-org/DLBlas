@@ -1,0 +1,140 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE': 128, 'VEC_SIZE': 4}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 128, 'VEC_SIZE': 8}, num_warps=4),
+        triton.Config({'BLOCK_SIZE': 256, 'VEC_SIZE': 4}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 256, 'VEC_SIZE': 8}, num_warps=8),
+        triton.Config({'BLOCK_SIZE': 512, 'VEC_SIZE': 4}, num_warps=16),
+        triton.Config({'BLOCK_SIZE': 512, 'VEC_SIZE': 8}, num_warps=16),
+        triton.Config({'BLOCK_SIZE': 1024, 'VEC_SIZE': 4}, num_warps=32),
+        triton.Config({'BLOCK_SIZE': 1024, 'VEC_SIZE': 8}, num_warps=32),
+    ],
+    key=['N'],
+)
+@triton.jit
+def _fused_relu_group_norm(
+    x_ptr,
+    output_ptr,
+    weight_ptr,
+    bias_ptr,
+    batch_size,
+    out_channels,
+    group_size,
+    D,
+    H,
+    W,
+    groups,
+    eps,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+    VEC_SIZE: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_group = tl.program_id(1)
+    
+    spatial_size = D * H * W
+    group_channels = group_size
+    base = pid_batch * out_channels * spatial_size + pid_group * group_channels * spatial_size
+
+    # First pass: compute mean and variance
+    total = 0.0
+    total_sq = 0.0
+    num_vectors = tl.cdiv(N, BLOCK_SIZE * VEC_SIZE)
+    
+    for i in range(0, num_vectors):
+        base_offset = i * BLOCK_SIZE * VEC_SIZE
+        thread_start = base_offset + tl.arange(0, BLOCK_SIZE) * VEC_SIZE
+        mask = thread_start < N
+        
+        # Vectorized load with proper broadcasting
+        ptr = x_ptr + base + thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :]
+        vec_mask = mask[:, None] & (thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :] < N)
+        vec = tl.load(ptr, mask=vec_mask, other=0.0)
+        vec = tl.where(vec > 0, vec, 0.0)
+        
+        # Parallel reduction within vector
+        thread_sum = tl.sum(vec, axis=1)
+        thread_sq = tl.sum(vec * vec, axis=1)
+        
+        # Sequential accumulation
+        total += tl.sum(thread_sum, axis=0)
+        total_sq += tl.sum(thread_sq, axis=0)
+
+    mean = total / N
+    variance = tl.maximum(total_sq / N - mean * mean, 0.0)
+    inv_std = 1.0 / tl.sqrt(variance + eps)
+
+    # Second pass: normalize and store
+    for i in range(0, num_vectors):
+        base_offset = i * BLOCK_SIZE * VEC_SIZE
+        thread_start = base_offset + tl.arange(0, BLOCK_SIZE) * VEC_SIZE
+        mask = thread_start < N
+        
+        # Vectorized load with proper broadcasting
+        ptr = x_ptr + base + thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :]
+        vec_mask = mask[:, None] & (thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :] < N)
+        vec = tl.load(ptr, mask=vec_mask, other=0.0)
+        vec = tl.where(vec > 0, vec, 0.0)
+        
+        # Compute channel indices with proper offset
+        element_idx = thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :]
+        channel_idx = pid_group * group_channels + (element_idx // spatial_size)
+        
+        # Vectorized weight/bias loading
+        w = tl.load(weight_ptr + channel_idx, mask=vec_mask)
+        b = tl.load(bias_ptr + channel_idx, mask=vec_mask)
+        
+        # Normalize
+        normalized = (vec - mean) * inv_std * w + b
+        tl.store(output_ptr + base + thread_start[:, None] + tl.arange(0, VEC_SIZE)[None, :], 
+                normalized, 
+                mask=vec_mask)
+
+def fused_relu_group_norm(x, weight, bias, groups, eps=1e-5):
+    x = x.contiguous()
+    output = torch.empty_like(x)
+    batch_size, out_channels, D, H, W = x.shape
+    group_channels = out_channels // groups
+    spatial_size = D * H * W
+    N = group_channels * spatial_size
+
+    grid = (batch_size, groups)
+    _fused_relu_group_norm_kernel = _fused_relu_group_norm[grid]
+    _fused_relu_group_norm_kernel(
+        x, output, weight, bias,
+        batch_size, out_channels, group_channels, D, H, W, groups, eps,
+        N
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, groups, bias=False):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, bias=bias)
+        self.groups = groups
+        self.weight = nn.Parameter(torch.ones(out_channels))
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = fused_relu_group_norm(x, self.weight, self.bias, self.groups)
+        return x
+
+batch_size = 16
+in_channels = 64
+out_channels = 128
+D, H, W = 8, 16, 16
+kernel_size = 3
+groups = 8
+bias = False
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, groups, bias]

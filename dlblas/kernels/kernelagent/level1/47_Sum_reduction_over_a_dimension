@@ -1,0 +1,62 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def reduce_sum_kernel(
+    x_ptr,
+    output_ptr,
+    B, M, N,
+    stride_b, stride_m, stride_n,
+    BLOCK_M: tl.constexpr,
+):
+    pid_b = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    if pid_b >= B or pid_n >= N:
+        return
+    
+    acc = 0.0
+    for m_offset in range(0, M, BLOCK_M):
+        idx_m = m_offset + tl.arange(0, BLOCK_M)
+        mask = idx_m < M
+        block_ptr = x_ptr + pid_b * stride_b + idx_m * stride_m + pid_n * stride_n
+        block = tl.load(block_ptr, mask=mask, other=0.0)
+        acc += tl.sum(block, axis=0)
+    
+    output_ptr = output_ptr + pid_b * N + pid_n
+    tl.store(output_ptr, acc)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3 and self.dim == 1:
+            x = x.contiguous()
+            B, M, N = x.shape
+            output = torch.empty((B, N), device=x.device, dtype=torch.float32)
+            grid = (B, N)
+            reduce_sum_kernel[grid](
+                x, output, 
+                B, M, N,
+                x.stride(0), x.stride(1), x.stride(2),
+                BLOCK_M=128
+            )
+            return output.to(x.dtype).unsqueeze(1)
+        else:
+            return torch.sum(x, dim=self.dim, keepdim=True)
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+reduce_dim = 1
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [reduce_dim]

@@ -1,0 +1,42 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _mul_scalar_kernel(
+    x_ptr,
+    output_ptr,
+    s,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    output = x * s
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A: torch.Tensor, s: float) -> torch.Tensor:
+        n_elements = A.numel()
+        output = torch.empty_like(A)
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        _mul_scalar_kernel[grid](A, output, s, n_elements, BLOCK_SIZE=1024)
+        return output
+
+M = 16384
+N = 4096
+
+def get_inputs():
+    A = torch.randn(M, N, device='cuda')
+    s = 3.14
+    return [A, s]
+
+def get_init_inputs():
+    return []

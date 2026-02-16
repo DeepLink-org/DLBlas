@@ -1,0 +1,95 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _group_norm_min_kernel(
+    x_ptr, weight_ptr, bias_ptr, output_ptr,
+    stride_x_batch, stride_x_feature,
+    stride_weight, stride_bias,
+    out_features, num_groups, eps,
+    BLOCK_FEATURES: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_group = tl.program_id(1)
+    
+    # Calculate group boundaries
+    group_size = out_features // num_groups
+    group_start = pid_group * group_size
+    group_range = group_start + tl.arange(0, BLOCK_FEATURES)
+    feature_mask = group_range < (group_start + group_size)
+    
+    # Pointers to current row and group
+    x_row_ptr = x_ptr + pid_batch * stride_x_batch
+    weight_ptr_base = weight_ptr + group_start * stride_weight
+    bias_ptr_base = bias_ptr + group_start * stride_bias
+    
+    # Load data for current group
+    x = tl.load(x_row_ptr + group_range, mask=feature_mask, other=0.0)
+    weight = tl.load(weight_ptr_base + tl.arange(0, BLOCK_FEATURES) * stride_weight, 
+                    mask=feature_mask, other=0.0)
+    bias = tl.load(bias_ptr_base + tl.arange(0, BLOCK_FEATURES) * stride_bias, 
+                  mask=feature_mask, other=0.0)
+    
+    # Compute mean and variance for group
+    group_sum = tl.sum(x, axis=0)
+    group_mean = group_sum / group_size
+    group_var = tl.sum((x - group_mean) * (x - group_mean), axis=0) / group_size
+    
+    # Normalize and apply affine transformation
+    normalized = (x - group_mean) / tl.sqrt(group_var + eps)
+    normalized = normalized * weight + bias
+    
+    # Compute min for current group
+    group_min = tl.min(normalized, axis=0)
+    
+    # Store min value (atomic min across groups)
+    output_ptr += pid_batch
+    tl.atomic_min(output_ptr, group_min)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, bias_shape):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.out_features = out_features
+        self.num_groups = num_groups
+
+    def forward(self, x):
+        x = self.gemm(x)
+        
+        # Prepare inputs for Triton kernel
+        weight = self.group_norm.weight
+        bias = self.group_norm.bias
+        output_min = torch.full((x.size(0),), float('inf'), 
+                               device=x.device, dtype=x.dtype)
+        
+        # Launch Triton kernel with optimized block size
+        BLOCK_FEATURES = 32
+        grid = (x.size(0), self.num_groups)
+        _group_norm_min_kernel[grid](
+            x, weight, bias, output_min,
+            x.stride(0), x.stride(1),
+            weight.stride(0), bias.stride(0),
+            self.out_features, self.num_groups, 1e-5,
+            BLOCK_FEATURES=BLOCK_FEATURES
+        )
+        
+        # Reshape and add final bias
+        x = output_min.view(-1, 1)
+        x = x + self.bias
+        return x
+
+batch_size = 128
+in_features = 512
+out_features = 256
+num_groups = 8
+bias_shape = (1, out_features, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, num_groups, bias_shape]

@@ -1,0 +1,61 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _add_activate_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    a = tl.load(a_ptr + offsets, mask=mask)
+    b = tl.load(b_ptr + offsets, mask=mask)
+    
+    s = a + b
+    s_plus_3 = s + 3.0
+    relu6_val = tl.minimum(tl.maximum(s_plus_3, 0.0), 6.0)
+    out_val = (s * s) * (relu6_val * (1.0 / 6.0))
+    
+    tl.store(out_ptr + offsets, out_val, mask=mask)
+
+def fused_add_activate(a, b):
+    n_elements = a.numel()
+    output = torch.empty_like(a)
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    _add_activate_kernel[grid](a, b, output, n_elements, BLOCK_SIZE=1024)
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+
+    def forward(self, x, add_input):
+        x = self.conv_transpose(x)
+        x = fused_add_activate(x, add_input)
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+D, H, W = 16, 16, 16
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+bias_shape = (out_channels, 1, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, D, H, W), torch.randn(batch_size, out_channels, D*stride, H*stride, W*stride)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, bias_shape]

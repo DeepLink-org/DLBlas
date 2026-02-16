@@ -1,0 +1,171 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _depthwise_conv2d_kernel(
+    x_ptr,
+    weight_ptr,
+    output_ptr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    kernel_size: tl.constexpr,
+    in_channels: tl.constexpr,
+    height: tl.constexpr,
+    width: tl.constexpr,
+    height_out: tl.constexpr,
+    width_out: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+    stride_n, stride_c, stride_h_in, stride_w_in,
+    stride_n_out, stride_c_out, stride_h_out, stride_w_out,
+):
+    pid_batch = tl.program_id(0)
+    pid_channel = tl.program_id(1)
+    pid_block = tl.program_id(2)
+    
+    num_blocks = tl.cdiv(height_out * width_out, BLOCK_H * BLOCK_W)
+    block_start = pid_block * BLOCK_H * BLOCK_W
+    
+    # Create ranges with vectorization
+    hw_range = block_start + tl.arange(0, BLOCK_H * BLOCK_W)
+    h_out = hw_range // width_out
+    w_out = hw_range % width_out
+    mask = hw_range < height_out * width_out
+    
+    # Precompute base offsets for vectorized access
+    base_offset = pid_batch * stride_n + pid_channel * stride_c
+    weight_offset = pid_channel * kernel_size * kernel_size
+    
+    # Initialize accumulator with vectorization
+    acc = tl.zeros((BLOCK_H * BLOCK_W,), dtype=tl.float32)
+    
+    # Optimized convolution computation
+    for kh in tl.static_range(kernel_size):
+        for kw in tl.static_range(kernel_size):
+            h_in = h_out * stride_h - padding_h + kh
+            w_in = w_out * stride_w - padding_w + kw
+            
+            # Compute input positions with boundary checks
+            within_bounds = (h_in >= 0) & (h_in < height) & (w_in >= 0) & (w_in < width)
+            
+            # Calculate input pointer offset with vectorization
+            x_offset = base_offset + h_in * stride_h_in + w_in * stride_w_in
+            
+            # Vectorized load with boundary mask
+            x_val = tl.load(
+                x_ptr + x_offset,
+                mask=within_bounds & mask,
+                other=0.0
+            )
+            
+            # Load weight
+            w_val = tl.load(weight_ptr + weight_offset + kh * kernel_size + kw)
+            
+            # Accumulate
+            acc += x_val * w_val
+    
+    # Calculate output pointer offset
+    out_offset = pid_batch * stride_n_out + pid_channel * stride_c_out + \
+                 h_out * stride_h_out + w_out * stride_w_out
+    
+    # Vectorized store
+    tl.store(output_ptr + out_offset, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.conv2d = nn.Conv2d(
+            in_channels, in_channels, kernel_size,
+            stride=stride, padding=padding,
+            groups=in_channels, bias=bias
+        )
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        weight = self.conv2d.weight
+        bias = self.conv2d.bias
+        
+        batch_size, _, height, width = x.shape
+        kernel_size = self.conv2d.kernel_size[0]
+        stride = self.stride
+        padding = self.padding
+        
+        # Compute output dimensions
+        height_out = (height + 2 * padding - kernel_size) // stride + 1
+        width_out = (width + 2 * padding - kernel_size) // stride + 1
+        
+        # Ensure contiguous tensors
+        x = x.contiguous()
+        weight = weight.contiguous()
+        
+        # Allocate output tensor
+        output = torch.empty(
+            (batch_size, self.conv2d.out_channels, height_out, width_out),
+            device=x.device,
+            dtype=x.dtype
+        )
+        
+        # Configure kernel grid with optimized block size
+        grid = (
+            batch_size, 
+            self.conv2d.out_channels, 
+            triton.cdiv(height_out * width_out, 256)  # Increased block size
+        )
+        
+        # Get tensor strides
+        s_n, s_c, s_h, s_w = x.stride()
+        s_n_out, s_c_out, s_h_out, s_w_out = output.stride()
+        
+        # Launch kernel with optimized parameters
+        _depthwise_conv2d_kernel[grid](
+            x,
+            weight,
+            output,
+            stride,
+            stride,
+            padding,
+            padding,
+            kernel_size,
+            self.conv2d.in_channels,
+            height,
+            width,
+            height_out,
+            width_out,
+            BLOCK_H=16,  # Optimized block dimensions
+            BLOCK_W=16,
+            stride_n=s_n,
+            stride_c=s_c,
+            stride_h_in=s_h,
+            stride_w_in=s_w,
+            stride_n_out=s_n_out,
+            stride_c_out=s_c_out,
+            stride_h_out=s_h_out,
+            stride_w_out=s_w_out,
+        )
+        
+        # Add bias if present
+        if bias is not None:
+            output += bias.view(1, -1, 1, 1)
+            
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+kernel_size = 3
+width = 256
+height = 256
+stride = 1
+padding = 0
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, kernel_size, stride, padding]

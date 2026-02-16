@@ -1,0 +1,79 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _log_softmax_forward(
+    x_ptr,
+    output_ptr,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = pid * n_cols
+    current_max = -float('inf')
+    current_sum = 0.0
+
+    # Fused pass: compute max and sum(exp) with online rescaling
+    for i in range(0, n_cols, BLOCK_SIZE):
+        cols = i + tl.arange(0, BLOCK_SIZE)
+        mask = cols < n_cols
+        ptr = x_ptr + row_start + cols
+        x_vals = tl.load(ptr, mask=mask, other=-float('inf'))
+        
+        # Compute block max
+        block_max = tl.max(x_vals, axis=0)
+        new_max = tl.maximum(current_max, block_max)
+        
+        # Rescale current sum
+        scale = tl.exp(current_max - new_max)
+        current_sum = current_sum * scale
+        
+        # Compute exp sum for current block
+        exp_vals = tl.exp(x_vals - new_max)
+        block_sum = tl.sum(exp_vals, axis=0)
+        current_sum += block_sum
+        current_max = new_max
+
+    # Compute log(sum(exp(x))) + max
+    log_sum_exp = tl.log(current_sum) + current_max
+
+    # Second pass: compute log_softmax
+    for i in range(0, n_cols, BLOCK_SIZE):
+        cols = i + tl.arange(0, BLOCK_SIZE)
+        mask = cols < n_cols
+        ptr = x_ptr + row_start + cols
+        x_vals = tl.load(ptr, mask=mask)
+        output = x_vals - log_sum_exp
+        tl.store(output_ptr + row_start + cols, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int = 1):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.dim != 1:
+            return torch.log_softmax(x, dim=self.dim)
+        
+        output = torch.empty_like(x)
+        n_rows, n_cols = x.shape
+        grid = (n_rows,)
+        BLOCK_SIZE = 2048  # Increased block size for better performance
+            
+        _log_softmax_forward[grid](
+            x, output, n_cols,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return output
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []

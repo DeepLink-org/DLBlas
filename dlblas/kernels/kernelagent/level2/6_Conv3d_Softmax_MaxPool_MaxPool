@@ -1,0 +1,95 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_3d_channel_kernel(
+    x_ptr, 
+    output_ptr,
+    stride_n, stride_c, stride_d, stride_h, stride_w,
+    C, D, H, W,
+    BLOCK_SIZE_SPATIAL: tl.constexpr
+):
+    pid = tl.program_id(0)
+    total_spatial = D * H * W
+    num_blocks_per_sample = (total_spatial + BLOCK_SIZE_SPATIAL - 1) // BLOCK_SIZE_SPATIAL
+    n = pid // num_blocks_per_sample
+    block_idx = pid % num_blocks_per_sample
+    spatial_start = block_idx * BLOCK_SIZE_SPATIAL
+    thread_idx = tl.arange(0, BLOCK_SIZE_SPATIAL)
+    spatial_idx = spatial_start + thread_idx
+    mask = spatial_idx < total_spatial
+
+    HW = H * W
+    d = spatial_idx // HW
+    hw = spatial_idx % HW
+    h = hw // W
+    w = hw % W
+
+    base_offset = n * stride_n + d * stride_d + h * stride_h + w * stride_w
+
+    max_val = tl.zeros((BLOCK_SIZE_SPATIAL,), dtype=tl.float32) - float('inf')
+    for c in range(C):
+        offset = base_offset + c * stride_c
+        val = tl.load(x_ptr + offset, mask=mask, other=-float('inf'))
+        max_val = tl.maximum(max_val, val)
+
+    exp_sum = tl.zeros((BLOCK_SIZE_SPATIAL,), dtype=tl.float32)
+    for c in range(C):
+        offset = base_offset + c * stride_c
+        val = tl.load(x_ptr + offset, mask=mask, other=0.0)
+        exp_val = tl.exp(val - max_val)
+        exp_sum += exp_val
+        
+    safe_exp_sum = tl.maximum(exp_sum, 1e-10)
+
+    for c in range(C):
+        offset = base_offset + c * stride_c
+        val = tl.load(x_ptr + offset, mask=mask, other=0.0)
+        exp_val = tl.exp(val - max_val)
+        out_val = exp_val / safe_exp_sum
+        tl.store(output_ptr + offset, out_val, mask=mask)
+
+def softmax_3d_channel(x: torch.Tensor):
+    assert x.dim() == 5
+    N, C, D, H, W = x.shape
+    output = torch.empty_like(x)
+    total_spatial = D * H * W
+    BLOCK_SIZE_SPATIAL = 256
+    grid = (N * (total_spatial + BLOCK_SIZE_SPATIAL - 1) // BLOCK_SIZE_SPATIAL,)
+    
+    softmax_3d_channel_kernel[grid](
+        x, output,
+        x.stride(0), x.stride(1), x.stride(2), x.stride(3), x.stride(4),
+        C, D, H, W,
+        BLOCK_SIZE_SPATIAL=BLOCK_SIZE_SPATIAL
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.pool1 = nn.MaxPool3d(pool_kernel_size)
+        self.pool2 = nn.MaxPool3d(pool_kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = softmax_3d_channel(x)
+        x = self.pool1(x)
+        x = self.pool2(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+pool_kernel_size = 2
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, pool_kernel_size]

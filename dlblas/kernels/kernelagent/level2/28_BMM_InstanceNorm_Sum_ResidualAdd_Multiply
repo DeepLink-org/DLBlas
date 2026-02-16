@@ -1,0 +1,115 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def linear_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    output_ptr,
+    batch_size, 
+    in_features, 
+    out_features,
+    stride_xb, 
+    stride_xf,
+    stride_wo, 
+    stride_wf,
+    stride_ob, 
+    stride_of,
+    BLOCK_SIZE_B: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+):
+    pid_b = tl.program_id(0)
+    pid_f = tl.program_id(1)
+    
+    batch_offsets = pid_b * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
+    feat_offsets = pid_f * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    acc = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_N), dtype=tl.float32)
+    
+    for k in range(0, in_features, BLOCK_SIZE_K):
+        k_offsets = k + tl.arange(0, BLOCK_SIZE_K)
+        
+        x_mask = (batch_offsets[:, None] < batch_size) & (k_offsets[None, :] < in_features)
+        w_mask = (feat_offsets[:, None] < out_features) & (k_offsets[None, :] < in_features)
+        
+        x_vals = tl.load(
+            x_ptr + batch_offsets[:, None] * stride_xb + k_offsets[None, :] * stride_xf,
+            mask=x_mask, other=0.0
+        )
+        w_vals = tl.load(
+            w_ptr + feat_offsets[:, None] * stride_wo + k_offsets[None, :] * stride_wf,
+            mask=w_mask, other=0.0
+        )
+        
+        # Fixed matrix multiplication with proper dimension alignment
+        w_vals_transposed = tl.trans(w_vals)
+        acc += tl.dot(x_vals, w_vals_transposed, allow_tf32=False)
+    
+    b_vals = tl.load(b_ptr + feat_offsets, mask=feat_offsets < out_features, other=0.0)
+    acc += b_vals[None, :]
+    
+    out_ptrs = output_ptr + batch_offsets[:, None] * stride_ob + feat_offsets[None, :] * stride_of
+    out_mask = (batch_offsets[:, None] < batch_size) & (feat_offsets[None, :] < out_features)
+    tl.store(out_ptrs, acc, mask=out_mask)
+
+def triton_linear(x, weight, bias):
+    batch_size, in_features = x.shape
+    out_features, _ = weight.shape
+    output = torch.empty((batch_size, out_features), device=x.device, dtype=x.dtype)
+    
+    # Optimized block sizes for H100 architecture
+    BLOCK_SIZE_B = 32
+    BLOCK_SIZE_N = 64
+    BLOCK_SIZE_K = 128
+    
+    grid = (
+        triton.cdiv(batch_size, BLOCK_SIZE_B),
+        triton.cdiv(out_features, BLOCK_SIZE_N)
+    )
+    
+    linear_kernel[grid](
+        x, weight, bias, output,
+        batch_size, in_features, out_features,
+        x.stride(0), x.stride(1),
+        weight.stride(0), weight.stride(1),
+        output.stride(0), output.stride(1),
+        BLOCK_SIZE_B, BLOCK_SIZE_N, BLOCK_SIZE_K
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, eps=1e-5, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.empty(out_features))
+        self.instance_norm = nn.InstanceNorm2d(out_features, eps=eps, momentum=momentum)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x, y):
+        x = triton_linear(x, self.weight, self.bias)
+        x = self.instance_norm(x.unsqueeze(1).unsqueeze(1)).squeeze(1).squeeze(1)
+        x = x + y
+        x = x * y
+        return x
+
+batch_size = 128
+in_features = 64
+out_features = 128
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features), torch.randn(batch_size, out_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]

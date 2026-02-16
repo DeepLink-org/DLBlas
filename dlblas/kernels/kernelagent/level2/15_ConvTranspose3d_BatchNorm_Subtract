@@ -1,0 +1,90 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({}, num_warps=1),
+        triton.Config({}, num_warps=2),
+        triton.Config({}, num_warps=4),
+        triton.Config({}, num_warps=8),
+    ],
+    key=['total_elements'],
+)
+@triton.jit
+def subtract_mean_kernel(
+    x_ptr,
+    batch_stride,
+    channel_stride,
+    total_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    batch_idx = tl.program_id(0)
+    channel_idx = tl.program_id(1)
+    base = x_ptr + batch_idx * batch_stride + channel_idx * channel_stride
+    
+    # Reduction phase to compute mean
+    total_sum = 0.0
+    for offset in range(0, total_elements, BLOCK_SIZE):
+        offs = offset + tl.arange(0, BLOCK_SIZE)
+        mask = offs < total_elements
+        chunk = tl.load(base + offs, mask=mask, other=0.0)
+        total_sum += tl.sum(chunk, axis=0)
+    
+    mean_val = total_sum / total_elements
+    
+    # Subtraction phase
+    for offset in range(0, total_elements, BLOCK_SIZE):
+        offs = offset + tl.arange(0, BLOCK_SIZE)
+        mask = offs < total_elements
+        chunk = tl.load(base + offs, mask=mask, other=0.0)
+        chunk = chunk - mean_val
+        tl.store(base + offs, chunk, mask=mask)
+
+def subtract_mean_triton(x: torch.Tensor):
+    batch_size, channels = x.shape[0], x.shape[1]
+    x_flat = x.contiguous().view(batch_size, channels, -1)
+    total_elements = x_flat.size(-1)
+    
+    if total_elements == 0:
+        return x
+    
+    grid = (batch_size, channels)
+    subtract_mean_kernel[grid](
+        x_flat,
+        x_flat.stride(0),
+        x_flat.stride(1),
+        total_elements,
+        BLOCK_SIZE=1024,
+    )
+    return x_flat.view_as(x)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=True):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias=bias)
+        self.batch_norm = nn.BatchNorm3d(out_channels)
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.batch_norm(x)
+        if x.is_cuda:
+            x = subtract_mean_triton(x)
+        else:
+            x = x - torch.mean(x, dim=(2, 3, 4), keepdim=True)
+        return x
+
+batch_size = 16
+in_channels = 16
+out_channels = 32
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding]

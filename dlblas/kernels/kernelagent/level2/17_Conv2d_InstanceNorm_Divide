@@ -1,0 +1,77 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _instance_norm_div_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    divide_by,
+    eps,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    base = pid * n_elements
+    offsets = base + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < base + n_elements
+
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    
+    # Compute mean and variance
+    sum_x = tl.sum(x, axis=0)
+    mean = sum_x / n_elements
+    centered = x - mean
+    sum_sq = tl.sum(centered * centered, axis=0)
+    var = sum_sq / n_elements
+    std = tl.sqrt(var + eps)
+    
+    # Normalize and divide
+    y = centered / std
+    y = y / divide_by
+    
+    tl.store(output_ptr + offsets, y, mask=mask)
+
+def triton_instance_norm_div(x, divide_by):
+    batch, channels, height, width = x.shape
+    n_elements = height * width
+    n_channels_total = batch * channels
+    output = torch.empty_like(x)
+    
+    x_flat = x.contiguous().view(n_channels_total, n_elements)
+    output_flat = output.view(n_channels_total, n_elements)
+    
+    grid = (n_channels_total,)
+    BLOCK_SIZE = triton.next_power_of_2(n_elements)
+    
+    _instance_norm_div_kernel[grid](
+        x_flat, output_flat, n_elements, divide_by, 1e-5,
+        BLOCK_SIZE=BLOCK_SIZE, num_warps=8
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, divide_by):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.divide_by = divide_by
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = triton_instance_norm_div(x, self.divide_by)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+divide_by = 2.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, divide_by]

@@ -1,0 +1,87 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+from triton.language.extra import libdevice
+
+@triton.jit
+def fused_pointwise_ops(
+    x_ptr,
+    bias_ptr,
+    n_elements,
+    feature_stride,
+    out_channels,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Load input data
+    x = tl.load(x_ptr + offsets, mask=mask)
+    
+    # Compute channel index per element
+    channel_indices = (offsets // feature_stride) % out_channels
+    bias_vals = tl.load(bias_ptr + channel_indices, mask=mask)
+    
+    # Apply fused operations
+    # ReLU
+    x = tl.maximum(x, 0.0)
+    
+    # LeakyReLU
+    leaky = tl.where(x >= 0, x, 0.01 * x)
+    
+    # GELU approximation (tanh version)
+    sqrt_2_over_pi = 0.7978845608028654
+    kBeta = 0.044715
+    x_cubed = leaky * leaky * leaky
+    inner = sqrt_2_over_pi * (leaky + kBeta * x_cubed)
+    tanh_inner = libdevice.tanh(inner)
+    gelu = 0.5 * leaky * (1.0 + tanh_inner)
+    
+    # Sigmoid
+    sig = 1.0 / (1.0 + tl.exp(-gelu))
+    
+    # Bias addition
+    output = sig + bias_vals
+    
+    # Store results
+    tl.store(x_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bias_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+    
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.contiguous()
+        bias_1d = self.bias.view(-1)
+        n_elements = x.numel()
+        feature_stride = x.shape[2] * x.shape[3] * x.shape[4]
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        fused_pointwise_ops[grid](
+            x, 
+            bias_1d,
+            n_elements,
+            feature_stride,
+            x.shape[1],
+            BLOCK_SIZE=1024
+        )
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+bias_shape = (out_channels, 1, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, bias_shape]

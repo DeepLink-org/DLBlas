@@ -1,0 +1,86 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 16}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128, 'BLOCK_K': 16}, num_warps=4),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64, 'BLOCK_K': 16}, num_warps=4),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64, 'BLOCK_K': 16}, num_warps=4),
+        triton.Config({'BLOCK_M': 256, 'BLOCK_N': 64, 'BLOCK_K': 16}, num_warps=8),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256, 'BLOCK_K': 16}, num_warps=8),
+    ],
+    key=['M', 'K'],
+)
+@triton.jit
+def matmul_kernel(
+    A_ptr, B_ptr, C_ptr,
+    M, K, 
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    
+    num_k_blocks = tl.cdiv(K, BLOCK_K)
+    for k_block in range(0, num_k_blocks):
+        k_off = k_block * BLOCK_K
+        k_offs = k_off + tl.arange(0, BLOCK_K)
+        
+        a_mask = (offs_m[:, None] < M) & (k_offs[None, :] < K)
+        b_mask = (k_offs[:, None] < K) & (offs_n[None, :] < M)
+        
+        a_ptrs = A_ptr + offs_m[:, None] * stride_am + k_offs[None, :] * stride_ak
+        b_ptrs = B_ptr + k_offs[:, None] * stride_bk + offs_n[None, :] * stride_bn
+        
+        a = tl.load(a_ptrs, mask=a_mask, other=0.0)
+        b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+        
+        accumulator += tl.dot(a, b, allow_tf32=False)
+    
+    c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < M)
+    tl.store(c_ptrs, accumulator, mask=c_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A, B):
+        M, K = A.shape
+        assert B.shape == (K, M)
+        C = torch.empty((M, M), device=A.device, dtype=A.dtype)
+        
+        grid = lambda META: (
+            triton.cdiv(M, META['BLOCK_M']), 
+            triton.cdiv(M, META['BLOCK_N'])
+        )
+        
+        matmul_kernel[grid](
+            A, B, C, 
+            M, K,
+            A.stride(0), A.stride(1),
+            B.stride(0), B.stride(1),
+            C.stride(0), C.stride(1),
+        )
+        return C
+
+M = 16384
+N = 16
+
+def get_inputs():
+    A = torch.randn(M, N)
+    B = torch.randn(N, M)
+    return [A, B]
+
+def get_init_inputs():
+    return []

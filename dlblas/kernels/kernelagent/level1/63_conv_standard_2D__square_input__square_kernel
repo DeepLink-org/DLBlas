@@ -1,0 +1,167 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def conv2d_forward_kernel(
+    x_ptr, weight_ptr, bias_ptr, output_ptr,
+    batch_size, in_channels, out_channels, height, width,
+    kernel_size, stride, padding, dilation, groups,
+    height_out, width_out,
+    x_bs_stride, x_c_stride, x_h_stride, x_w_stride,
+    w_oc_stride, w_ic_stride, w_h_stride, w_w_stride,
+    out_bs_stride, out_oc_stride, out_h_stride, out_w_stride,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    total_elements = batch_size * out_channels * height_out * width_out
+    start_idx = pid * BLOCK_SIZE
+    offsets = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_elements
+
+    # Compute indices
+    elements_per_channel = height_out * width_out
+    elements_per_batch = out_channels * elements_per_channel
+    
+    batch_idx = offsets // elements_per_batch
+    oc_idx = (offsets % elements_per_batch) // elements_per_channel
+    spatial_idx = offsets % elements_per_channel
+    oh_idx = spatial_idx // width_out
+    ow_idx = spatial_idx % width_out
+
+    # Group processing
+    group_size = out_channels // groups
+    group_idx = oc_idx // group_size
+    in_channels_per_group = in_channels // groups
+    ic_start = group_idx * in_channels_per_group
+
+    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    
+    # Kernel processing
+    for kh in range(kernel_size):
+        for kw in range(kernel_size):
+            ih = oh_idx * stride + kh * dilation - padding
+            iw = ow_idx * stride + kw * dilation - padding
+            
+            in_bounds = (ih >= 0) & (ih < height) & (iw >= 0) & (iw < width)
+            for ic in range(in_channels_per_group):
+                ic_idx = ic_start + ic
+                
+                # Calculate input offsets with mask
+                x_offset = batch_idx * x_bs_stride + ic_idx * x_c_stride + ih * x_h_stride + iw * x_w_stride
+                w_offset = oc_idx * w_oc_stride + ic * w_ic_stride + kh * w_h_stride + kw * w_w_stride
+                
+                x_val = tl.load(x_ptr + x_offset, mask=mask & in_bounds, other=0.0)
+                w_val = tl.load(weight_ptr + w_offset, mask=mask, other=0.0)
+                acc += x_val * w_val
+                
+    # Add bias if available
+    if bias_ptr is not None:
+        bias = tl.load(bias_ptr + oc_idx, mask=mask, other=0.0)
+        acc += bias
+
+    # Store results
+    out_offset = batch_idx * out_bs_stride + oc_idx * out_oc_stride + oh_idx * out_h_stride + ow_idx * out_w_stride
+    tl.store(output_ptr + out_offset, acc, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, 
+                 dilation: int = 1, groups: int = 1, bias: bool = False):
+        super(ModelNew, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        
+        # Initialize weights
+        self.weight = nn.Parameter(torch.empty(
+            out_channels, 
+            in_channels // groups, 
+            kernel_size, 
+            kernel_size
+        ))
+        
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        
+        # Initialize parameters
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+            
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, _, height, width = x.shape
+        height_out = (height + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        width_out = (width + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
+        
+        output = torch.empty(
+            (batch_size, self.out_channels, height_out, width_out),
+            device=x.device,
+            dtype=x.dtype
+        )
+        
+        # Ensure contiguous tensors
+        x = x.contiguous()
+        weight = self.weight.contiguous()
+        
+        # Compute strides
+        x_bs_stride = x.stride(0)
+        x_c_stride = x.stride(1)
+        x_h_stride = x.stride(2)
+        x_w_stride = x.stride(3)
+        
+        w_oc_stride = weight.stride(0)
+        w_ic_stride = weight.stride(1)
+        w_h_stride = weight.stride(2)
+        w_w_stride = weight.stride(3)
+        
+        out_bs_stride = output.stride(0)
+        out_oc_stride = output.stride(1)
+        out_h_stride = output.stride(2)
+        out_w_stride = output.stride(3)
+        
+        # Kernel parameters
+        total_elements = batch_size * self.out_channels * height_out * width_out
+        BLOCK_SIZE = 128
+        grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
+        
+        # Launch kernel
+        conv2d_forward_kernel[grid](
+            x, weight, 
+            self.bias if self.bias is not None else None,
+            output,
+            batch_size, self.in_channels, self.out_channels, 
+            height, width, self.kernel_size, self.stride, 
+            self.padding, self.dilation, self.groups,
+            height_out, width_out,
+            x_bs_stride, x_c_stride, x_h_stride, x_w_stride,
+            w_oc_stride, w_ic_stride, w_h_stride, w_w_stride,
+            out_bs_stride, out_oc_stride, out_h_stride, out_w_stride,
+            BLOCK_SIZE
+        )
+        
+        return output
+
+# Test code
+batch_size = 16
+in_channels = 3
+out_channels = 64
+kernel_size = 3
+width = 256
+height = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, in_channels, height, width)
+    return [x]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

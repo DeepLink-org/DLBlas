@@ -1,0 +1,137 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _group_norm_fwd(
+    x_ptr,
+    gamma_ptr,
+    beta_ptr,
+    output_ptr,
+    batch_size,
+    channels,
+    spatial_size,
+    group_size,
+    num_groups,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+    VEC_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    batch_id = pid // num_groups
+    group_id = pid % num_groups
+    group_start = group_id * group_size
+    N = group_size * spatial_size
+
+    # Precompute group base pointer
+    group_base = x_ptr + batch_id * channels * spatial_size + group_start * spatial_size
+    output_base = output_ptr + batch_id * channels * spatial_size + group_start * spatial_size
+
+    # Initialize accumulators
+    partial_sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    partial_sum_sq = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+
+    # Vectorized first pass: compute mean and variance
+    num_vec_iters = tl.cdiv(N, BLOCK_SIZE * VEC_SIZE)
+    for chunk in range(0, num_vec_iters):
+        vec_offset = chunk * BLOCK_SIZE * VEC_SIZE
+        offsets = vec_offset + tl.arange(0, BLOCK_SIZE)[:, None] * VEC_SIZE + tl.arange(0, VEC_SIZE)[None, :]
+        mask = offsets < N
+        
+        # Vectorized load
+        ptr = group_base + offsets
+        data = tl.load(ptr, mask=mask, other=0.0)
+        
+        # Accumulate with vector reduction
+        partial_sum += tl.sum(data, axis=1)
+        partial_sum_sq += tl.sum(data * data, axis=1)
+
+    # Block reduction
+    total_sum = tl.sum(partial_sum, axis=0)
+    total_sum_sq = tl.sum(partial_sum_sq, axis=0)
+    mean = total_sum / N
+    variance = total_sum_sq / N - mean * mean
+    std = tl.sqrt(variance + eps)
+
+    # Vectorized second pass: normalize and store
+    for chunk in range(0, num_vec_iters):
+        vec_offset = chunk * BLOCK_SIZE * VEC_SIZE
+        offsets = vec_offset + tl.arange(0, BLOCK_SIZE)[:, None] * VEC_SIZE + tl.arange(0, VEC_SIZE)[None, :]
+        mask = offsets < N
+        
+        # Vectorized load
+        ptr = group_base + offsets
+        data = tl.load(ptr, mask=mask, other=0.0)
+        
+        # Normalize
+        centered = data - mean
+        normalized = centered / std
+        
+        # Compute channel indices for gamma/beta
+        spatial_idx = offsets % spatial_size
+        channel_in_group = offsets // spatial_size
+        channel_idx = group_start + channel_in_group
+        
+        # Load gamma/beta with vectorization
+        gamma_vals = tl.load(gamma_ptr + channel_idx, mask=mask, other=1.0)
+        beta_vals = tl.load(beta_ptr + channel_idx, mask=mask, other=0.0)
+        
+        # Apply affine transformation
+        out_val = normalized * gamma_vals + beta_vals
+        
+        # Vectorized store
+        out_ptr = output_base + offsets
+        tl.store(out_ptr, out_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, num_features: int, num_groups: int):
+        super(ModelNew, self).__init__()
+        self.num_groups = num_groups
+        self.num_features = num_features
+        self.eps = 1e-5
+        self.gamma = nn.Parameter(torch.ones(num_features))
+        self.beta = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        assert x.shape[1] % self.num_groups == 0
+        batch_size, channels, *spatial = x.shape
+        spatial_size = spatial[0] * spatial[1] if len(spatial) == 2 else spatial[0]
+        
+        # Flatten spatial dimensions
+        x_flat = x.contiguous().view(batch_size, channels, spatial_size)
+        output = torch.empty_like(x_flat)
+        
+        # Configure kernel with vectorization
+        group_size = channels // self.num_groups
+        grid = (batch_size * self.num_groups,)
+        
+        _group_norm_fwd[grid](
+            x_flat,
+            self.gamma,
+            self.beta,
+            output,
+            batch_size,
+            channels,
+            spatial_size,
+            group_size,
+            self.num_groups,
+            self.eps,
+            BLOCK_SIZE=1024,
+            VEC_SIZE=4
+        )
+        
+        return output.view_as(x)
+
+batch_size = 16
+features = 64
+num_groups = 8
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, features, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [features, num_groups]  # num_features

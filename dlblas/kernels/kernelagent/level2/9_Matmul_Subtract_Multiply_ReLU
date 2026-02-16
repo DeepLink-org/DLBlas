@@ -1,0 +1,105 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_operations_kernel(
+    x_ptr, 
+    weight_ptr, 
+    bias_ptr, 
+    output_ptr,
+    in_features, 
+    out_features,
+    subtract_value,
+    multiply_value,
+    has_bias: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    batch_idx = pid // out_features
+    out_idx = pid % out_features
+    
+    # Calculate offsets
+    x_offset = batch_idx * in_features
+    w_offset = out_idx * in_features
+    
+    # Accumulator initialization with proper dtype
+    acc = tl.zeros((), dtype=tl.float32)
+    
+    # Compute dot product with vectorized loads
+    for k in range(0, in_features, BLOCK_SIZE):
+        k_offsets = k + tl.arange(0, BLOCK_SIZE)
+        mask = k_offsets < in_features
+        
+        # Vectorized loading
+        x_vec = tl.load(x_ptr + x_offset + k_offsets, mask=mask, other=0.0)
+        w_vec = tl.load(weight_ptr + w_offset + k_offsets, mask=mask, other=0.0)
+        
+        # Accumulate with efficient dot product
+        acc += tl.sum(x_vec * w_vec)
+    
+    # Add bias if present
+    if has_bias:
+        bias = tl.load(bias_ptr + out_idx)
+        acc += bias
+    
+    # Apply operations: subtract, multiply, ReLU (optimized)
+    result = (acc - subtract_value) * multiply_value
+    result = tl.maximum(result, 0.0)
+    
+    # Store result
+    tl.store(output_ptr + pid, result)
+
+class ModelNew(nn.Module):
+    """
+    Model that performs a matrix multiplication, subtraction, multiplication, and ReLU activation.
+    """
+    def __init__(self, in_features, out_features, subtract_value, multiply_value):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.subtract_value = subtract_value
+        self.multiply_value = multiply_value
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        total_elements = batch_size * self.linear.out_features
+        output = torch.empty(total_elements, device=x.device, dtype=x.dtype)
+        
+        # Determine optimal block size
+        BLOCK_SIZE = triton.next_power_of_2(self.linear.in_features)
+        if BLOCK_SIZE > 2048: 
+            BLOCK_SIZE = 2048
+        
+        # Check if bias exists
+        has_bias = self.linear.bias is not None
+        bias = self.linear.bias if has_bias else torch.empty(0, device=x.device)
+        
+        # Launch kernel
+        grid = (total_elements,)
+        fused_operations_kernel[grid](
+            x, 
+            self.linear.weight, 
+            bias,
+            output,
+            self.linear.in_features, 
+            self.linear.out_features,
+            self.subtract_value, 
+            self.multiply_value,
+            has_bias,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        
+        return output.view(batch_size, -1)
+
+batch_size = 128
+in_features = 10
+out_features = 5
+subtract_value = 2.0
+multiply_value = 1.5
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, subtract_value, multiply_value]

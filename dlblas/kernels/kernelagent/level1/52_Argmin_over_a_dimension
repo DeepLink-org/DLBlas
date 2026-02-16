@@ -1,0 +1,82 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def argmin_kernel(
+    x_ptr,
+    output_ptr,
+    stride_batch,
+    stride_dim1,
+    stride_dim2,
+    dim1: tl.constexpr,
+    dim2: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_COLS: tl.constexpr,
+):
+    pid_batch = tl.program_id(0)
+    pid_group = tl.program_id(1)
+    col_group = pid_group * BLOCK_COLS
+    
+    row_idx = tl.arange(0, BLOCK_SIZE)
+    
+    for col_offset in range(BLOCK_COLS):
+        col = col_group + col_offset
+        if col < dim2:
+            base_ptr = pid_batch * stride_batch + col * stride_dim2
+            row_offsets = base_ptr + row_idx * stride_dim1
+            row_mask = row_idx < dim1
+            
+            values = tl.load(x_ptr + row_offsets, mask=row_mask, other=float('inf'))
+            min_index = tl.argmin(values, axis=0).to(tl.int64)
+            
+            output_offset = pid_batch * dim2 + col
+            tl.store(output_ptr + output_offset, min_index)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        dim = self.dim if self.dim >= 0 else x.dim() + self.dim
+        if x.dim() != 3 or dim != 1:
+            return torch.argmin(x, dim=self.dim)
+            
+        batch_size, dim1, dim2 = x.shape
+        x = x.contiguous()
+        output = torch.empty(batch_size, dim2, device=x.device, dtype=torch.int64)
+        
+        if dim1 > 1024:
+            return torch.argmin(x, dim=self.dim)
+        
+        BLOCK_SIZE = triton.next_power_of_2(dim1)
+        BLOCK_COLS = 4
+        num_col_groups = triton.cdiv(dim2, BLOCK_COLS)
+        grid = (batch_size, num_col_groups)
+        
+        argmin_kernel[grid](
+            x,
+            output,
+            x.stride(0),
+            x.stride(1),
+            x.stride(2),
+            dim1,
+            dim2,
+            BLOCK_SIZE=BLOCK_SIZE,
+            BLOCK_COLS=BLOCK_COLS,
+        )
+        return output
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+dim = 1
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [dim]

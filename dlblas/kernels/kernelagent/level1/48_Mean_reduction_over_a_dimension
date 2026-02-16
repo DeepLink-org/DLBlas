@@ -1,0 +1,94 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _mean_reduce_kernel(
+    input_ptr,
+    output_ptr,
+    B: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    reduction_dim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    
+    if reduction_dim == 0:
+        m = pid // N
+        n = pid % N
+        base_offset = m * N + n
+        step = M * N
+        reduction_length = B
+    elif reduction_dim == 1:
+        b = pid // N
+        n = pid % N
+        base_offset = b * (M * N) + n
+        step = N
+        reduction_length = M
+    else:  # reduction_dim == 2
+        b = pid // M
+        m = pid % M
+        base_offset = b * (M * N) + m * N
+        step = 1
+        reduction_length = N
+
+    accumulator = 0.0
+    for idx in range(0, reduction_length, BLOCK_SIZE):
+        offsets = base_offset + (idx + tl.arange(0, BLOCK_SIZE)) * step
+        mask = (idx + tl.arange(0, BLOCK_SIZE)) < reduction_length
+        values = tl.load(input_ptr + offsets, mask=mask, other=0.0)
+        accumulator += tl.sum(values, axis=0)
+    
+    mean = accumulator / reduction_length
+    tl.store(output_ptr + pid, mean)
+
+def triton_mean(x: torch.Tensor, dim: int) -> torch.Tensor:
+    if x.dim() != 3:
+        return torch.mean(x, dim=dim)
+    
+    x = x.contiguous()
+    B, M, N = x.shape
+    if dim == 0:
+        output_shape = (M, N)
+    elif dim == 1:
+        output_shape = (B, N)
+    else:  # dim == 2
+        output_shape = (B, M)
+    
+    output = torch.empty(output_shape, device=x.device, dtype=x.dtype)
+    num_output_elements = output.numel()
+    grid = (num_output_elements,)
+    
+    _mean_reduce_kernel[grid](
+        input_ptr=x,
+        output_ptr=output,
+        B=B,
+        M=M,
+        N=N,
+        reduction_dim=dim,
+        BLOCK_SIZE=128
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.is_cuda and x.dim() == 3:
+            return triton_mean(x, self.dim)
+        return torch.mean(x, dim=self.dim)
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [1]

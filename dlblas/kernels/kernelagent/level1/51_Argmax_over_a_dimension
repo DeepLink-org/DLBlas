@@ -1,0 +1,70 @@
+import torch
+import torch.nn as nn
+import math
+import triton
+import triton.language as tl
+
+@triton.jit
+def _argmax_kernel(
+    x_ptr,
+    output_ptr,
+    B,
+    M,
+    N,
+    stride_b,
+    stride_m,
+    stride_n,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    b_idx = pid // M
+    m_idx = pid % M
+    
+    row_start = b_idx * stride_b + m_idx * stride_m
+    offsets = row_start + tl.arange(0, BLOCK_SIZE)
+    mask = tl.arange(0, BLOCK_SIZE) < N
+    
+    row = tl.load(x_ptr + offsets, mask=mask, other=float('-inf'))
+    max_index = tl.argmax(row, axis=0)
+    tl.store(output_ptr + pid, max_index.to(tl.int64))
+
+class ModelNew(nn.Module):
+    def __init__(self, dim: int):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.numel() == 0:
+            return torch.empty(x.shape[:self.dim] + x.shape[self.dim+1:], 
+                               dtype=torch.int64, device=x.device)
+        
+        dim = self.dim if self.dim >= 0 else x.dim() + self.dim
+        
+        if dim == x.dim() - 1 and x.dim() == 3:
+            B, M, N = x.shape
+            output = torch.empty((B, M), device=x.device, dtype=torch.int64)
+            
+            if not x.is_contiguous():
+                x = x.contiguous()
+                
+            stride_b = x.stride(0)
+            stride_m = x.stride(1)
+            stride_n = x.stride(2)
+            P2 = 2 ** math.ceil(math.log2(N))
+            
+            grid = (B * M,)
+            _argmax_kernel[grid](x, output, B, M, N, stride_b, stride_m, stride_n, BLOCK_SIZE=P2)
+            return output
+        else:
+            return torch.argmax(x, dim=self.dim)
+
+batch_size = 16
+dim1 = 256
+dim2 = 256
+
+def get_inputs():
+    x = torch.randn(batch_size, dim1, dim2)
+    return [x]
+
+def get_init_inputs():
+    return [1]

@@ -1,0 +1,76 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _matvec_kernel(
+    A_ptr,
+    B_ptr,
+    C_ptr,
+    M,
+    K,
+    stride_Am,
+    stride_Ak,
+    stride_Bk,
+    stride_Cm,
+    BLOCK_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid >= M:
+        return
+
+    acc = 0.0
+    for offset in range(0, K, BLOCK_K):
+        cols = offset + tl.arange(0, BLOCK_K)
+        mask = cols < K
+
+        a_ptrs = A_ptr + pid * stride_Am + cols * stride_Ak
+        b_ptrs = B_ptr + cols * stride_Bk
+
+        a = tl.load(a_ptrs, mask=mask, other=0.0)
+        b = tl.load(b_ptrs, mask=mask, other=0.0)
+
+        partial = a * b
+        acc += tl.sum(partial, axis=0)
+
+    c_ptr = C_ptr + pid * stride_Cm
+    tl.store(c_ptr, acc)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        A = A.contiguous()
+        B = B.contiguous()
+        M, K = A.shape
+        C = torch.empty(M, 1, device=A.device, dtype=A.dtype)
+        
+        if M == 0:
+            return C
+            
+        grid = (M,)
+        BLOCK_K = 1024
+        
+        _matvec_kernel[grid](
+            A, B, C,
+            M, K,
+            A.stride(0), A.stride(1),
+            B.stride(0),
+            C.stride(0),
+            BLOCK_K=BLOCK_K,
+        )
+        
+        return C
+
+M = 256
+K = 131072
+
+def get_inputs():
+    A = torch.randn(M, K)
+    B = torch.randn(K, 1)
+    return [A, B]
+
+def get_init_inputs():
+    return []  # No special initialization inputs needed

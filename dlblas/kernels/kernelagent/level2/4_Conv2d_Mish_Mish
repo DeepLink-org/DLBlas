@@ -1,0 +1,68 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def double_mish_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    
+    # Stable Mish implementation: x * tanh(softplus(x))
+    # softplus(x) = log(1 + exp(-|x|)) + max(x,0)
+    abs_x = tl.abs(x)
+    softplus_x = tl.log(1.0 + tl.exp(-abs_x)) + tl.maximum(x, 0.0)
+    
+    # tanh using exponential identity for stability
+    t = tl.exp(-2.0 * softplus_x)
+    tanh_x = (1.0 - t) / (1.0 + t)
+    mish1 = x * tanh_x
+    
+    # Second Mish activation
+    abs_mish1 = tl.abs(mish1)
+    softplus_mish1 = tl.log(1.0 + tl.exp(-abs_mish1)) + tl.maximum(mish1, 0.0)
+    
+    t2 = tl.exp(-2.0 * softplus_mish1)
+    tanh_mish1 = (1.0 - t2) / (1.0 + t2)
+    mish2 = mish1 * tanh_mish1
+    
+    tl.store(output_ptr + offsets, mish2, mask=mask)
+
+def double_mish(x: torch.Tensor) -> torch.Tensor:
+    n_elements = x.numel()
+    if n_elements == 0:
+        return x
+    output = torch.empty_like(x)
+    grid = (triton.cdiv(n_elements, 1024),)
+    double_mish_kernel[grid](x, output, n_elements, BLOCK_SIZE=1024)
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = double_mish(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

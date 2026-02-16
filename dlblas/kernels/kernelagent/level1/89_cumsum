@@ -1,0 +1,96 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        if self.dim != 1 or x.dim() != 2:
+            return torch.cumsum(x, dim=self.dim)
+            
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        batch_size, n_cols = x.shape
+        
+        BLOCK_SIZE = 1024
+        num_blocks = (n_cols + BLOCK_SIZE - 1) // BLOCK_SIZE
+        block_sums = torch.zeros((batch_size, num_blocks), device=x.device, dtype=x.dtype)
+        
+        grid = (batch_size, num_blocks)
+        _block_scan_kernel[grid](
+            x, output, block_sums, 
+            n_cols, num_blocks, BLOCK_SIZE
+        )
+        
+        if num_blocks > 1:
+            offsets = torch.cat([
+                torch.zeros((batch_size, 1), device=x.device, dtype=x.dtype),
+                torch.cumsum(block_sums[:, :-1], dim=1)
+            ], dim=1)
+        else:
+            offsets = torch.zeros((batch_size, 1), device=x.device, dtype=x.dtype)
+        
+        _block_add_kernel[grid](
+            output, offsets,
+            n_cols, num_blocks, BLOCK_SIZE
+        )
+        return output
+
+@triton.jit
+def _block_scan_kernel(
+    x_ptr, output_ptr, block_sums_ptr,
+    n_cols, num_blocks, BLOCK_SIZE: tl.constexpr
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    
+    row_start = pid0 * n_cols
+    block_start = pid1 * BLOCK_SIZE
+    start_idx = row_start + block_start
+    block_len = tl.minimum(BLOCK_SIZE, n_cols - block_start)
+    
+    current = 0.0
+    for i in range(block_len):
+        val = tl.load(x_ptr + start_idx + i)
+        current += val
+        tl.store(output_ptr + start_idx + i, current)
+    
+    if block_len > 0:
+        block_sum_addr = pid0 * num_blocks + pid1
+        tl.store(block_sums_ptr + block_sum_addr, current)
+
+@triton.jit
+def _block_add_kernel(
+    output_ptr, offsets_ptr,
+    n_cols, num_blocks, BLOCK_SIZE: tl.constexpr
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    
+    row_start = pid0 * n_cols
+    block_start = pid1 * BLOCK_SIZE
+    start_idx = row_start + block_start
+    block_len = tl.minimum(BLOCK_SIZE, n_cols - block_start)
+    
+    if block_len > 0:
+        offset = tl.load(offsets_ptr + pid0 * num_blocks + pid1)
+        for i in range(block_len):
+            addr = start_idx + i
+            val = tl.load(output_ptr + addr)
+            val += offset
+            tl.store(output_ptr + addr, val)
+
+# Define input dimensions and parameters
+batch_size = 128
+input_shape = (4000,)  # Example shape (arbitrary)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return [dim]

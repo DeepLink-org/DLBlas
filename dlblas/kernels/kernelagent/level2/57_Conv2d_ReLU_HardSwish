@@ -1,0 +1,61 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_relu_hardswish_kernel(
+    x_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    
+    # Fused ReLU and HardSwish operations
+    x_relu = tl.maximum(x, 0.0)
+    term = (x_relu + 3.0) * (1.0/6.0)
+    term = tl.minimum(term, 1.0)
+    output = x_relu * term
+    
+    tl.store(output_ptr + offsets, output, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        
+    def forward(self, x):
+        x = self.conv(x)
+        
+        # Only apply Triton kernel on CUDA devices
+        if x.is_cuda:
+            n_elements = x.numel()
+            output = torch.empty_like(x)
+            grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+            fused_relu_hardswish_kernel[grid](
+                x, output, n_elements, 
+                BLOCK_SIZE=1024
+            )
+            return output
+        else:
+            # Fallback to PyTorch for non-CUDA devices
+            x = torch.relu(x)
+            x = x * torch.clamp((x + 3) / 6, 0, 1)
+            return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size]

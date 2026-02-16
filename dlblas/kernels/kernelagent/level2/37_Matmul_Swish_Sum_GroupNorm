@@ -1,0 +1,115 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def linear_swish_bias_kernel(
+    x_ptr, w_ptr, linear_bias_ptr, extra_bias_ptr, output_ptr,
+    in_features, out_features,
+    BLOCK_SIZE_K: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_batch = tl.program_id(0)
+    pid_block = tl.program_id(1)
+    
+    offs_n = pid_block * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    mask_n = offs_n < out_features
+    
+    x_row_ptr = x_ptr + pid_batch * in_features
+    acc = tl.zeros((BLOCK_SIZE_N,), dtype=tl.float32)
+    
+    for k in range(0, in_features, BLOCK_SIZE_K):
+        offs_k = k + tl.arange(0, BLOCK_SIZE_K)
+        mask_k = offs_k < in_features
+        
+        x_val = tl.load(x_row_ptr + offs_k, mask=mask_k)
+        w_ptr_block = w_ptr + offs_n[:, None] * in_features + offs_k[None, :]
+        w_val = tl.load(w_ptr_block, mask=mask_k[None, :] & mask_n[:, None])
+        
+        acc += tl.sum(x_val[None, :] * w_val, axis=1)
+    
+    linear_bias_val = tl.load(linear_bias_ptr + offs_n, mask=mask_n)
+    acc += linear_bias_val
+    
+    sig = 1.0 / (1.0 + tl.exp(-acc))
+    swish_out = sig * acc
+    
+    extra_bias_val = tl.load(extra_bias_ptr + offs_n, mask=mask_n)
+    out_val = swish_out + extra_bias_val
+    
+    output_row_ptr = output_ptr + pid_batch * out_features + offs_n
+    tl.store(output_row_ptr, out_val, mask=mask_n)
+
+@triton.jit
+def group_norm_kernel(
+    input_ptr, weight_ptr, bias_ptr, output_ptr,
+    num_groups, group_size, eps,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    batch_id = pid // num_groups
+    group_id = pid % num_groups
+    
+    off_group = tl.arange(0, BLOCK_SIZE)
+    full_offset = batch_id * (num_groups * group_size) + group_id * group_size + off_group
+    mask = off_group < group_size
+    
+    x = tl.load(input_ptr + full_offset, mask=mask)
+    
+    mean = tl.sum(x, axis=0) / group_size
+    x_centered = x - mean
+    var = tl.sum(x_centered * x_centered, axis=0) / group_size
+    
+    channel_offset = group_id * group_size + off_group
+    w = tl.load(weight_ptr + channel_offset, mask=mask)
+    b = tl.load(bias_ptr + channel_offset, mask=mask)
+    
+    normalized = (x_centered / tl.sqrt(var + eps)) * w + b
+    tl.store(output_ptr + full_offset, normalized, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, num_groups, bias_shape):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.bias = nn.Parameter(torch.randn(bias_shape))
+        self.group_norm = nn.GroupNorm(num_groups, out_features)
+    
+    def forward(self, x):
+        batch_size, in_feats = x.shape
+        out_features = self.matmul.out_features
+        
+        linear_out = torch.empty((batch_size, out_features), device=x.device, dtype=x.dtype)
+        
+        BLOCK_SIZE_N = 128
+        grid_linear = (batch_size, triton.cdiv(out_features, BLOCK_SIZE_N))
+        
+        linear_swish_bias_kernel[grid_linear](
+            x, self.matmul.weight, self.matmul.bias, self.bias, linear_out,
+            in_feats, out_features,
+            BLOCK_SIZE_K=64, BLOCK_SIZE_N=BLOCK_SIZE_N
+        )
+        
+        group_norm_out = torch.empty_like(linear_out)
+        group_size = out_features // self.group_norm.num_groups
+        assert out_features % self.group_norm.num_groups == 0
+        
+        grid_group_norm = (batch_size * self.group_norm.num_groups,)
+        group_norm_kernel[grid_group_norm](
+            linear_out, self.group_norm.weight, self.group_norm.bias, group_norm_out,
+            self.group_norm.num_groups, group_size, self.group_norm.eps,
+            BLOCK_SIZE=group_size
+        )
+        
+        return group_norm_out
+
+batch_size = 128
+in_features = 512
+out_features = 1024
+num_groups = 32
+bias_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, num_groups, bias_shape]

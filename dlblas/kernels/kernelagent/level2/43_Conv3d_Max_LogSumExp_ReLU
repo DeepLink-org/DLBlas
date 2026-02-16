@@ -1,0 +1,88 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def _fused_logsumexp_relu_kernel(
+    input_ptr,
+    output_ptr,
+    spatial_size,
+    batch_size,
+    n_channels: tl.constexpr,
+    BLOCK_SIZE_SPATIAL: tl.constexpr
+):
+    pid_batch = tl.program_id(0)
+    pid_spatial_block = tl.program_id(1)
+    
+    if pid_batch >= batch_size:
+        return
+
+    spatial_start = pid_spatial_block * BLOCK_SIZE_SPATIAL
+    spatial_offsets = spatial_start + tl.arange(0, BLOCK_SIZE_SPATIAL)
+    mask_spatial = spatial_offsets < spatial_size
+
+    base_ptrs = input_ptr + pid_batch * (n_channels * spatial_size) + spatial_offsets
+
+    max_val = tl.full((BLOCK_SIZE_SPATIAL,), -float('inf'), dtype=tl.float32)
+    for j in tl.static_range(0, n_channels):
+        ptrs = base_ptrs + j * spatial_size
+        x_j = tl.load(ptrs, mask=mask_spatial, other=-float('inf'))
+        max_val = tl.maximum(max_val, x_j)
+
+    sum_exp = tl.zeros((BLOCK_SIZE_SPATIAL,), dtype=tl.float32)
+    for j in tl.static_range(0, n_channels):
+        ptrs = base_ptrs + j * spatial_size
+        x_j = tl.load(ptrs, mask=mask_spatial, other=-float('inf'))
+        x_j_minus_max = x_j - max_val
+        exp_x = tl.exp(x_j_minus_max)
+        sum_exp += exp_x
+
+    log_sum_exp = tl.log(sum_exp) + max_val
+    result = tl.maximum(log_sum_exp, 0.0)
+
+    output_base = output_ptr + pid_batch * spatial_size
+    tl.store(output_base + spatial_offsets, result, mask=mask_spatial)
+
+def fused_logsumexp_relu(x):
+    batch_size, n_channels, depth, height, width = x.shape
+    spatial_size = depth * height * width
+    output = torch.empty((batch_size, spatial_size), device=x.device, dtype=x.dtype)
+    
+    BLOCK_SIZE_SPATIAL = 128
+    grid = (batch_size, triton.cdiv(spatial_size, BLOCK_SIZE_SPATIAL))
+    
+    _fused_logsumexp_relu_kernel[grid](
+        x, output, 
+        spatial_size, batch_size, n_channels, 
+        BLOCK_SIZE_SPATIAL=BLOCK_SIZE_SPATIAL
+    )
+    
+    return output.view(batch_size, 1, depth, height, width)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding)
+        self.max_pool = nn.MaxPool3d(kernel_size=2, stride=2)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.max_pool(x)
+        x = fused_logsumexp_relu(x)
+        return x
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 1
+padding = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding]

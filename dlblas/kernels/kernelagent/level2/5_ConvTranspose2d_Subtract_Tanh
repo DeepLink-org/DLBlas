@@ -1,0 +1,88 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_bias_tanh_kernel(
+    x_ptr,
+    bias_ptr,
+    output_ptr,
+    stride_n, stride_c, stride_h, stride_w,
+    n_elements,
+    out_channels,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    # Directly compute channel index
+    c_idx = (offsets // stride_c) % out_channels
+    
+    # Load input and bias
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    bias = tl.load(bias_ptr + c_idx, mask=mask)
+    
+    # Compute fused operations using stable tanh implementation
+    y = x - bias
+    abs_y = tl.abs(y)
+    sign_y = tl.where(y >= 0, 1.0, -1.0)
+    t = tl.exp(-2 * abs_y)
+    result = sign_y * (1 - t) / (1 + t)
+    
+    # Store result
+    tl.store(output_ptr + offsets, result, mask=mask)
+
+class ModelNew(nn.Module):
+    """
+    Model that performs a transposed convolution, subtracts a bias term, and applies tanh activation.
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, bias_shape, stride=2, padding=1, output_padding=1):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.bias = nn.Parameter(torch.randn(bias_shape)) 
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        
+        # Fuse bias subtraction and tanh using Triton
+        batch, channels, height, width = x.shape
+        n_elements = batch * channels * height * width
+        output = torch.empty_like(x)
+        
+        # Compute strides for NCHW layout
+        stride_n = channels * height * width
+        stride_c = height * width
+        stride_h = width
+        stride_w = 1
+        
+        # Launch kernel with optimal block size
+        BLOCK_SIZE = 1024
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        
+        fused_bias_tanh_kernel[grid](
+            x, 
+            self.bias.view(-1),
+            output,
+            stride_n, stride_c, stride_h, stride_w,
+            n_elements,
+            channels,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        
+        return output
+
+batch_size = 128
+in_channels = 32
+out_channels = 16
+height, width = 16, 16
+kernel_size = 4
+bias_shape = (out_channels, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, bias_shape]
