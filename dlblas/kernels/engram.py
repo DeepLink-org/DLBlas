@@ -6,6 +6,8 @@ import triton
 import triton.language as tl
 
 
+device = 'cuda'
+
 class EngramPt(nn.Module):
     def __init__(
         self,
@@ -19,18 +21,18 @@ class EngramPt(nn.Module):
     ):
         super().__init__()
 
-        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device=device)
         self.key_projs = nn.ModuleList(
             [
-                nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+                nn.Linear(engram_hidden_size, hidden_size, device=device)
                 for _ in range(hc_mult)
             ]
         )
         self.norm1 = nn.ModuleList(
-            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+            [nn.RMSNorm(hidden_size, device=device) for _ in range(hc_mult)]
         )
         self.norm2 = nn.ModuleList(
-            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+            [nn.RMSNorm(hidden_size, device=device) for _ in range(hc_mult)]
         )
         self.hc_mult = hc_mult
         self.activation = activation
@@ -44,12 +46,12 @@ class EngramPt(nn.Module):
             bias=False,
             padding=(kernel_size - 1) * dilation,
             dilation=dilation,
-            device="cuda",
+            device=device,
         )
 
         self.norms = nn.ModuleList(
             [
-                nn.RMSNorm(hidden_size, eps=norm_eps, device="cuda")
+                nn.RMSNorm(hidden_size, eps=norm_eps, device=device)
                 for _ in range(hc_mult)
             ]
         )
@@ -372,18 +374,18 @@ class EngramTri(nn.Module):
     ):
         super().__init__()
 
-        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device=device)
         self.key_projs = nn.ModuleList(
             [
-                nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+                nn.Linear(engram_hidden_size, hidden_size, device=device)
                 for _ in range(hc_mult)
             ]
         )
         self.norm1 = nn.ModuleList(
-            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+            [nn.RMSNorm(hidden_size, device=device) for _ in range(hc_mult)]
         )
         self.norm2 = nn.ModuleList(
-            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+            [nn.RMSNorm(hidden_size, device=device) for _ in range(hc_mult)]
         )
         self.hc_mult = hc_mult
         self.activation = activation
@@ -397,12 +399,12 @@ class EngramTri(nn.Module):
             bias=False,
             padding=(kernel_size - 1) * dilation,
             dilation=dilation,
-            device="cuda",
+            device=device,
         )
 
         self.norms = nn.ModuleList(
             [
-                nn.RMSNorm(hidden_size, eps=norm_eps, device="cuda")
+                nn.RMSNorm(hidden_size, eps=norm_eps, device=device)
                 for _ in range(hc_mult)
             ]
         )
@@ -581,7 +583,7 @@ def generate_test_data(engram_hidden_size, hidden_size, kernel_size, dilation, h
     max_val = 13.9169
     shape = (1, 14, 4, 1024)
     hidden_states = (
-        torch.rand(shape, dtype=torch.float32, device="cuda") * (max_val - min_val)
+        torch.rand(shape, dtype=torch.float32, device=device) * (max_val - min_val)
         + min_val
     )
 
@@ -589,7 +591,7 @@ def generate_test_data(engram_hidden_size, hidden_size, kernel_size, dilation, h
     max_val = 4.3762
     shape = (1, 14, 1024)
     embeddings = (
-        torch.rand(shape, dtype=torch.float32, device="cuda") * (max_val - min_val)
+        torch.rand(shape, dtype=torch.float32, device=device) * (max_val - min_val)
         + min_val
     )
 
