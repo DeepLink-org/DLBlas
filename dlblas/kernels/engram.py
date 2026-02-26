@@ -1,9 +1,93 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import math
+import torch.nn.functional as F
 import triton
 import triton.language as tl
+
+
+class EngramPt(nn.Module):
+    def __init__(
+        self,
+        engram_hidden_size: int,
+        hidden_size: int,
+        kernel_size: int = 4,
+        dilation: int = 1,
+        norm_eps: float = 1e-5,
+        hc_mult: int = 4,
+        activation: bool = True,
+    ):
+        super().__init__()
+
+        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+        self.key_projs = nn.ModuleList(
+            [
+                nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+                for _ in range(hc_mult)
+            ]
+        )
+        self.norm1 = nn.ModuleList(
+            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+        )
+        self.norm2 = nn.ModuleList(
+            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+        )
+        self.hc_mult = hc_mult
+        self.activation = activation
+
+        total_channels = hidden_size * hc_mult
+        self.conv = nn.Conv1d(
+            in_channels=total_channels,
+            out_channels=total_channels,
+            kernel_size=kernel_size,
+            groups=total_channels,
+            bias=False,
+            padding=(kernel_size - 1) * dilation,
+            dilation=dilation,
+            device="cuda",
+        )
+
+        self.norms = nn.ModuleList(
+            [
+                nn.RMSNorm(hidden_size, eps=norm_eps, device="cuda")
+                for _ in range(hc_mult)
+            ]
+        )
+
+        if self.activation:
+            self.act_fn = nn.SiLU()
+
+    def forward(self, embeddings, hidden_states):
+        gates = []
+        for hc_idx in range(hc_mult):
+            key = self.key_projs[hc_idx](embeddings)
+            normed_key = self.norm1[hc_idx](key)
+            query = hidden_states[:, :, hc_idx, :]
+            normed_query = self.norm2[hc_idx](query)
+            gate = (normed_key * normed_query).sum(dim=-1) / math.sqrt(hidden_size)
+            gate = gate.abs().clamp_min(1e-6).sqrt() * gate.sign()
+            gate = gate.sigmoid().unsqueeze(-1)
+            gates.append(gate)
+        gates = torch.stack(gates, dim=2)
+        value = gates * self.value_proj(embeddings).unsqueeze(2)
+
+        # output = value + self.short_conv(value)
+        normed_chunks = []
+        B, T, G, C = value.shape
+        for i in range(G):
+            chunk = value[:, :, i, :]
+            normed_chunks.append(self.norms[i](chunk))
+        x_norm = torch.cat(normed_chunks, dim=-1)
+        x_bct = x_norm.transpose(1, 2)
+        y_bct = self.conv(x_bct)
+        y_bct = y_bct[..., :T]
+
+        if self.activation:
+            y_bct = self.act_fn(y_bct)
+        y = y_bct.transpose(1, 2).view(B, T, G, C).contiguous()
+        output = value + y
+        # output = value + self.short_conv(value)
+        return output
 
 
 # ----------------------------------------------------------------------
@@ -125,24 +209,20 @@ def engram_gate_value_rms_kernel(
         )
         out = v * gate
         # store as half to reduce memory traffic
-        out_f16 = out.to(tl.float16)
         tl.store(
             output_ptr
             + b * stride_ob
             + t * stride_ot
             + g * stride_og
             + idx * stride_oc,
-            out_f16,
+            out,
             mask=mask,
         )
         out_sq = out * out
         sum_sq_val += tl.sum(out_sq, axis=0)
 
     rms_val = tl.sqrt(sum_sq_val * inv_C + norm_eps)
-    rms_val_f16 = rms_val.to(tl.float16)
-    tl.store(
-        rms_ptr + b * stride_rms_b + t * stride_rms_t + g * stride_rms_g, rms_val_f16
-    )
+    tl.store(rms_ptr + b * stride_rms_b + t * stride_rms_t + g * stride_rms_g, rms_val)
 
 
 # ----------------------------------------------------------------------
@@ -279,7 +359,7 @@ def engram_conv_residual_kernel(
 # ----------------------------------------------------------------------
 #  Main Module
 # ----------------------------------------------------------------------
-class EngramNew(nn.Module):
+class EngramTri(nn.Module):
     def __init__(
         self,
         engram_hidden_size: int,
@@ -292,12 +372,19 @@ class EngramNew(nn.Module):
     ):
         super().__init__()
 
-        self.value_proj = nn.Linear(engram_hidden_size, hidden_size)
+        self.value_proj = nn.Linear(engram_hidden_size, hidden_size, device="cuda")
         self.key_projs = nn.ModuleList(
-            [nn.Linear(engram_hidden_size, hidden_size) for _ in range(hc_mult)]
+            [
+                nn.Linear(engram_hidden_size, hidden_size, device="cuda")
+                for _ in range(hc_mult)
+            ]
         )
-        self.norm1 = nn.ModuleList([nn.RMSNorm(hidden_size) for _ in range(hc_mult)])
-        self.norm2 = nn.ModuleList([nn.RMSNorm(hidden_size) for _ in range(hc_mult)])
+        self.norm1 = nn.ModuleList(
+            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+        )
+        self.norm2 = nn.ModuleList(
+            [nn.RMSNorm(hidden_size, device="cuda") for _ in range(hc_mult)]
+        )
         self.hc_mult = hc_mult
         self.activation = activation
 
@@ -310,10 +397,14 @@ class EngramNew(nn.Module):
             bias=False,
             padding=(kernel_size - 1) * dilation,
             dilation=dilation,
+            device="cuda",
         )
 
         self.norms = nn.ModuleList(
-            [nn.RMSNorm(hidden_size, eps=norm_eps) for _ in range(hc_mult)]
+            [
+                nn.RMSNorm(hidden_size, eps=norm_eps, device="cuda")
+                for _ in range(hc_mult)
+            ]
         )
 
         if self.activation:
@@ -324,15 +415,15 @@ class EngramNew(nn.Module):
 
     def _precompute_buffers(self):
         # Key projection weights and biases (concatenated)
-        key_weights = torch.cat([proj.weight for proj in self.key_projs], dim=0).half()
-        key_biases = torch.cat([proj.bias for proj in self.key_projs], dim=0).half()
+        key_weights = torch.cat([proj.weight for proj in self.key_projs], dim=0)
+        key_biases = torch.cat([proj.bias for proj in self.key_projs], dim=0)
         self.register_buffer("key_proj_weight", key_weights)
         self.register_buffer("key_proj_bias", key_biases)
 
         # Value projection weights and biases (half)
-        self.register_buffer("value_proj_weight", self.value_proj.weight.half())
+        self.register_buffer("value_proj_weight", self.value_proj.weight)
         if self.value_proj.bias is not None:
-            self.register_buffer("value_proj_bias", self.value_proj.bias.half())
+            self.register_buffer("value_proj_bias", self.value_proj.bias)
         else:
             self.register_buffer("value_proj_bias", None)
 
@@ -358,28 +449,26 @@ class EngramNew(nn.Module):
         B, T, G, C = hidden_states.shape  # G = self.hc_mult, C = hidden_size
         E = embeddings.shape[-1]
 
-        # Convert inputs to half to feed half‑precision kernels
-        embeddings_h = embeddings.half()
-        hidden_states_h = hidden_states.half()
-
         # Key projection (fused)
         key_all = F.linear(
-            embeddings_h, self.key_proj_weight, self.key_proj_bias
+            embeddings,
+            self.key_proj_weight,
+            self.key_proj_bias,
         )  # (B, T, G*C)
         key_all = key_all.view(B, T, G, C).contiguous()
 
         # Query is hidden_states (already half)
-        query_all = hidden_states_h  # (B, T, G, C)
+        query_all = hidden_states  # (B, T, G, C)
 
         # Value projection
         value_proj_out = F.linear(
-            embeddings_h, self.value_proj_weight, self.value_proj_bias
+            embeddings, self.value_proj_weight, self.value_proj_bias
         )  # (B, T, C)
         value_proj_out = value_proj_out.contiguous()
 
         # Allocate intermediate tensors (half)
-        value = torch.empty((B, T, G, C), device=embeddings.device, dtype=torch.float16)
-        rms = torch.empty((B, T, G), device=embeddings.device, dtype=torch.float16)
+        value = torch.empty((B, T, G, C), device=embeddings.device, dtype=torch.float32)
+        rms = torch.empty((B, T, G), device=embeddings.device, dtype=torch.float32)
 
         # Launch gate kernel
         sqrt_C = math.sqrt(C)
@@ -492,13 +581,17 @@ def generate_test_data(engram_hidden_size, hidden_size, kernel_size, dilation, h
     max_val = 13.9169
     shape = (1, 14, 4, 1024)
     hidden_states = (
-        torch.rand(shape, dtype=torch.float32) * (max_val - min_val) + min_val
+        torch.rand(shape, dtype=torch.float32, device="cuda") * (max_val - min_val)
+        + min_val
     )
 
     min_val = -4.0709
     max_val = 4.3762
     shape = (1, 14, 1024)
-    embeddings = torch.rand(shape, dtype=torch.float32) * (max_val - min_val) + min_val
+    embeddings = (
+        torch.rand(shape, dtype=torch.float32, device="cuda") * (max_val - min_val)
+        + min_val
+    )
 
     return [hidden_states, embeddings]
 
@@ -512,3 +605,27 @@ def get_inputs():
 
 def get_init_inputs():
     return [engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult]
+
+
+embeddings_pt, hidden_states_pt = get_inputs()
+embeddings_tri = embeddings_pt.clone()
+hidden_states_tri = hidden_states_pt.clone()
+
+torch.manual_seed(41)
+engram_tri = EngramTri(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
+hidden_states_tri = (
+    engram_tri(embeddings=embeddings_tri, hidden_states=hidden_states_tri)
+    + hidden_states_tri
+)
+print(hidden_states_tri)
+
+torch.manual_seed(41)
+engram_pt = EngramPt(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
+hidden_states_pt = (
+    engram_pt(embeddings=embeddings_pt, hidden_states=hidden_states_pt)
+    + hidden_states_pt
+)
+print(hidden_states_pt)
+
+assert torch.allclose(hidden_states_tri, hidden_states_pt, rtol=1e-3, atol=1e-3)
+print("✅ Forward Complete!")
