@@ -616,7 +616,9 @@ def test_engram():
     hidden_states_tri = hidden_states_pt.clone()
 
     torch.manual_seed(41)
-    engram_tri = EngramTri(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
+    engram_tri = EngramTri(
+        engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult
+    )
     hidden_states_tri = (
         engram_tri(embeddings=embeddings_tri, hidden_states=hidden_states_tri)
         + hidden_states_tri
@@ -624,7 +626,9 @@ def test_engram():
     print(hidden_states_tri)
 
     torch.manual_seed(41)
-    engram_pt = EngramPt(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
+    engram_pt = EngramPt(
+        engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult
+    )
     hidden_states_pt = (
         engram_pt(embeddings=embeddings_pt, hidden_states=hidden_states_pt)
         + hidden_states_pt
