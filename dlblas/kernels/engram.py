@@ -610,25 +610,30 @@ def get_init_inputs():
     return [engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult]
 
 
-embeddings_pt, hidden_states_pt = get_inputs()
-embeddings_tri = embeddings_pt.clone()
-hidden_states_tri = hidden_states_pt.clone()
+def test_engram():
+    embeddings_pt, hidden_states_pt = get_inputs()
+    embeddings_tri = embeddings_pt.clone()
+    hidden_states_tri = hidden_states_pt.clone()
 
-torch.manual_seed(41)
-engram_tri = EngramTri(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
-hidden_states_tri = (
-    engram_tri(embeddings=embeddings_tri, hidden_states=hidden_states_tri)
-    + hidden_states_tri
-)
-print(hidden_states_tri)
+    torch.manual_seed(41)
+    engram_tri = EngramTri(
+        engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult
+    )
+    hidden_states_tri = (
+        engram_tri(embeddings=embeddings_tri, hidden_states=hidden_states_tri)
+        + hidden_states_tri
+    )
+    print(hidden_states_tri)
 
-torch.manual_seed(41)
-engram_pt = EngramPt(engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult)
-hidden_states_pt = (
-    engram_pt(embeddings=embeddings_pt, hidden_states=hidden_states_pt)
-    + hidden_states_pt
-)
-print(hidden_states_pt)
+    torch.manual_seed(41)
+    engram_pt = EngramPt(
+        engram_hidden_size, hidden_size, kernel_size, dilation, hc_mult
+    )
+    hidden_states_pt = (
+        engram_pt(embeddings=embeddings_pt, hidden_states=hidden_states_pt)
+        + hidden_states_pt
+    )
+    print(hidden_states_pt)
 
-assert torch.allclose(hidden_states_tri, hidden_states_pt, rtol=1e-3, atol=1e-3)
-print("✅ Forward Complete!")
+    assert torch.allclose(hidden_states_tri, hidden_states_pt, rtol=1e-3, atol=1e-3)
+    print("✅ Forward Complete!")
