@@ -1,0 +1,56 @@
+import torch
+import triton
+import triton.language as tl
+
+class ModelNew(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Create output tensor with same shape as input
+        output = torch.empty_like(x)
+        n_elements = x.numel()
+        
+        # Grid configuration - 1D launch
+        grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+        
+        # Launch kernel
+        self._softsign_kernel[grid](x, output, n_elements, 
+                                    BLOCK_SIZE=1024)
+        return output
+
+    @staticmethod
+    @triton.jit
+    def _softsign_kernel(
+        x_ptr, 
+        out_ptr,
+        n_elements,
+        BLOCK_SIZE: tl.constexpr,
+    ):
+        pid = tl.program_id(axis=0)
+        block_start = pid * BLOCK_SIZE
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        
+        # Create mask for last block to avoid OOB
+        mask = offsets < n_elements
+        
+        # Load data with boundary check
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+        
+        # Compute softsign: x / (1 + |x|)
+        abs_x = tl.abs(x)
+        denom = 1.0 + abs_x
+        result = x / denom
+        
+        # Store result with boundary check
+        tl.store(out_ptr + offsets, result, mask=mask)
+
+batch_size = 16
+dim = 16384
+
+def get_inputs():
+    x = torch.randn(batch_size, dim, device='cuda')
+    return [x]
+
+def get_init_inputs():
+    return []

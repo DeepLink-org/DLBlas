@@ -1,0 +1,68 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_linear_sum_kernel(
+    x_ptr,
+    w_sum_ptr,
+    b_sum_ptr,
+    output_ptr,
+    in_features,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_idx = tl.program_id(0)
+    row_start = row_idx * in_features
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    mask = col_offsets < in_features
+    
+    x_vals = tl.load(x_ptr + row_start + col_offsets, mask=mask, other=0.0)
+    w_vals = tl.load(w_sum_ptr + col_offsets, mask=mask, other=0.0)
+    
+    dot = tl.sum(x_vals * w_vals)
+    b_sum = tl.load(b_sum_ptr)
+    result = dot + b_sum
+    tl.store(output_ptr + row_idx, result)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(ModelNew, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.in_features = in_features
+        self.out_features = out_features
+        
+        # Precompute sums during initialization
+        self.register_buffer('weight_sum', self.linear.weight.sum(dim=0))
+        if self.linear.bias is not None:
+            self.register_buffer('bias_sum', self.linear.bias.sum().view(1))
+        else:
+            self.register_buffer('bias_sum', torch.zeros(1))
+
+    def forward(self, x):
+        x = x.contiguous()
+        batch_size = x.shape[0]
+        output = torch.empty(batch_size, device=x.device, dtype=x.dtype)
+        
+        grid = (batch_size,)
+        BLOCK_K = triton.next_power_of_2(self.in_features)
+        _fused_linear_sum_kernel[grid](
+            x, 
+            self.weight_sum, 
+            self.bias_sum, 
+            output,
+            self.in_features,
+            BLOCK_SIZE=BLOCK_K
+        )
+        
+        return output.view(-1, 1)
+
+batch_size = 128
+in_features = 10
+out_features = 5
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features]

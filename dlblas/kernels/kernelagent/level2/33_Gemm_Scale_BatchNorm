@@ -1,0 +1,104 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_gemm_scale_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    scale_ptr,
+    output_ptr,
+    batch,
+    in_features,
+    out_features,
+    stride_xm, stride_xk,
+    stride_wn, stride_wk,
+    stride_om, stride_on,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_blocks_n = tl.cdiv(out_features, BLOCK_SIZE_N)
+    pid_m = pid // num_blocks_n
+    pid_n = pid % num_blocks_n
+
+    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    
+    x_ptrs = x_ptr + offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk
+    w_ptrs = w_ptr + offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn
+    
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    
+    for k in range(0, tl.cdiv(in_features, BLOCK_SIZE_K)):
+        k_remaining = in_features - k * BLOCK_SIZE_K
+        k_mask = offs_k < k_remaining
+        
+        mask_x = (offs_m[:, None] < batch) & k_mask[None, :]
+        mask_w = k_mask[:, None] & (offs_n[None, :] < out_features)
+        
+        a = tl.load(x_ptrs, mask=mask_x, other=0.0)
+        b = tl.load(w_ptrs, mask=mask_w, other=0.0)
+        
+        acc += tl.dot(a, b)
+        
+        x_ptrs += BLOCK_SIZE_K * stride_xk
+        w_ptrs += BLOCK_SIZE_K * stride_wk
+    
+    if b_ptr is not None:
+        b_ptrs = b_ptr + offs_n
+        bias = tl.load(b_ptrs, mask=offs_n < out_features, other=0.0)
+        acc += bias[None, :]
+    
+    scale_ptrs = scale_ptr + offs_n
+    s = tl.load(scale_ptrs, mask=offs_n < out_features, other=1.0)
+    acc = acc * s[None, :]
+    
+    out_ptrs = output_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
+    mask_out = (offs_m[:, None] < batch) & (offs_n[None, :] < out_features)
+    tl.store(out_ptrs, acc, mask=mask_out)
+
+def fused_gemm_scale(x, weight, bias, scale):
+    batch, in_features = x.shape
+    out_features, _ = weight.shape
+    
+    output = torch.empty((batch, out_features), device=x.device, dtype=x.dtype)
+    
+    grid = lambda META: (triton.cdiv(batch, META['BLOCK_SIZE_M']) * triton.cdiv(out_features, META['BLOCK_SIZE_N']),)
+    
+    _fused_gemm_scale_kernel[grid](
+        x, weight, bias, scale, output,
+        batch, in_features, out_features,
+        x.stride(0), x.stride(1),
+        weight.stride(0), weight.stride(1),
+        output.stride(0), output.stride(1),
+        BLOCK_SIZE_M=64, BLOCK_SIZE_N=128, BLOCK_SIZE_K=32
+    )
+    return output
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, scale_shape, eps=1e-5, momentum=0.1):
+        super(ModelNew, self).__init__()
+        self.gemm = nn.Linear(in_features, out_features)
+        self.scale = nn.Parameter(torch.randn(scale_shape))
+        self.bn = nn.BatchNorm1d(out_features, eps=eps, momentum=momentum)
+
+    def forward(self, x):
+        x = fused_gemm_scale(x, self.gemm.weight, self.gemm.bias, self.scale)
+        x = self.bn(x)
+        return x
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+scale_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, scale_shape]

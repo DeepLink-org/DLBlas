@@ -1,0 +1,65 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def multiply_combine(a, b):
+    return a * b
+
+@triton.jit
+def cumulative_product_kernel(
+    x_ptr,
+    output_ptr,
+    n_cols,
+    P2: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = pid * n_cols
+    offsets = tl.arange(0, P2)
+    mask = offsets < n_cols
+    
+    # Load row with padding (1.0 for identity)
+    row = tl.load(x_ptr + row_start + offsets, mask=mask, other=1.0)
+    # Perform inclusive product scan
+    product_scan = tl.associative_scan(row, 0, combine_fn=multiply_combine)
+    # Store valid results
+    tl.store(output_ptr + row_start + offsets, product_scan, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, dim):
+        super(ModelNew, self).__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        if self.dim != 1:
+            return torch.cumprod(x, dim=self.dim)
+            
+        x = x.contiguous()
+        output = torch.empty_like(x)
+        n_rows, n_cols = x.shape
+        
+        # Calculate next power of two for padding
+        P2 = 2 ** int(math.ceil(math.log2(n_cols)))
+        grid = (n_rows,)
+        
+        cumulative_product_kernel[grid](
+            x_ptr=x,
+            output_ptr=output,
+            n_cols=n_cols,
+            P2=P2
+        )
+        return output
+
+# Define input dimensions and parameters
+batch_size = 128
+input_shape = (4000,)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape)]
+
+def get_init_inputs():
+    return [dim]
+

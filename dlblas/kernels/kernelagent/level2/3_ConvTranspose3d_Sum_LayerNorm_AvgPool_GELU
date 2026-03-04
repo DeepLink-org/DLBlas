@@ -1,0 +1,113 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _layer_norm_fwd(
+    output_ptr, input_ptr, scalar_ptr, weight_ptr, bias_ptr,
+    n_rows, n_cols,
+    stride_input_row, stride_input_col,
+    stride_output_row, stride_output_col,
+    stride_weight, stride_bias,
+    eps: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    ROWS_PER_PROGRAM: tl.constexpr
+):
+    # Load scalar once
+    scalar_val = tl.load(scalar_ptr)
+    
+    row_block_idx = tl.program_id(0)
+    row_start = row_block_idx * ROWS_PER_PROGRAM
+    row_offsets = row_start + tl.arange(0, ROWS_PER_PROGRAM)
+    row_mask = row_offsets < n_rows
+
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    col_mask = col_offsets < n_cols
+
+    # Create 2D mask
+    mask = row_mask[:, None] & col_mask[None, :]
+    
+    # Pointers to input block
+    input_ptrs = input_ptr + row_offsets[:, None] * stride_input_row + col_offsets[None, :] * stride_input_col
+    x = tl.load(input_ptrs, mask=mask, other=0.0) + scalar_val
+    x_float = x.to(tl.float32)
+    
+    # Compute statistics per row
+    row_means = tl.sum(x_float, axis=1) / n_cols
+    x_centered = x_float - row_means[:, None]
+    row_vars = tl.sum(x_centered * x_centered, axis=1) / n_cols
+    row_rstd = tl.math.rsqrt(row_vars + eps)
+    
+    # Normalize
+    normalized = x_centered * row_rstd[:, None]
+    
+    # Load parameters
+    weight = tl.load(weight_ptr + col_offsets * stride_weight, mask=col_mask, other=0.0)
+    bias = tl.load(bias_ptr + col_offsets * stride_bias, mask=col_mask, other=0.0)
+    
+    # Affine transform and store
+    out = (normalized * weight[None, :] + bias[None, :]).to(x.dtype)
+    output_ptrs = output_ptr + row_offsets[:, None] * stride_output_row + col_offsets[None, :] * stride_output_col
+    tl.store(output_ptrs, out, mask=mask)
+
+def layer_norm_triton(x, scalar, weight, bias, eps=1e-5):
+    shape = x.shape
+    n_cols = shape[1]
+    n_rows = x.numel() // n_cols
+    x_2d = x.reshape(n_rows, n_cols).contiguous()
+    output = torch.empty_like(x_2d)
+    
+    ROWS_PER_PROGRAM = 4
+    grid = (triton.cdiv(n_rows, ROWS_PER_PROGRAM),)
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    _layer_norm_fwd[grid](
+        output, x_2d, scalar, weight, bias,
+        n_rows, n_cols,
+        x_2d.stride(0), x_2d.stride(1),
+        output.stride(0), output.stride(1),
+        weight.stride(0), bias.stride(0),
+        eps=eps,
+        BLOCK_SIZE=BLOCK_SIZE,
+        ROWS_PER_PROGRAM=ROWS_PER_PROGRAM
+    )
+    return output.reshape(shape)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, sum_weight, norm_shape, pool_kernel_size):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.sum_weight = nn.Parameter(torch.tensor(sum_weight))
+        self.norm_weight = nn.Parameter(torch.ones(*norm_shape))
+        self.norm_bias = nn.Parameter(torch.zeros(*norm_shape))
+        self.norm_eps = 1e-5
+        self.avg_pool = nn.AvgPool3d(kernel_size=pool_kernel_size)
+        self.gelu = nn.GELU()
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        # Fused add and normalization in kernel
+        x = layer_norm_triton(x, self.sum_weight, self.norm_weight, self.norm_bias, self.norm_eps)
+        x = self.avg_pool(x)
+        x = self.gelu(x)
+        return x
+
+batch_size = 128
+in_channels = 32
+out_channels = 64
+depth, height, width = 16, 32, 32
+kernel_size = (3, 3, 3)
+stride = (2, 2, 2)
+padding = (1, 1, 1)
+output_padding = (1, 1, 1)
+sum_weight = 1.0
+norm_shape = (out_channels,)
+pool_kernel_size = (2, 2, 2)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, sum_weight, norm_shape, pool_kernel_size]

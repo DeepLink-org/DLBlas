@@ -1,0 +1,61 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def hinge_loss_kernel(
+    predictions_ptr,
+    targets_ptr,
+    output_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    
+    p = tl.load(predictions_ptr + offsets, mask=mask)
+    t = tl.load(targets_ptr + offsets, mask=mask)
+    
+    element = 1.0 - p * t
+    clamped = tl.where(element > 0, element, 0.0)
+    
+    total = tl.sum(clamped, axis=0)
+    if pid == 0:
+        mean_val = total / n_elements
+        tl.store(output_ptr, mean_val)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+    
+    def forward(self, predictions, targets):
+        total_elements = predictions.numel()
+        if total_elements == 0:
+            return torch.tensor(0.0, device=predictions.device)
+        
+        predictions_flat = predictions.view(-1)
+        targets_flat = targets.view(-1)
+        output = torch.empty(1, device=predictions.device)
+        
+        grid = (1,)
+        BLOCK_SIZE = triton.next_power_of_2(total_elements)
+        hinge_loss_kernel[grid](
+            predictions_flat, 
+            targets_flat, 
+            output,
+            total_elements,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
+        return output.squeeze(0)
+
+batch_size = 128
+input_shape = (1,)
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randint(0, 2, (batch_size, 1)).float() * 2 - 1]
+
+def get_init_inputs():
+    return []

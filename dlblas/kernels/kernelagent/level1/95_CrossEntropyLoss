@@ -1,0 +1,71 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def cross_entropy_kernel(
+    logits_ptr,
+    targets_ptr,
+    output_ptr,
+    stride_logits_batch,
+    stride_logits_class,
+    num_classes: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = logits_ptr + pid * stride_logits_batch
+    target_idx = tl.load(targets_ptr + pid)
+    
+    # Vectorized load with coalesced memory access
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    mask = col_offsets < num_classes
+    ptrs = row_start + col_offsets * stride_logits_class
+    row = tl.load(ptrs, mask=mask, other=-float('inf'))
+    
+    # Stable log-sum-exp computation
+    max_val = tl.max(row, axis=0)
+    row_minus_max = row - max_val
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    lse = tl.log(denominator) + max_val
+    
+    # Compute target value address directly
+    target_ptr = row_start + target_idx * stride_logits_class
+    target_val = tl.load(target_ptr)
+    
+    # Cross-entropy loss: LSE - target_value
+    loss = lse - target_val
+    tl.store(output_ptr + pid, loss)
+
+class ModelNew(nn.Module):
+    def __init__(self):
+        super(ModelNew, self).__init__()
+
+    def forward(self, predictions, targets):
+        batch_size, num_classes = predictions.shape
+        per_sample_loss = torch.empty(batch_size, device=predictions.device, dtype=predictions.dtype)
+        
+        # Determine optimal block size (nearest power-of-two)
+        BLOCK_SIZE = triton.next_power_of_2(num_classes)
+        grid = (batch_size,)
+        
+        cross_entropy_kernel[grid](
+            predictions, targets, per_sample_loss,
+            predictions.stride(0),
+            predictions.stride(1),
+            num_classes,
+            BLOCK_SIZE=BLOCK_SIZE
+        )
+        return per_sample_loss.mean()
+
+batch_size = 4096
+num_classes = 10
+input_shape = (num_classes, )  # Output for each class
+dim = 1
+
+def get_inputs():
+    return [torch.randn(batch_size, *input_shape), torch.randint(0, num_classes, (batch_size,))]
+
+def get_init_inputs():
+    return []

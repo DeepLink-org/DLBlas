@@ -1,0 +1,116 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def clamp_softmax_multiply_kernel(
+    x_ptr,
+    output_ptr,
+    clamp_min,
+    clamp_max,
+    batch_size,
+    depth,
+    height,
+    width,
+    stride_batch,
+    stride_channels,
+    stride_depth,
+    stride_height,
+    stride_width,
+    n_channels,
+    n_spatial,
+    BLOCK_SIZE_SPATIAL: tl.constexpr,
+    BLOCK_SIZE_CHAN: tl.constexpr
+):
+    pid = tl.program_id(0)
+    spatial_start = pid * BLOCK_SIZE_SPATIAL
+    spatial_offsets = spatial_start + tl.arange(0, BLOCK_SIZE_SPATIAL)
+    spatial_mask = spatial_offsets < n_spatial
+    
+    # Compute spatial coordinates
+    batch_idx = spatial_offsets // (depth * height * width)
+    spatial_idx_in_batch = spatial_offsets % (depth * height * width)
+    d_idx = spatial_idx_in_batch // (height * width)
+    remainder = spatial_idx_in_batch % (height * width)
+    h_idx = remainder // width
+    w_idx = remainder % width
+    
+    base_offset = (
+        batch_idx * stride_batch + 
+        d_idx * stride_depth + 
+        h_idx * stride_height + 
+        w_idx * stride_width
+    )
+    
+    # Process all channels at once
+    chan_offsets = tl.arange(0, BLOCK_SIZE_CHAN)
+    chan_mask = chan_offsets < n_channels
+    
+    x_ptrs = x_ptr + base_offset[:, None] + chan_offsets[None, :] * stride_channels
+    x_vals = tl.load(x_ptrs, mask=spatial_mask[:, None] & chan_mask[None, :], other=0.0)
+    
+    # Fused clamp-softmax-multiply
+    clamped = tl.minimum(tl.maximum(x_vals, clamp_min), clamp_max)
+    max_vals = tl.max(clamped, axis=1)
+    exp_vals = tl.exp(clamped - max_vals[:, None])
+    sum_exp = tl.sum(exp_vals, axis=1)
+    softmax_vals = exp_vals / sum_exp[:, None]
+    result = softmax_vals * 2.0
+    
+    # Store results
+    output_ptrs = output_ptr + base_offset[:, None] + chan_offsets[None, :] * stride_channels
+    tl.store(output_ptrs, result, mask=spatial_mask[:, None] & chan_mask[None, :])
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, clamp_min, clamp_max):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.avg_pool = nn.AvgPool3d(pool_kernel_size)
+        self.clamp_min = clamp_min
+        self.clamp_max = clamp_max
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.avg_pool(x)
+        x = x.contiguous()
+        
+        output = torch.empty_like(x)
+        batch, channels, d, h, w = x.shape
+        n_spatial = batch * d * h * w
+        n_channels = channels
+        
+        # Set block sizes based on problem dimensions
+        BLOCK_SIZE_SPATIAL = 128
+        BLOCK_SIZE_CHAN = min(128, triton.next_power_of_2(n_channels))
+        grid = (triton.cdiv(n_spatial, BLOCK_SIZE_SPATIAL),)
+        
+        clamp_softmax_multiply_kernel[grid](
+            x, output,
+            self.clamp_min, self.clamp_max,
+            batch, d, h, w,
+            x.stride(0), x.stride(1), x.stride(2), x.stride(3), x.stride(4),
+            n_channels,
+            n_spatial,
+            BLOCK_SIZE_SPATIAL=BLOCK_SIZE_SPATIAL,
+            BLOCK_SIZE_CHAN=BLOCK_SIZE_CHAN
+        )
+        return output
+
+batch_size = 16
+in_channels = 8
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+pool_kernel_size = 2
+clamp_min = 0.0
+clamp_max = 1.0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, clamp_min, clamp_max]

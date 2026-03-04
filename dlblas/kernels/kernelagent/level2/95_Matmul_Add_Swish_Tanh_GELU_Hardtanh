@@ -1,0 +1,111 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def _fused_linear_activations(
+    # Pointers to matrices
+    input_ptr, weight_ptr, bias_ptr, output_ptr,
+    # Matrix dimensions
+    in_features, out_features,
+    # Strides
+    stride_input_b, stride_input_f,
+    stride_weight_o, stride_weight_i,
+    stride_output_b, stride_output_o,
+    # Block sizes
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr
+):
+    # Batch index and output feature block index
+    pid_b = tl.program_id(0)
+    pid_n_block = tl.program_id(1)
+    
+    # Create ranges for blocks
+    n_offsets = pid_n_block * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    n_mask = n_offsets < out_features
+    
+    # Initialize accumulator
+    accumulator = tl.zeros((BLOCK_SIZE_N,), dtype=tl.float32)
+    
+    # Loop over K dimension (in_features)
+    for k in range(0, in_features, BLOCK_SIZE_K):
+        k_offsets = k + tl.arange(0, BLOCK_SIZE_K)
+        k_mask = k_offsets < in_features
+        
+        # Load input block
+        input_ptr_batch = input_ptr + pid_b * stride_input_b + k_offsets * stride_input_f
+        a = tl.load(input_ptr_batch, mask=k_mask, other=0.0)
+        
+        # Load weight block
+        weight_ptr_block = weight_ptr + n_offsets[:, None] * stride_weight_o + k_offsets[None, :] * stride_weight_i
+        w = tl.load(weight_ptr_block, mask=n_mask[:, None] & k_mask[None, :], other=0.0)
+        
+        # Compute partial dot product
+        partial = tl.sum(a[None, :] * w, axis=1)
+        accumulator += partial
+    
+    # Add bias
+    if bias_ptr is not None:
+        b = tl.load(bias_ptr + n_offsets, mask=n_mask, other=0.0)
+        accumulator += b
+
+    # Apply activation functions using basic operations
+    # Swish: x * sigmoid(x)
+    swish = accumulator * (1.0 / (1.0 + tl.exp(-accumulator)))
+    # Tanh: (e^{2x} - 1) / (e^{2x} + 1)
+    tanh = (tl.exp(2.0 * swish) - 1.0) / (tl.exp(2.0 * swish) + 1.0)
+    # GELU: x * 0.5 * (1 + erf(x / sqrt(2)))
+    gelu = tanh * 0.5 * (1.0 + tl.erf(tanh * 0.7071067811865476))
+    # Hardtanh: clamp between [-1, 1]
+    hardtanh = tl.minimum(tl.maximum(gelu, -1.0), 1.0)
+
+    # Write output
+    output_ptr_batch = output_ptr + pid_b * stride_output_b + n_offsets * stride_output_o
+    tl.store(output_ptr_batch, hardtanh, mask=n_mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_features, out_features, add_value_shape):
+        super(ModelNew, self).__init__()
+        self.matmul = nn.Linear(in_features, out_features)
+        self.add_value = nn.Parameter(torch.randn(add_value_shape))
+    
+    def forward(self, x):
+        # Get parameters and fuse biases
+        weight = self.matmul.weight
+        fused_bias = (self.matmul.bias + self.add_value) if self.matmul.bias is not None else self.add_value
+        
+        # Ensure contiguous tensors
+        x = x.contiguous()
+        weight = weight.contiguous()
+        fused_bias = fused_bias.contiguous()
+        
+        # Create output tensor
+        output = torch.empty(x.size(0), weight.size(0), device=x.device, dtype=x.dtype)
+        
+        # Kernel configuration
+        BLOCK_SIZE_N = 64
+        BLOCK_SIZE_K = 64
+        grid = (x.size(0), triton.cdiv(weight.size(0), BLOCK_SIZE_N))
+        
+        # Launch kernel
+        _fused_linear_activations[grid](
+            x, weight, fused_bias, output,
+            weight.size(1), weight.size(0),
+            x.stride(0), x.stride(1),
+            weight.stride(0), weight.stride(1),
+            output.stride(0), output.stride(1),
+            BLOCK_SIZE_K, BLOCK_SIZE_N
+        )
+        return output
+
+batch_size = 128
+in_features = 1024
+out_features = 512
+add_value_shape = (out_features,)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_features)]
+
+def get_init_inputs():
+    return [in_features, out_features, add_value_shape]

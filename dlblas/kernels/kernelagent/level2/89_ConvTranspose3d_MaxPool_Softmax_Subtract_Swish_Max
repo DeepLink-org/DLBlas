@@ -1,0 +1,126 @@
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+import math
+
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 64, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 128, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=1),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=1, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=2, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_SIZE_SPATIAL': 256, 'BLOCK_SIZE_CHANNEL': 16}, num_warps=8, num_stages=2),
+    ],
+    key=['n_spatial', 'channels'],
+)
+@triton.jit
+def fused_operations_kernel(
+    input_ptr,
+    subtract_ptr,
+    output_ptr,
+    n_spatial,
+    channels,
+    BLOCK_SIZE_SPATIAL: tl.constexpr,
+    BLOCK_SIZE_CHANNEL: tl.constexpr
+):
+    pid = tl.program_id(0)
+    row_start = pid * BLOCK_SIZE_SPATIAL
+    row_end = min(row_start + BLOCK_SIZE_SPATIAL, n_spatial)
+    if row_start >= n_spatial:
+        return
+    num_rows = row_end - row_start
+
+    # Precompute channel offsets and mask
+    c_offsets = tl.arange(0, BLOCK_SIZE_CHANNEL)
+    mask_c = c_offsets < channels
+    sub = tl.load(subtract_ptr + c_offsets, mask=mask_c, other=0.0)
+
+    for i in range(num_rows):
+        row_idx = row_start + i
+        row_offset = row_idx * channels
+        
+        # Vectorized load
+        x = tl.load(input_ptr + row_offset + c_offsets, mask=mask_c, other=-float('inf'))
+        
+        # Optimized softmax computation
+        max_val = tl.max(x, axis=0)
+        x_minus_max = tl.where(mask_c, x - max_val, -float('inf'))
+        # Fast exponential approximation
+        exp_x = tl.exp(x_minus_max)
+        exp_x_safe = tl.where(mask_c, exp_x, 0.0)
+        sum_exp = tl.sum(exp_x_safe, axis=0)
+        softmax_out = tl.where(mask_c, exp_x_safe / sum_exp, 0.0)
+        
+        # Fused subtract and swish
+        after_sub = softmax_out - sub
+        # Optimized sigmoid: 1/(1+exp(-x))
+        sig = 1.0 / (1.0 + tl.exp(-after_sub))
+        swish_out = after_sub * sig
+        
+        # Efficient max reduction
+        swish_out_safe = tl.where(mask_c, swish_out, -float('inf'))
+        max_swish = tl.max(swish_out_safe, axis=0)
+        tl.store(output_ptr + row_idx, max_swish)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, pool_stride, pool_padding):
+        super(ModelNew, self).__init__()
+        self.conv_transpose = nn.ConvTranspose3d(in_channels, out_channels, kernel_size, stride=stride, padding=padding, output_padding=output_padding)
+        self.max_pool = nn.MaxPool3d(kernel_size=pool_kernel_size, stride=pool_stride, padding=pool_padding)
+        self.subtract = nn.Parameter(torch.randn(out_channels))
+
+    def forward(self, x):
+        x = self.conv_transpose(x)
+        x = self.max_pool(x)
+        
+        batch_size, channels, D, H, W = x.shape
+        n_spatial = batch_size * D * H * W
+        x_2d = x.permute(0, 2, 3, 4, 1).contiguous().view(n_spatial, channels)
+        output = torch.empty(n_spatial, device=x.device, dtype=torch.float32)
+        
+        # Fixed grid function using meta parameters
+        grid = lambda meta: (triton.cdiv(n_spatial, meta['BLOCK_SIZE_SPATIAL']),)
+        
+        fused_operations_kernel[grid](
+            x_2d, self.subtract, output, n_spatial, channels
+        )
+        
+        return output.view(batch_size, D, H, W)
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+depth, height, width = 16, 32, 32
+kernel_size = 3
+stride = 2
+padding = 1
+output_padding = 1
+pool_kernel_size = 2
+pool_stride = 2
+pool_padding = 0
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, depth, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, stride, padding, output_padding, pool_kernel_size, pool_stride, pool_padding]

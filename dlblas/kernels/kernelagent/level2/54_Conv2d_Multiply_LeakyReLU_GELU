@@ -1,0 +1,105 @@
+import math
+import torch
+import torch.nn as nn
+import triton
+import triton.language as tl
+
+@triton.jit
+def fused_ops_kernel(
+    conv_out_ptr,  # Pointer to convolution output
+    output_ptr,    # Pointer to output tensor
+    multiplier_ptr,  # Pointer to multiplier tensor
+    out_channels,  # Number of output channels
+    H_out,         # Output height
+    W_out,         # Output width
+    total_elements_per_channel,  # Total elements per channel
+    BLOCK_SIZE: tl.constexpr  # Block size (must be power of two)
+):
+    # 2D grid: [channel, element_block]
+    pid_channel = tl.program_id(0)
+    pid_element_block = tl.program_id(1)
+    
+    # Load multiplier once per channel
+    multiplier_val = tl.load(multiplier_ptr + pid_channel)
+    
+    # Calculate starting index for this block
+    start_idx = pid_element_block * BLOCK_SIZE
+    idx_in_channel = start_idx + tl.arange(0, BLOCK_SIZE)
+    mask = idx_in_channel < total_elements_per_channel
+    
+    # Compute batch, row, and column indices
+    elements_per_batch = H_out * W_out
+    batch_idx = idx_in_channel // elements_per_batch
+    element_in_batch = idx_in_channel % elements_per_batch
+    row_idx = element_in_batch // W_out
+    col_idx = element_in_batch % W_out
+    
+    # Calculate global offsets
+    offsets = (batch_idx * out_channels * H_out * W_out + 
+               pid_channel * H_out * W_out + 
+               row_idx * W_out + col_idx)
+    
+    # Load convolution output
+    x = tl.load(conv_out_ptr + offsets, mask=mask, other=0.0)
+    
+    # Apply multiplier
+    x = x * multiplier_val
+    
+    # LeakyReLU with slope 0.01
+    x = tl.where(x >= 0, x, 0.01 * x)
+    
+    # GELU using erf approximation
+    gelu_val = 0.5 * x * (1.0 + tl.erf(x * 0.7071067811865476))
+    
+    # Store results
+    tl.store(output_ptr + offsets, gelu_val, mask=mask)
+
+class ModelNew(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, multiplier_shape):
+        super(ModelNew, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.multiplier = nn.Parameter(torch.randn(multiplier_shape)) 
+        self.leaky_relu = nn.LeakyReLU()
+
+    def forward(self, x):
+        x = self.conv(x)
+        batch_size, out_channels, H_out, W_out = x.shape
+        output = torch.empty_like(x)
+        
+        # Skip if empty tensor
+        if output.numel() == 0:
+            return output
+        
+        # Calculate total elements per channel
+        total_elements_per_channel = batch_size * H_out * W_out
+        
+        # Set block size and warps
+        BLOCK_SIZE = 1024
+        num_warps = 32
+        
+        # Launch kernel with 2D grid
+        grid = (
+            out_channels,  # Channels dimension
+            triton.cdiv(total_elements_per_channel, BLOCK_SIZE)  # Element blocks
+        )
+        fused_ops_kernel[grid](
+            x, output, self.multiplier,
+            out_channels, H_out, W_out,
+            total_elements_per_channel,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps
+        )
+        return output
+
+batch_size = 128
+in_channels = 3
+out_channels = 16
+height, width = 32, 32
+kernel_size = 3
+multiplier_shape = (out_channels, 1, 1)
+
+def get_inputs():
+    return [torch.randn(batch_size, in_channels, height, width)]
+
+def get_init_inputs():
+    return [in_channels, out_channels, kernel_size, multiplier_shape]
