@@ -16,31 +16,71 @@ import triton.language as tl
 # -----------------------------------------------------------------------------
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_I': 16, 'BLOCK_J': 16, 'BLOCK_C': 4}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_I': 16, 'BLOCK_J': 16, 'BLOCK_C': 8}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_I': 32, 'BLOCK_J': 8,  'BLOCK_C': 4}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_I': 8,  'BLOCK_J': 32, 'BLOCK_C': 4}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_I': 32, 'BLOCK_J': 32, 'BLOCK_C': 4}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_I': 64, 'BLOCK_J': 64, 'BLOCK_C': 2}, num_warps=8, num_stages=3),
+        triton.Config(
+            {"BLOCK_I": 16, "BLOCK_J": 16, "BLOCK_C": 4}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 16, "BLOCK_J": 16, "BLOCK_C": 8}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 32, "BLOCK_J": 8, "BLOCK_C": 4}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 8, "BLOCK_J": 32, "BLOCK_C": 4}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 32, "BLOCK_J": 32, "BLOCK_C": 4}, num_warps=8, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 64, "BLOCK_J": 64, "BLOCK_C": 2}, num_warps=8, num_stages=3
+        ),
         # New configs with larger channel blocks and tile sizes
-        triton.Config({'BLOCK_I': 64, 'BLOCK_J': 64, 'BLOCK_C': 4}, num_warps=8, num_stages=4),
-        triton.Config({'BLOCK_I': 64, 'BLOCK_J': 64, 'BLOCK_C': 8}, num_warps=8, num_stages=4),
-        triton.Config({'BLOCK_I': 128, 'BLOCK_J': 128, 'BLOCK_C': 2}, num_warps=8, num_stages=4),
-        triton.Config({'BLOCK_I': 32, 'BLOCK_J': 32, 'BLOCK_C': 16}, num_warps=8, num_stages=3),
-        triton.Config({'BLOCK_I': 16, 'BLOCK_J': 16, 'BLOCK_C': 16}, num_warps=4, num_stages=3),
-        triton.Config({'BLOCK_I': 8, 'BLOCK_J': 8, 'BLOCK_C': 32}, num_warps=4, num_stages=3),
+        triton.Config(
+            {"BLOCK_I": 64, "BLOCK_J": 64, "BLOCK_C": 4}, num_warps=8, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_I": 64, "BLOCK_J": 64, "BLOCK_C": 8}, num_warps=8, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_I": 128, "BLOCK_J": 128, "BLOCK_C": 2}, num_warps=8, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_I": 32, "BLOCK_J": 32, "BLOCK_C": 16}, num_warps=8, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 16, "BLOCK_J": 16, "BLOCK_C": 16}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_I": 8, "BLOCK_J": 8, "BLOCK_C": 32}, num_warps=4, num_stages=3
+        ),
     ],
-    key=['N', 'c_z'],
+    key=["N", "c_z"],
 )
 @triton.jit
 def _relpos_kernel(
     out_ptr,
-    asym_id_ptr, residue_ptr, entity_ptr, token_ptr, sym_ptr,
-    emb_pos_ptr, emb_token_ptr, emb_chain_ptr, w_entity_ptr,
-    N, r_max, s_max, c_z,
-    pos_dim, token_dim, chain_dim,
-    stride_out_i, stride_out_j, stride_out_c,
-    BLOCK_I: tl.constexpr, BLOCK_J: tl.constexpr, BLOCK_C: tl.constexpr,
+    asym_id_ptr,
+    residue_ptr,
+    entity_ptr,
+    token_ptr,
+    sym_ptr,
+    emb_pos_ptr,
+    emb_token_ptr,
+    emb_chain_ptr,
+    w_entity_ptr,
+    N,
+    r_max,
+    s_max,
+    c_z,
+    pos_dim,
+    token_dim,
+    chain_dim,
+    stride_out_i,
+    stride_out_j,
+    stride_out_c,
+    BLOCK_I: tl.constexpr,
+    BLOCK_J: tl.constexpr,
+    BLOCK_C: tl.constexpr,
 ):
     pid_i = tl.program_id(0)
     pid_j = tl.program_id(1)
@@ -57,11 +97,11 @@ def _relpos_kernel(
 
     # ----- load and broadcast input features -----
     # asym_id
-    asym_i = tl.load(asym_id_ptr + i, mask=i_mask)          # (BLOCK_I,)
-    asym_j = tl.load(asym_id_ptr + j, mask=j_mask)          # (BLOCK_J,)
-    asym_i_exp = asym_i[:, None]                            # (BLOCK_I, 1)
-    asym_j_exp = asym_j[None, :]                            # (1, BLOCK_J)
-    same_chain = asym_i_exp == asym_j_exp                   # (BLOCK_I, BLOCK_J)
+    asym_i = tl.load(asym_id_ptr + i, mask=i_mask)  # (BLOCK_I,)
+    asym_j = tl.load(asym_id_ptr + j, mask=j_mask)  # (BLOCK_J,)
+    asym_i_exp = asym_i[:, None]  # (BLOCK_I, 1)
+    asym_j_exp = asym_j[None, :]  # (1, BLOCK_J)
+    same_chain = asym_i_exp == asym_j_exp  # (BLOCK_I, BLOCK_J)
 
     # residue_index
     ri = tl.load(residue_ptr + i, mask=i_mask)
@@ -93,18 +133,18 @@ def _relpos_kernel(
     # residue relative index
     diff_res = ri_exp - rj_exp + r_max
     diff_res = tl.minimum(tl.maximum(diff_res, 0), 2 * r_max)
-    d_res = tl.where(same_chain, diff_res, 2 * r_max + 1)          # (BLOCK_I, BLOCK_J)
+    d_res = tl.where(same_chain, diff_res, 2 * r_max + 1)  # (BLOCK_I, BLOCK_J)
 
     # token relative index
     diff_token = ti_exp - tj_exp + r_max
     diff_token = tl.minimum(tl.maximum(diff_token, 0), 2 * r_max)
     mask_token = same_chain & same_residue
-    d_token = tl.where(mask_token, diff_token, 2 * r_max + 1)     # (BLOCK_I, BLOCK_J)
+    d_token = tl.where(mask_token, diff_token, 2 * r_max + 1)  # (BLOCK_I, BLOCK_J)
 
     # chain relative index (sym_id)
     diff_chain = si_exp - sj_exp + s_max
     diff_chain = tl.minimum(tl.maximum(diff_chain, 0), 2 * s_max)
-    d_chain = tl.where(same_entity, diff_chain, 2 * s_max + 1)    # (BLOCK_I, BLOCK_J)
+    d_chain = tl.where(same_entity, diff_chain, 2 * s_max + 1)  # (BLOCK_I, BLOCK_J)
 
     # ----- loop over channel blocks -----
     for ch_start in range(0, c_z, BLOCK_C):
@@ -116,7 +156,9 @@ def _relpos_kernel(
 
         # gather embedding contributions (load as half and convert to float32)
         # pos
-        pos_offset = d_res[:, :, None] * c_z + ch[None, None, :]          # (BLOCK_I, BLOCK_J, BLOCK_C)
+        pos_offset = (
+            d_res[:, :, None] * c_z + ch[None, None, :]
+        )  # (BLOCK_I, BLOCK_J, BLOCK_C)
         pos_val = tl.load(emb_pos_ptr + pos_offset, mask=mask).to(tl.float32)
 
         # token
@@ -128,16 +170,20 @@ def _relpos_kernel(
         chain_val = tl.load(emb_chain_ptr + chain_offset, mask=mask).to(tl.float32)
 
         # entity binary feature
-        entity_vec = tl.load(w_entity_ptr + ch, mask=ch_mask).to(tl.float32)   # (BLOCK_C,)
-        entity_vec = entity_vec[None, None, :]                               # (1, 1, BLOCK_C)
+        entity_vec = tl.load(w_entity_ptr + ch, mask=ch_mask).to(
+            tl.float32
+        )  # (BLOCK_C,)
+        entity_vec = entity_vec[None, None, :]  # (1, 1, BLOCK_C)
         entity_contrib = tl.where(same_entity[:, :, None], entity_vec, 0.0)
 
         out_val = pos_val + token_val + chain_val + entity_contrib
 
         # compute output memory location (contiguous N,N,c_z layout)
-        out_idx = (i[:, None, None] * stride_out_i +
-                   j[None, :, None] * stride_out_j +
-                   ch[None, None, :] * stride_out_c)
+        out_idx = (
+            i[:, None, None] * stride_out_i
+            + j[None, :, None] * stride_out_j
+            + ch[None, None, :] * stride_out_c
+        )
         tl.store(out_ptr + out_idx, out_val, mask=mask)
 
 
@@ -171,15 +217,20 @@ class ModelNew(nn.Module):
         c_z = self.c_z
 
         # ---- split linear weight into embedding tables and convert to half ----
-        weight = self.proj.weight                     # (c_z, total_dim)
+        weight = self.proj.weight  # (c_z, total_dim)
         pos_dim = 2 * r_max + 2
         token_dim = 2 * r_max + 2
         chain_dim = 2 * s_max + 2
 
-        W_pos = weight[:, :pos_dim].t().contiguous().half()                 # (pos_dim, c_z) half
-        W_token = weight[:, pos_dim:pos_dim+token_dim].t().contiguous().half()
-        W_chain = weight[:, pos_dim+token_dim+1:].t().contiguous().half()
-        W_entity = weight[:, pos_dim+token_dim:pos_dim+token_dim+1].squeeze(1).contiguous().half()  # (c_z,) half
+        W_pos = weight[:, :pos_dim].t().contiguous().half()  # (pos_dim, c_z) half
+        W_token = weight[:, pos_dim : pos_dim + token_dim].t().contiguous().half()
+        W_chain = weight[:, pos_dim + token_dim + 1 :].t().contiguous().half()
+        W_entity = (
+            weight[:, pos_dim + token_dim : pos_dim + token_dim + 1]
+            .squeeze(1)
+            .contiguous()
+            .half()
+        )  # (c_z,) half
 
         # ---- prepare output tensor ----
         out = torch.empty(N, N, c_z, device=asym_id.device, dtype=torch.float32)
@@ -193,16 +244,30 @@ class ModelNew(nn.Module):
 
         # ---- launch Triton kernel ----
         grid = lambda META: (
-            triton.cdiv(N, META['BLOCK_I']),
-            triton.cdiv(N, META['BLOCK_J']),
+            triton.cdiv(N, META["BLOCK_I"]),
+            triton.cdiv(N, META["BLOCK_J"]),
         )
         _relpos_kernel[grid](
             out,
-            asym_id, residue_index, entity_id, token_index, sym_id,
-            W_pos, W_token, W_chain, W_entity,
-            N, r_max, s_max, c_z,
-            pos_dim, token_dim, chain_dim,
-            out.stride(0), out.stride(1), out.stride(2),
+            asym_id,
+            residue_index,
+            entity_id,
+            token_index,
+            sym_id,
+            W_pos,
+            W_token,
+            W_chain,
+            W_entity,
+            N,
+            r_max,
+            s_max,
+            c_z,
+            pos_dim,
+            token_dim,
+            chain_dim,
+            out.stride(0),
+            out.stride(1),
+            out.stride(2),
         )
         return out
 
@@ -219,7 +284,7 @@ C_Z = 128
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     # Generate minimal but "semantically correct" toy input

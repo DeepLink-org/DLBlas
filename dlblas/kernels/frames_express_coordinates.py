@@ -3,24 +3,30 @@ import torch.nn as nn
 import triton
 import triton.language as tl
 
+
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_SIZE': 64}, num_warps=2),
-        triton.Config({'BLOCK_SIZE': 128}, num_warps=4),
-        triton.Config({'BLOCK_SIZE': 256}, num_warps=8),
-        triton.Config({'BLOCK_SIZE': 512}, num_warps=16),
+        triton.Config({"BLOCK_SIZE": 64}, num_warps=2),
+        triton.Config({"BLOCK_SIZE": 128}, num_warps=4),
+        triton.Config({"BLOCK_SIZE": 256}, num_warps=8),
+        triton.Config({"BLOCK_SIZE": 512}, num_warps=16),
     ],
-    key=['N'],
+    key=["N"],
 )
 @triton.jit
 def _frames_transform_kernel(
     coordinate_ptr,
     frame_idx_ptr,
     output_ptr,
-    N, M,
-    stride_coord_n, stride_coord_c,
-    stride_idx_m, stride_idx_c,
-    stride_out_m, stride_out_n, stride_out_c,
+    N,
+    M,
+    stride_coord_n,
+    stride_coord_c,
+    stride_idx_m,
+    stride_idx_c,
+    stride_out_m,
+    stride_out_n,
+    stride_out_c,
     eps,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -49,7 +55,7 @@ def _frames_transform_kernel(
     ab0 = a0 - b0
     ab1 = a1 - b1
     ab2 = a2 - b2
-    ab_norm_raw = tl.sqrt(ab0*ab0 + ab1*ab1 + ab2*ab2)
+    ab_norm_raw = tl.sqrt(ab0 * ab0 + ab1 * ab1 + ab2 * ab2)
     ab_norm = ab_norm_raw + eps
     w10 = ab0 / ab_norm
     w11 = ab1 / ab_norm
@@ -58,7 +64,7 @@ def _frames_transform_kernel(
     cb0 = c0 - b0
     cb1 = c1 - b1
     cb2 = c2 - b2
-    cb_norm_raw = tl.sqrt(cb0*cb0 + cb1*cb1 + cb2*cb2)
+    cb_norm_raw = tl.sqrt(cb0 * cb0 + cb1 * cb1 + cb2 * cb2)
     cb_norm = cb_norm_raw + eps
     w20 = cb0 / cb_norm
     w21 = cb1 / cb_norm
@@ -67,7 +73,7 @@ def _frames_transform_kernel(
     sum0 = w10 + w20
     sum1 = w11 + w21
     sum2 = w12 + w22
-    sum_norm_raw = tl.sqrt(sum0*sum0 + sum1*sum1 + sum2*sum2)
+    sum_norm_raw = tl.sqrt(sum0 * sum0 + sum1 * sum1 + sum2 * sum2)
     sum_norm = sum_norm_raw + eps
     e10 = sum0 / sum_norm
     e11 = sum1 / sum_norm
@@ -76,7 +82,7 @@ def _frames_transform_kernel(
     diff0 = w20 - w10
     diff1 = w21 - w11
     diff2 = w22 - w12
-    diff_norm_raw = tl.sqrt(diff0*diff0 + diff1*diff1 + diff2*diff2)
+    diff_norm_raw = tl.sqrt(diff0 * diff0 + diff1 * diff1 + diff2 * diff2)
     diff_norm = diff_norm_raw + eps
     e20 = diff0 / diff_norm
     e21 = diff1 / diff_norm
@@ -92,9 +98,15 @@ def _frames_transform_kernel(
         mask = atom_idx < N
 
         # Load atom coordinates
-        x0 = tl.load(coordinate_ptr + atom_idx * stride_coord_n + 0 * stride_coord_c, mask=mask)
-        x1 = tl.load(coordinate_ptr + atom_idx * stride_coord_n + 1 * stride_coord_c, mask=mask)
-        x2 = tl.load(coordinate_ptr + atom_idx * stride_coord_n + 2 * stride_coord_c, mask=mask)
+        x0 = tl.load(
+            coordinate_ptr + atom_idx * stride_coord_n + 0 * stride_coord_c, mask=mask
+        )
+        x1 = tl.load(
+            coordinate_ptr + atom_idx * stride_coord_n + 1 * stride_coord_c, mask=mask
+        )
+        x2 = tl.load(
+            coordinate_ptr + atom_idx * stride_coord_n + 2 * stride_coord_c, mask=mask
+        )
 
         # Displacement from frame origin b
         d0 = x0 - b0
@@ -114,9 +126,7 @@ def _frames_transform_kernel(
 
 
 def frames_transform(
-    coordinate: torch.Tensor,
-    frame_atom_index: torch.Tensor,
-    eps: float = 1e-8
+    coordinate: torch.Tensor, frame_atom_index: torch.Tensor, eps: float = 1e-8
 ) -> torch.Tensor:
     """
     Fused transformation using a single Triton kernel.
@@ -143,10 +153,15 @@ def frames_transform(
         coordinate,
         frame_atom_index,
         output,
-        N, M,
-        stride_coord_n, stride_coord_c,
-        stride_idx_m, stride_idx_c,
-        stride_out_m, stride_out_n, stride_out_c,
+        N,
+        M,
+        stride_coord_n,
+        stride_coord_c,
+        stride_idx_m,
+        stride_idx_c,
+        stride_out_m,
+        stride_out_n,
+        stride_out_c,
         eps,
     )
     return output
@@ -166,11 +181,13 @@ N_FRAME = 64
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     coordinate = torch.randn(N_ATOM, 3, device=device)
-    frame_atom_index = torch.randint(0, N_ATOM, (N_FRAME, 3), device=device, dtype=torch.int64)
+    frame_atom_index = torch.randint(
+        0, N_ATOM, (N_FRAME, 3), device=device, dtype=torch.int64
+    )
 
     return [coordinate, frame_atom_index]
 

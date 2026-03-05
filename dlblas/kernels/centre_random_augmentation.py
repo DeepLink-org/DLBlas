@@ -13,12 +13,15 @@ import torch.nn as nn
 try:
     import triton
     import triton.language as tl
+
     TRITON_AVAILABLE = True
 except ImportError:
     TRITON_AVAILABLE = False
 
 
-def random_rotation_matrices(n: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+def random_rotation_matrices(
+    n: int, device: torch.device, dtype: torch.dtype
+) -> torch.Tensor:
     """
     生成 n 个随机旋转矩阵 [n,3,3]，基于随机四元数（均匀分布）。
     """
@@ -26,8 +29,8 @@ def random_rotation_matrices(n: int, device: torch.device, dtype: torch.dtype) -
     u2 = torch.rand(n, device=device, dtype=dtype)
     u3 = torch.rand(n, device=device, dtype=dtype)
 
-    sqrt1 = torch.sqrt(1 - u1)          # sqrt(1-u1)
-    sqrt_u = torch.sqrt(u1)             # sqrt(u1)
+    sqrt1 = torch.sqrt(1 - u1)  # sqrt(1-u1)
+    sqrt_u = torch.sqrt(u1)  # sqrt(u1)
     two_pi_u2 = 2 * math.pi * u2
     two_pi_u3 = 2 * math.pi * u3
     sin_u2 = torch.sin(two_pi_u2)
@@ -63,22 +66,23 @@ def random_rotation_matrices(n: int, device: torch.device, dtype: torch.dtype) -
 
 # Triton kernel for fused transformation (only defined if Triton is available)
 if TRITON_AVAILABLE:
+
     @triton.autotune(
         configs=[
-            triton.Config({'BLOCK_SIZE': 64}, num_warps=2, num_stages=1),
-            triton.Config({'BLOCK_SIZE': 64}, num_warps=2, num_stages=2),
-            triton.Config({'BLOCK_SIZE': 64}, num_warps=2, num_stages=4),
-            triton.Config({'BLOCK_SIZE': 128}, num_warps=4, num_stages=1),
-            triton.Config({'BLOCK_SIZE': 128}, num_warps=4, num_stages=2),
-            triton.Config({'BLOCK_SIZE': 128}, num_warps=4, num_stages=4),
-            triton.Config({'BLOCK_SIZE': 256}, num_warps=8, num_stages=1),
-            triton.Config({'BLOCK_SIZE': 256}, num_warps=8, num_stages=2),
-            triton.Config({'BLOCK_SIZE': 256}, num_warps=8, num_stages=4),
-            triton.Config({'BLOCK_SIZE': 512}, num_warps=16, num_stages=1),
-            triton.Config({'BLOCK_SIZE': 512}, num_warps=16, num_stages=2),
-            triton.Config({'BLOCK_SIZE': 512}, num_warps=16, num_stages=4),
+            triton.Config({"BLOCK_SIZE": 64}, num_warps=2, num_stages=1),
+            triton.Config({"BLOCK_SIZE": 64}, num_warps=2, num_stages=2),
+            triton.Config({"BLOCK_SIZE": 64}, num_warps=2, num_stages=4),
+            triton.Config({"BLOCK_SIZE": 128}, num_warps=4, num_stages=1),
+            triton.Config({"BLOCK_SIZE": 128}, num_warps=4, num_stages=2),
+            triton.Config({"BLOCK_SIZE": 128}, num_warps=4, num_stages=4),
+            triton.Config({"BLOCK_SIZE": 256}, num_warps=8, num_stages=1),
+            triton.Config({"BLOCK_SIZE": 256}, num_warps=8, num_stages=2),
+            triton.Config({"BLOCK_SIZE": 256}, num_warps=8, num_stages=4),
+            triton.Config({"BLOCK_SIZE": 512}, num_warps=16, num_stages=1),
+            triton.Config({"BLOCK_SIZE": 512}, num_warps=16, num_stages=2),
+            triton.Config({"BLOCK_SIZE": 512}, num_warps=16, num_stages=4),
         ],
-        key=['N'],
+        key=["N"],
     )
     @triton.jit
     def augmentation_kernel(
@@ -90,12 +94,18 @@ if TRITON_AVAILABLE:
         out_ptr,
         N,
         n_sample,
-        stride_x0, stride_x1,
+        stride_x0,
+        stride_x1,
         stride_center0,
-        stride_R0, stride_R1, stride_R2,
-        stride_T0, stride_T1,
+        stride_R0,
+        stride_R1,
+        stride_R2,
+        stride_T0,
+        stride_T1,
         stride_mask,
-        stride_out0, stride_out1, stride_out2,
+        stride_out0,
+        stride_out1,
+        stride_out2,
         has_mask: tl.constexpr,
         BLOCK_SIZE: tl.constexpr,
     ):
@@ -110,9 +120,15 @@ if TRITON_AVAILABLE:
         mask = offsets < N
 
         # Load atom coordinates (three components)
-        x_vals = tl.load(x_ptr + offsets * stride_x0 + 0 * stride_x1, mask=mask, other=0.0)
-        y_vals = tl.load(x_ptr + offsets * stride_x0 + 1 * stride_x1, mask=mask, other=0.0)
-        z_vals = tl.load(x_ptr + offsets * stride_x0 + 2 * stride_x1, mask=mask, other=0.0)
+        x_vals = tl.load(
+            x_ptr + offsets * stride_x0 + 0 * stride_x1, mask=mask, other=0.0
+        )
+        y_vals = tl.load(
+            x_ptr + offsets * stride_x0 + 1 * stride_x1, mask=mask, other=0.0
+        )
+        z_vals = tl.load(
+            x_ptr + offsets * stride_x0 + 2 * stride_x1, mask=mask, other=0.0
+        )
 
         # Load center (scalars, broadcast later)
         center_x = tl.load(center_ptr + 0 * stride_center0)
@@ -184,7 +200,9 @@ def centre_random_augmentation(
         center = x_input_coords.mean(dim=-2, keepdim=True)
     else:
         m = mask.to(dtype=dtype).unsqueeze(-1)
-        center = (x_input_coords * m).sum(dim=-2, keepdim=True) / (m.sum(dim=-2, keepdim=True) + eps)
+        center = (x_input_coords * m).sum(dim=-2, keepdim=True) / (
+            m.sum(dim=-2, keepdim=True) + eps
+        )
 
     if centre_only:
         # Expand to n_sample copies
@@ -197,7 +215,7 @@ def centre_random_augmentation(
     N = x_input_coords.size(0)
 
     # Use Triton kernel if possible
-    use_triton = (device.type == 'cuda' and TRITON_AVAILABLE)
+    use_triton = device.type == "cuda" and TRITON_AVAILABLE
     if use_triton:
         # Ensure contiguous tensors
         x = x_input_coords.contiguous()
@@ -225,17 +243,29 @@ def centre_random_augmentation(
             has_mask = 0
 
         # Grid lambda using meta parameters
-        grid = lambda meta: (n_sample * triton.cdiv(N, meta['BLOCK_SIZE']),)
+        grid = lambda meta: (n_sample * triton.cdiv(N, meta["BLOCK_SIZE"]),)
 
         augmentation_kernel[grid](
-            x, center_flat, R_contig, T_contig, mask_ptr, out,
-            N, n_sample,
-            stride_x0, stride_x1,
+            x,
+            center_flat,
+            R_contig,
+            T_contig,
+            mask_ptr,
+            out,
+            N,
+            n_sample,
+            stride_x0,
+            stride_x1,
             stride_center0,
-            stride_R0, stride_R1, stride_R2,
-            stride_T0, stride_T1,
+            stride_R0,
+            stride_R1,
+            stride_R2,
+            stride_T0,
+            stride_T1,
             stride_mask,
-            stride_out0, stride_out1, stride_out2,
+            stride_out0,
+            stride_out1,
+            stride_out2,
             has_mask=has_mask,
         )
         return out
@@ -251,13 +281,17 @@ def centre_random_augmentation(
 
 
 class ModelNew(nn.Module):
-    def __init__(self, n_sample: int = 1, s_trans: float = 1.0, centre_only: bool = False):
+    def __init__(
+        self, n_sample: int = 1, s_trans: float = 1.0, centre_only: bool = False
+    ):
         super().__init__()
         self.n_sample = n_sample
         self.s_trans = s_trans
         self.centre_only = centre_only
 
-    def forward(self, x_input_coords: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, x_input_coords: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return centre_random_augmentation(
             x_input_coords=x_input_coords,
             n_sample=self.n_sample,
@@ -278,7 +312,7 @@ CENTRE_ONLY = False
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     x_input_coords = torch.randn(N_ATOM, 3, device=device)
