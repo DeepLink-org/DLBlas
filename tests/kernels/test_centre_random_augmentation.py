@@ -10,7 +10,9 @@ import torch
 import torch.nn as nn
 
 
-def random_rotation_matrices(n: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+def random_rotation_matrices(
+    n: int, device: torch.device, dtype: torch.dtype
+) -> torch.Tensor:
     """
     生成 n 个随机旋转矩阵 [n,3,3]，基于随机四元数（均匀分布）。
     """
@@ -84,7 +86,9 @@ def centre_random_augmentation(
         center = x_input_coords.mean(dim=-2, keepdim=True)
     else:
         m = mask.to(dtype=dtype).unsqueeze(-1)
-        center = (x_input_coords * m).sum(dim=-2, keepdim=True) / (m.sum(dim=-2, keepdim=True) + eps)
+        center = (x_input_coords * m).sum(dim=-2, keepdim=True) / (
+            m.sum(dim=-2, keepdim=True) + eps
+        )
     x = x_input_coords - center
     x = x.unsqueeze(0).expand(n_sample, -1, -1).contiguous()
 
@@ -101,13 +105,17 @@ def centre_random_augmentation(
 
 
 class Model(nn.Module):
-    def __init__(self, n_sample: int = 1, s_trans: float = 1.0, centre_only: bool = False):
+    def __init__(
+        self, n_sample: int = 1, s_trans: float = 1.0, centre_only: bool = False
+    ):
         super().__init__()
         self.n_sample = n_sample
         self.s_trans = s_trans
         self.centre_only = centre_only
 
-    def forward(self, x_input_coords: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, x_input_coords: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return centre_random_augmentation(
             x_input_coords=x_input_coords,
             n_sample=self.n_sample,
@@ -128,7 +136,7 @@ CENTRE_ONLY = False
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     x_input_coords = torch.randn(N_ATOM, 3, device=device)

@@ -73,11 +73,13 @@ N_FRAME = 64
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     coordinate = torch.randn(N_ATOM, 3, device=device)
-    frame_atom_index = torch.randint(0, N_ATOM, (N_FRAME, 3), device=device, dtype=torch.int64)
+    frame_atom_index = torch.randint(
+        0, N_ATOM, (N_FRAME, 3), device=device, dtype=torch.int64
+    )
 
     return [coordinate, frame_atom_index]
 

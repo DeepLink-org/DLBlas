@@ -42,13 +42,15 @@ def generate_relp(
     d_token = torch.clamp(
         token_index[:, None] - token_index[None, :] + r_max, min=0, max=2 * r_max
     )
-    d_token = d_token * b_same_chain * b_same_residue + (1 - b_same_chain * b_same_residue) * (
-        2 * r_max + 1
-    )
+    d_token = d_token * b_same_chain * b_same_residue + (
+        1 - b_same_chain * b_same_residue
+    ) * (2 * r_max + 1)
     a_rel_token = F.one_hot(d_token, 2 * (r_max + 1))
 
     # sym_id relative one-hot: size = 2*(s_max+1)
-    d_chain = torch.clamp(sym_id[:, None] - sym_id[None, :] + s_max, min=0, max=2 * s_max)
+    d_chain = torch.clamp(
+        sym_id[:, None] - sym_id[None, :] + s_max, min=0, max=2 * s_max
+    )
     d_chain = d_chain * b_same_entity + (1 - b_same_entity) * (2 * s_max + 1)
     a_rel_chain = F.one_hot(d_chain, 2 * (s_max + 1))
 
@@ -121,7 +123,7 @@ C_Z = 128
 
 
 def get_inputs():
-    device = 'cuda'
+    device = "cuda"
     torch.manual_seed(42)
 
     # Generate minimal but "semantically correct" toy input
