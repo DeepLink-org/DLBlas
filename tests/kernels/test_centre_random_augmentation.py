@@ -8,6 +8,7 @@ import math
 from typing import Optional
 import torch
 import torch.nn as nn
+from dlblas.kernels.centre_random_augmentation import ModelNew
 
 
 def random_rotation_matrices(
@@ -147,3 +148,13 @@ def get_inputs():
 
 def get_init_inputs():
     return [N_SAMPLE, S_TRANS, CENTRE_ONLY]
+
+
+x_input_coords, mask = get_inputs()
+model = Model()
+x = model.forward(x_input_coords, mask)
+
+x_input_coords, mask = get_inputs()
+model_new = ModelNew()
+x_new = model_new.forward(x_input_coords, mask)
+assert torch.allclose(x, x_new, rtol=1e-2, atol=1e-2)

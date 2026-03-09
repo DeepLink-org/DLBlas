@@ -7,6 +7,11 @@ From: protenix/model/modules/embedders.py:RelativePositionEncoding
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dlblas.kernels.relative_position_encoding import ModelNew
+
+
+device = "cuda"
+
 
 
 def generate_relp(
@@ -77,7 +82,7 @@ class Model(nn.Module):
         self.s_max = s_max
         self.c_z = c_z
         in_dim = 4 * r_max + 2 * s_max + 7
-        self.proj = nn.Linear(in_dim, c_z, bias=False)
+        self.proj = nn.Linear(in_dim, c_z, bias=False, device=device)
 
     def forward(
         self,
@@ -123,7 +128,6 @@ C_Z = 128
 
 
 def get_inputs():
-    device = "cuda"
     torch.manual_seed(42)
 
     # Generate minimal but "semantically correct" toy input
@@ -139,3 +143,13 @@ def get_inputs():
 
 def get_init_inputs():
     return [R_MAX, S_MAX, C_Z]
+
+
+asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
+model = Model()
+relp = model.forward(asym_id, residue_index, entity_id, token_index, sym_id)
+
+asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
+model_new = ModelNew()
+relp_new = model_new.forward(asym_id, residue_index, entity_id, token_index, sym_id)
+assert torch.allclose(relp, relp_new, rtol=1e-2, atol=1e-2)

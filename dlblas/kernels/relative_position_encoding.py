@@ -11,6 +11,11 @@ import triton
 import triton.language as tl
 
 
+
+device = "cuda"
+
+
+
 # -----------------------------------------------------------------------------
 # Triton kernel: fused relative position encoding + linear projection
 # -----------------------------------------------------------------------------
@@ -201,7 +206,7 @@ class ModelNew(nn.Module):
         self.s_max = s_max
         self.c_z = c_z
         in_dim = 4 * r_max + 2 * s_max + 7
-        self.proj = nn.Linear(in_dim, c_z, bias=False)
+        self.proj = nn.Linear(in_dim, c_z, bias=False, device=device)
 
     def forward(
         self,
@@ -284,7 +289,6 @@ C_Z = 128
 
 
 def get_inputs():
-    device = "cuda"
     torch.manual_seed(42)
 
     # Generate minimal but "semantically correct" toy input
