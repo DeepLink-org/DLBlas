@@ -144,11 +144,12 @@ def get_init_inputs():
     return [R_MAX, S_MAX, C_Z]
 
 
-asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
-model = Model()
-relp = model.forward(asym_id, residue_index, entity_id, token_index, sym_id)
+def test_relative_position_encoding.py():
+    asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
+    model = Model()
+    relp = model.forward(asym_id, residue_index, entity_id, token_index, sym_id)
 
-asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
-model_new = ModelNew()
-relp_new = model_new.forward(asym_id, residue_index, entity_id, token_index, sym_id)
-assert torch.allclose(relp, relp_new, rtol=1e-2, atol=1e-2)
+    asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
+    model_new = ModelNew()
+    relp_new = model_new.forward(asym_id, residue_index, entity_id, token_index, sym_id)
+    assert torch.allclose(relp, relp_new, rtol=1e-2, atol=1e-2)

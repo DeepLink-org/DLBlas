@@ -89,12 +89,13 @@ def get_init_inputs():
     return []
 
 
-coordinate, frame_atom_index = get_inputs()
-model = Model()
-x = model.forward(coordinate, frame_atom_index)
+def test_frames_express_coordinates():
+    coordinate, frame_atom_index = get_inputs()
+    model = Model()
+    x = model.forward(coordinate, frame_atom_index)
 
-coordinate, frame_atom_index = get_inputs()
-model_new = ModelNew()
-x_new = model_new.forward(coordinate, frame_atom_index)
+    coordinate, frame_atom_index = get_inputs()
+    model_new = ModelNew()
+    x_new = model_new.forward(coordinate, frame_atom_index)
 
-assert torch.allclose(x, x_new, rtol=1e-2, atol=1e-2)
+    assert torch.allclose(x, x_new, rtol=1e-2, atol=1e-2)
