@@ -11,9 +11,7 @@ import triton
 import triton.language as tl
 
 
-
 device = "cuda"
-
 
 
 # -----------------------------------------------------------------------------

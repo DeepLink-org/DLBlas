@@ -13,7 +13,6 @@ from dlblas.kernels.relative_position_encoding import ModelNew
 device = "cuda"
 
 
-
 def generate_relp(
     *,
     asym_id: torch.Tensor,
