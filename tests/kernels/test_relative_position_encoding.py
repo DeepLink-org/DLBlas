@@ -144,7 +144,7 @@ def get_init_inputs():
     return [R_MAX, S_MAX, C_Z]
 
 
-def test_relative_position_encoding.py():
+def test_relative_position_encoding():
     asym_id, residue_index, entity_id, token_index, sym_id = get_inputs()
     model = Model()
     relp = model.forward(asym_id, residue_index, entity_id, token_index, sym_id)
