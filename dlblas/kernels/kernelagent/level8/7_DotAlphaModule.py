@@ -3,6 +3,9 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import e3nn.o3 as o3
+import triton
+import triton.language as tl
+
 # ==========================================
 # Helper Modules (Dependencies)
 # ==========================================
@@ -14,6 +17,7 @@ class SmoothLeakyReLU(nn.Module):
         return (1 - self.alpha) * x * torch.sigmoid(x) + self.alpha * x
     def extra_repr(self):
         return "negative_slope={}".format(self.alpha)
+
 class RadialFunction(nn.Module):
     def __init__(self, channels_list, use_layer_norm=True):
         super().__init__()
@@ -32,6 +36,7 @@ class RadialFunction(nn.Module):
         self.net = nn.Sequential(*modules)
     def forward(self, inputs):
         return self.net(inputs)
+
 class SO3_Linear_e2former(nn.Module):
     def __init__(self, in_features, out_features, lmax, bias=True):
         super().__init__()
@@ -64,10 +69,71 @@ class SO3_Linear_e2former(nn.Module):
         out[:, 0:1, :] = out.narrow(1, 0, 1) + bias
         out = out.reshape(output_shape + (l_sum, self.out_features))
         return out
+
+# ==========================================
+# Triton Kernel: compute concatenated per-l projections for i/j ends
+# Produces features of shape [Q, E, 2*(L+1)*D] in order: [i_l0, j_l0, i_l1, j_l1, ...]
+# ==========================================
+@triton.jit
+def compute_x0_features_kernel(
+    Y_ptr,           # float32 [Q, E, M]
+    NODE_ptr,        # float32 [Q, M, D]
+    IDX_ptr,         # int32   [Q, E]
+    OUT_ptr,         # float32 [Q, E, 2*(L+1)*D]
+    Q: tl.constexpr, # number of nodes
+    E: tl.constexpr, # number of neighbors
+    M,               # total M = (L+1)^2
+    D,               # attn_dim
+    y_s0, y_s1, y_s2,
+    n_s0, n_s1, n_s2,
+    idx_s0, idx_s1,
+    out_s0, out_s1, out_s2,
+    BLOCK_D: tl.constexpr,
+    LMAX: tl.constexpr,
+):
+    pid_q = tl.program_id(0)
+    pid_e = tl.program_id(1)
+    pid_dt = tl.program_id(2)
+    if (pid_q >= Q) or (pid_e >= E):
+        return
+
+    d_offsets = pid_dt * BLOCK_D + tl.arange(0, BLOCK_D)
+    d_mask = d_offsets < D
+    tl.multiple_of(d_offsets, 8)
+
+    # Base pointers
+    y_base = Y_ptr + pid_q * y_s0 + pid_e * y_s1
+    idx_j = tl.load(IDX_ptr + pid_q * idx_s0 + pid_e * idx_s1)
+    node_i_base = NODE_ptr + pid_q * n_s0
+    node_j_base = NODE_ptr + idx_j * n_s0
+
+    # Loop over l and accumulate dot products per-l for i-end and j-end
+    for l in tl.static_range(0, LMAX + 1):
+        start_m = l * l
+        acc_i = tl.zeros([BLOCK_D], dtype=tl.float32)
+        acc_j = tl.zeros([BLOCK_D], dtype=tl.float32)
+        # Unrolled loop over m in current l-band
+        for mm in tl.static_range(0, 2 * LMAX + 1):
+            if mm < (2 * l + 1):
+                m_index = start_m + mm
+                y_val = tl.load(y_base + m_index * y_s2)
+                # i-end
+                v_i = tl.load(node_i_base + m_index * n_s1 + d_offsets * n_s2, mask=d_mask, other=0.0)
+                # j-end
+                v_j = tl.load(node_j_base + m_index * n_s1 + d_offsets * n_s2, mask=d_mask, other=0.0)
+                acc_i += y_val * v_i
+                acc_j += y_val * v_j
+
+        # Store in interleaved order
+        out_i = OUT_ptr + pid_q * out_s0 + pid_e * out_s1 + (2 * l) * D * out_s2
+        out_j = OUT_ptr + pid_q * out_s0 + pid_e * out_s1 + (2 * l + 1) * D * out_s2
+        tl.store(out_i + d_offsets * out_s2, acc_i, mask=d_mask)
+        tl.store(out_j + d_offsets * out_s2, acc_j, mask=d_mask)
+
 # ==========================================
 # Main Model Structure
 # ==========================================
-class Model(nn.Module):
+class ModelNew(nn.Module):
     """
     Dot product based alpha computation with spherical harmonics.
     Re-implementation of DotAlphaModule structure.
@@ -110,6 +176,7 @@ class Model(nn.Module):
             edge_channel_list + [2 * self.attn_dim * (lmax + 1)]
         )
         self.alpha_act = SmoothLeakyReLU(0.2)
+
     def forward(
         self, 
         x_edge: Tensor, 
@@ -119,20 +186,57 @@ class Model(nn.Module):
     ) -> Tensor:
         f_N1 = node_irreps_input.shape[0]
         # Linear projection
-        node_irreps_input_dot = self.dot_linear(node_irreps_input) 
-        x_0_extra = []
-        for l in range(self.lmax + 1):
-            rij_l = o3.spherical_harmonics(
-                l, edge_vec, normalize=True
-            ).unsqueeze(dim=-1)
-            node_l = node_irreps_input_dot[:, l**2 : (l + 1) ** 2]
-            # i-end
-            x_0_extra.append(torch.sum(rij_l * node_l.unsqueeze(dim=1), dim=-2))
-            # j-end
-            x_0_extra.append(torch.sum(rij_l * node_l[f_sparse_idx_node], dim=-2))
+        node_irreps_input_dot = self.dot_linear(node_irreps_input)  # [Q, M, D], M=(lmax+1)^2
+
+        # Compute spherical harmonics for all l at once (shape: [Q, E, M])
+        Y_all = o3.spherical_harmonics(
+            list(range(self.lmax + 1)), edge_vec, normalize=True
+        )
+
+        # Prepare inputs for Triton kernel
+        Q = f_N1
+        E = edge_vec.shape[1]
+        D = self.attn_dim
+        LMAX = self.lmax
+        M = (LMAX + 1) ** 2
+        assert Y_all.shape[-1] == M and node_irreps_input_dot.shape[1] == M
+
+        Y_all = Y_all.contiguous()
+        node_irreps_input_dot = node_irreps_input_dot.contiguous()
+        idx_ji = f_sparse_idx_node.to(torch.int32).contiguous()
+
+        # Output buffer: concatenated per-l [i, j] features -> [Q, E, 2*(L+1)*D]
+        feat_dim = 2 * (LMAX + 1) * D
+        x0_features = torch.empty(
+            (Q, E, feat_dim),
+            dtype=node_irreps_input_dot.dtype,
+            device=node_irreps_input_dot.device,
+        )
+
+        # Strides in elements
+        y_s0, y_s1, y_s2 = Y_all.stride()
+        n_s0, n_s1, n_s2 = node_irreps_input_dot.stride()
+        idx_s0, idx_s1 = idx_ji.stride()
+        out_s0, out_s1, out_s2 = x0_features.stride()
+
+        # Launch Triton kernel
+        BLOCK_D = 128 if D >= 128 else 64
+        grid = (Q, E, triton.cdiv(D, BLOCK_D))
+        compute_x0_features_kernel[grid](
+            Y_all, node_irreps_input_dot, idx_ji, x0_features,
+            Q, E, M, D,
+            y_s0, y_s1, y_s2,
+            n_s0, n_s1, n_s2,
+            idx_s0, idx_s1,
+            out_s0, out_s1, out_s2,
+            BLOCK_D=BLOCK_D, LMAX=LMAX,
+            num_warps=4 if BLOCK_D == 128 else 2,
+            num_stages=3,
+        )
+
         # Compute alpha
-        edge_m0 = self.rad_func_m0(x_edge)
-        x_0_alpha = self.fc_m0(torch.cat(x_0_extra, dim=-1) * edge_m0)  
+        edge_m0 = self.rad_func_m0(x_edge)  # [Q, E, 2*D*(L+1)]
+        x_0_alpha = self.fc_m0(x0_features * edge_m0)
         x_0_alpha = x_0_alpha.reshape(
             f_N1, -1, self.num_attn_heads, self.attn_scalar_head
         )
@@ -140,6 +244,7 @@ class Model(nn.Module):
         x_0_alpha = self.alpha_act(x_0_alpha)
         alpha = torch.einsum("qeik, ik -> qei", x_0_alpha, self.alpha_dot)
         return alpha
+
 # ==========================================
 # Hyperparameters & Data Generation
 # ==========================================
@@ -158,6 +263,7 @@ N_neighbors = 20
 dim_edge = 512
 dim_node_hidden = 256
 dim_irreps_total = 16 # (lmax+1)^2 = 16
+
 def get_inputs():
     torch.manual_seed(123)
     # x_edge: [2233, 20, 512]
@@ -174,6 +280,7 @@ def get_inputs():
         edge_vec,
         f_sparse_idx_node
     ]
+
 def get_init_inputs():
     return [
         irreps_str, 

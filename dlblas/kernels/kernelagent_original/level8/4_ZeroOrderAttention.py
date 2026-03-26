@@ -4,90 +4,6 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
-# Try to import Triton for custom kernels
-try:
-    import triton
-    import triton.language as tl
-    _TRITON_AVAILABLE = True
-except Exception:
-    _TRITON_AVAILABLE = False
-
-# ==========================================
-# Triton kernel for weighted neighbor aggregation:
-# aggregated[b, m, h] = sum_k alpha[b, k, h] * value[idx[b, k], m, h]
-# Shapes:
-# - alpha: [N, K, H]
-# - value: [N, M, H]
-# - idx  : [N, K] (int64)
-# - out  : [N, M, H]
-# ==========================================
-if _TRITON_AVAILABLE:
-    @triton.jit
-    def weighted_gather_sum_kernel(
-        alpha_ptr, value_ptr, idx_ptr, out_ptr,
-        N, K, M, H,
-        stride_alpha_b, stride_alpha_k, stride_alpha_h,
-        stride_value_b, stride_value_m, stride_value_h,
-        stride_idx_b, stride_idx_k,
-        stride_out_b, stride_out_m, stride_out_h,
-        BLOCK_H: tl.constexpr, BLOCK_M: tl.constexpr,
-    ):
-        pid_b = tl.program_id(0)
-        pid_hblk = tl.program_id(1)
-
-        # Offsets within the H (channel) and M (irreps) tiles
-        h_offsets = pid_hblk * BLOCK_H + tl.arange(0, BLOCK_H)
-        m_offsets = tl.arange(0, BLOCK_M)
-
-        # Boundary masks
-        h_mask = h_offsets < H
-        m_mask = m_offsets < M
-
-        # Provide compiler hints for better vectorization
-        tl.multiple_of(h_offsets, BLOCK_H)
-        tl.multiple_of(m_offsets, BLOCK_M)
-        tl.max_contiguous(h_offsets, BLOCK_H)
-
-        # Initialize accumulator for this CTA's tile: [BLOCK_M, BLOCK_H]
-        acc = tl.zeros((BLOCK_M, BLOCK_H), dtype=tl.float32)
-
-        # Precompute base pointers for this batch n = pid_b
-        alpha_b_ptr = alpha_ptr + pid_b * stride_alpha_b
-        idx_b_ptr = idx_ptr + pid_b * stride_idx_b
-        out_b_ptr = out_ptr + pid_b * stride_out_b
-
-        # Loop over neighbors (dynamic K)
-        for k in range(0, K):
-            # Load neighbor index for (b, k) as int32 to reduce arithmetic width
-            j = tl.load(idx_b_ptr + k * stride_idx_k, mask=True, other=0).to(tl.int32)
-
-            # Load alpha vector tile [BLOCK_H] for this (b, k)
-            alpha_vec_ptrs = alpha_b_ptr + k * stride_alpha_k + h_offsets * stride_alpha_h
-            alpha_vec = tl.load(alpha_vec_ptrs, mask=h_mask, other=0.0)
-
-            # Base pointer for value at neighbor node j
-            val_base_j = value_ptr + j * stride_value_b
-
-            # Load value tile [BLOCK_M, BLOCK_H] for neighbor node j
-            val_ptrs = (
-                val_base_j
-                + m_offsets[:, None] * stride_value_m
-                + h_offsets[None, :] * stride_value_h
-            )
-            val_tile = tl.load(val_ptrs, mask=(m_mask[:, None] & h_mask[None, :]), other=0.0)
-
-            # FMA accumulate: acc[m, h] += val[m, h] * alpha[h]
-            acc += val_tile * alpha_vec[None, :]
-
-        # Store the result tile to out[b, :, :]
-        out_ptrs = (
-            out_b_ptr
-            + m_offsets[:, None] * stride_out_m
-            + h_offsets[None, :] * stride_out_h
-        )
-        tl.store(out_ptrs, acc, mask=(m_mask[:, None] & h_mask[None, :]))
-
-
 # ==========================================
 # Core Modules
 # ==========================================
@@ -191,45 +107,6 @@ class ZeroOrderAttention(BaseAttentionOrder):
             self.scalar_dim,
             lmax=lmax,
         )
-
-    def _aggregate_neighbors_triton(self, alpha_h, value, idx):
-        """
-        Triton-accelerated aggregation:
-        alpha_h: [N, K, H], value: [N, M, H], idx: [N, K]
-        returns aggregated: [N, M, H]
-        """
-        assert _TRITON_AVAILABLE, "Triton is not available"
-        N, K, H = alpha_h.shape
-        M = value.shape[1]
-        # Ensure contiguity for pointer arithmetic
-        alpha_h = alpha_h.contiguous()
-        value = value.contiguous()
-        idx = idx.contiguous()
-
-        out = torch.empty((N, M, H), device=alpha_h.device, dtype=alpha_h.dtype)
-
-        # Extract strides
-        sa_b, sa_k, sa_h = alpha_h.stride()
-        sv_b, sv_m, sv_h = value.stride()
-        si_b, si_k = idx.stride()
-        so_b, so_m, so_h = out.stride()
-
-        # Tile sizes
-        BLOCK_H = 64
-        BLOCK_M = min(16, M)
-
-        grid = (N, triton.cdiv(H, BLOCK_H))
-        weighted_gather_sum_kernel[grid](
-            alpha_h, value, idx, out,
-            N, K, M, H,
-            sa_b, sa_k, sa_h,
-            sv_b, sv_m, sv_h,
-            si_b, si_k,
-            so_b, so_m, so_h,
-            BLOCK_H=BLOCK_H, BLOCK_M=BLOCK_M,
-            num_warps=4, num_stages=1
-        )
-        return out
     
     def forward(self, alpha, value, x_edge, node_pos, edge_dis, batched_data, **kwargs):
 
@@ -249,21 +126,16 @@ class ZeroOrderAttention(BaseAttentionOrder):
         # Flatten back to [N, Neighbors, scalar_dim]
         alpha = alpha.reshape(alpha.shape[:2] + (-1,))
         
-        # Triton-accelerated neighbor aggregation
-        use_triton = (
-            _TRITON_AVAILABLE
-            and alpha.is_cuda
-            and value.is_cuda
-            and f_sparse_idx_node.is_cuda
-            and alpha.dtype == value.dtype == torch.float32
-        )
-        if use_triton:
-            aggregated = self._aggregate_neighbors_triton(alpha, value, f_sparse_idx_node)
-        else:
-            # Fallback to original PyTorch implementation
-            neighbor_values = value[f_sparse_idx_node]
-            attended_values = alpha.unsqueeze(dim=2) * neighbor_values
-            aggregated = torch.sum(attended_values, dim=1) 
+        # Gather neighbor values: [N, Neighbors, (L+1)^2, scalar_dim]
+        neighbor_values = value[f_sparse_idx_node]
+        
+        # Apply attention weights
+        # alpha unsqueeze -> [N, Neighbors, 1, scalar_dim]
+        # Broadcasting over the Irreps dimension (dim 2)
+        attended_values = alpha.unsqueeze(dim=2) * neighbor_values
+        
+        # Sum over neighbors (dim 1) -> [N, (L+1)^2, scalar_dim]
+        aggregated = torch.sum(attended_values, dim=1) 
         
         # Final Projection
         node_output = self.proj_zero(aggregated)
@@ -274,7 +146,7 @@ class ZeroOrderAttention(BaseAttentionOrder):
 # Main Model Wrapper
 # ==========================================
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self, scalar_dim, num_attn_heads, edge_channel_list, lmax):
         super().__init__()
         self.attn = ZeroOrderAttention(scalar_dim, num_attn_heads, edge_channel_list, lmax)
@@ -297,7 +169,7 @@ EDGE_DIM = 512
 
 def get_inputs():
     # Determine device based on availability
-    device = 'cuda'
+    device = 'cpu'
     torch.manual_seed(42)
     
     # alpha shape: [2233, 20, 32]

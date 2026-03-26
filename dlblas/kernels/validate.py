@@ -1,12 +1,16 @@
+import json
+
 import torch
+# import torch_mlu
 import torch.nn as nn
 import numpy as np
 import random
 import tempfile
 import importlib
 import inspect
+import os
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 from pathlib import Path
 
 def sort_key_1(filepath):
@@ -23,13 +27,13 @@ def load_original_model_and_inputs(
     try:
         compile(model_original_src, "<string>", "exec")
     except SyntaxError as e:
-        print(f"Syntax Error in original code {e}")
+        print(f"Syntax Error in original code {e}", flush=True)
         return None
 
     try:
         exec(model_original_src, context)  # expose to current namespace
     except Exception as e:
-        print(f"Error in executing original code {e}")
+        print(f"Error in executing original code {e}", flush=True)
         return None
 
     # these should be defined in the original model code and present in the context
@@ -73,13 +77,13 @@ def load_custom_model_with_tempfile(model_custom_src, entry_point="ModelNew"):
 
 def set_seed(seed: int):
     torch.manual_seed(seed)
-    # NOTE: this only sets on current cuda device
-    torch.cuda.manual_seed(seed)
+    # NOTE: this only sets on current mlu device
+    # torch.cuda.manual_seed(seed)
     np.random.seed(seed)          # Numpy module
     random.seed(seed)             # Python random module
-    torch.backends.cudnn.benchmark = False    # Close optimization
-    torch.backends.cudnn.deterministic = True # Close optimization
-    torch.cuda.manual_seed_all(seed) # All GPU (Optional)
+    # torch.backends.cudnn.benchmark = False    # Close optimization
+    # torch.backends.cudnn.deterministic = True # Close optimization
+    # torch.cuda.manual_seed_all(seed) # All GPU (Optional)
 
 
 def _parse_init_inputs(raw):
@@ -235,76 +239,100 @@ class KernelBenchDataset:
 
 def main():
 
+    # defined here
     device = 'cuda'
-
-    original_code_path = f"/mnt/shared-storage-user/ailab-llmkernel/caizheng/DLBlas/dlblas/kernels/kernelagent_original"
-
-    full_ds = KernelBenchDataset(original_code_path)
-    dataset = full_ds.shard(1, 0)
-    breakpoint()
+    root_path = f"/datapool/zmz/04kernelagent/caizheng/DLBlas-add-kernelbench-triton-gpt5high/dlblas/kernels"
+    output_file = f"/datapool/zmz/04kernelagent/caizheng/DLBlas-add-kernelbench-triton-gpt5high/dlblas/kernels/output_{device}.json"
+    
+    
+    # init
+    result_list = []
+    total_cnt = 0
+    correct_cnt = 0
+    dataset = KernelBenchDataset(os.path.join(root_path, "kernelagent_original")).shard(1, 0)
 
     for idx, item in enumerate(dataset, 1):
-
+        total_cnt = total_cnt + 1
+        results = {}
         tol = 1e-2
-
         seed_num=42
         entry_point = "Model"
-        context = {}
-
-        Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
-            original_model_src, context, entry_point
-        ) 
-        ModelNew, tempfile = load_custom_model_with_tempfile(
-            custom_model_src, entry_point=entry_point+"New"
-        )
-
-        set_seed(seed_num)  # set seed for reproducible input
-        # ---------- 解析 get_init_inputs ----------
-        raw_init_inputs = get_init_inputs() if get_init_inputs else []
-        init_args, init_kwargs = _parse_init_inputs(raw_init_inputs)
-        # 把 tensor 放到指定 device
-        init_args  = _move_to_device(init_args,  device)
-        init_kwargs = _move_to_device(init_kwargs, device)
         
-        with torch.no_grad():
-            set_seed(seed_num)  # set seed for reproducible weights
-            original_model = Model(*init_args, **init_kwargs)
-            assert hasattr(original_model, "forward")
-
-        with torch.no_grad():
-            set_seed(seed_num)  # set seed for reproducible weights
-            custom_model = ModelNew(*init_args, **init_kwargs)
-            assert hasattr(custom_model, "forward")
-            torch.cuda.synchronize(device=device)
-
-        inputs = get_inputs()
-        inputs = [
-            x.cuda(device=device) if isinstance(x, torch.Tensor) else x
-            for x in inputs
-        ]
-
-        output = original_model(*inputs)
-        torch.cuda.synchronize(device=device)
-
-        output_new = custom_model(*inputs)
-        torch.cuda.synchronize(device=device)
-        outputs = (output,) if not isinstance(output, tuple) else output
-        outputs_new = (output_new,) if not isinstance(output_new, tuple) else output_new
+        context = {}
+        original_model_src=item['reference_code']
+        uid = item['uid'].split('_', 1)
+        custom_src_path=os.path.join(root_path, 'kernelagent', uid[0], uid[1]+'.py')
 
         correctness = True
+        
+        # extract info
+        try:
+            with open(custom_src_path, 'r', encoding="utf-8") as f:
+                custom_model_src = f.read()
+            Model, get_init_inputs, get_inputs = load_original_model_and_inputs(
+                original_model_src, context, entry_point
+            ) 
+            ModelNew, tempfile = load_custom_model_with_tempfile(
+                custom_model_src, entry_point=entry_point+"New"
+            )
+            set_seed(seed_num)  # set seed for reproducible input
+            # ---------- 解析 get_init_inputs ----------
+            raw_init_inputs = get_init_inputs() if get_init_inputs else []
+            init_args, init_kwargs = _parse_init_inputs(raw_init_inputs)
+            # 把 tensor 放到指定 device
+            init_args  = _move_to_device(init_args,  device)
+            init_kwargs = _move_to_device(init_kwargs, device)
+        except Exception as e:
+            print(f"{item['uid']} init with exception: {e}", flush=True)
+            correctness = False
+        
+        # check
+        try:
+            with torch.no_grad():
+                set_seed(seed_num)  # set seed for reproducible weights
+                original_model = Model(*init_args, **init_kwargs)
+                assert hasattr(original_model, "forward")
+                original_model=original_model.to(device)
+            with torch.no_grad():
+                set_seed(seed_num)  # set seed for reproducible weights
+                custom_model = ModelNew(*init_args, **init_kwargs)
+                assert hasattr(custom_model, "forward")
+                custom_model=custom_model.to(device)
+            inputs = get_inputs()
+            inputs = _move_to_device(inputs, device)
+            output = original_model(*inputs)
+            output_new = custom_model(*inputs)
+            outputs = (output,) if not isinstance(output, tuple) else output
+            outputs_new = (output_new,) if not isinstance(output_new, tuple) else output_new
+            if len(outputs) != len(outputs_new):
+                correctness=False
+            # 遍历每个输出张量
+            for i, (out, out_new) in enumerate(zip(outputs, outputs_new)):
+                # 检查形状是否一致
+                if out.shape != out_new.shape:
+                    correctness=False
 
-        if len(outputs) != len(outputs_new):
+                # 检查数值是否一致
+                if not torch.allclose(out, out_new, atol=tol, rtol=tol):
+                    correctness=False
+        except Exception as e:
+            print(f"{item['uid']} run with exception: {e}", flush=True)
             correctness=False
-        # 遍历每个输出张量
-        for i, (out, out_new) in enumerate(zip(outputs, outputs_new)):
-            # 检查形状是否一致
-            if out.shape != out_new.shape:
-                correctness=False
+        results[item['uid']] = correctness
+        result_list.append(results)
+        print(f"results:{results}", flush=True)
+        if correctness:
+            correct_cnt = correct_cnt+1
 
-            # 检查数值是否一致
-            if not torch.allclose(out, out_new, atol=tol, rtol=tol):
-                correctness=False
+    pass_rate = correct_cnt/total_cnt
+    print(f"{device} pass rate: {pass_rate}", flush=True)
 
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(result_list, f, indent=4, ensure_ascii=False)
+        print(f"\n处理完成！共保存 {len(result_list)} 条数据到 '{output_file}'", flush=True)
+    except Exception as e:
+        print(f"保存 JSON 失败: {e}", flush=True)
 
 if __name__ == "__main__":
     main()

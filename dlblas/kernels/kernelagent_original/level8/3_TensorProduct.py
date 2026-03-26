@@ -16,14 +16,6 @@ from opt_einsum_fx import optimize_einsums_full
 from sympy.physics.wigner import wigner_6j
 from torch import fx
 
-# Try to import Triton; if unavailable, we'll fall back to PyTorch ops
-try:
-    import triton
-    import triton.language as tl
-    _TRITON_AVAILABLE = True
-except Exception:
-    _TRITON_AVAILABLE = False
-
 # ==============================================================================
 # Helper Functions for FX Graph Generation
 # ==============================================================================
@@ -266,111 +258,6 @@ def CODEGEN_MAIN_LEFT_RIGHT(
     graphmod = optimize_einsums_full(graphmod, example_inputs)
 
     return graphmod
-
-# ==============================================================================
-# Triton kernel for weighted gather-reduce over neighbors
-# ==============================================================================
-
-if _TRITON_AVAILABLE:
-    @triton.jit
-    def weighted_gather_reduce_kernel(
-        alpha_ptr,    # float32 [B, K, H]
-        idx_ptr,      # int32   [B, K]
-        src_ptr,      # float32 [N2, O, F] where F = H * KC
-        out_ptr,      # float32 [B, O, F]
-        B, K, H, O, KC, N2, F,  # ints
-        BLOCK_D: tl.constexpr,
-    ):
-        b = tl.program_id(0)
-        d_block = tl.program_id(1)
-
-        F_total = F  # F = H * KC
-        D_total = O * F_total
-
-        # Offsets within the flattened D dimension
-        d_offsets = d_block * BLOCK_D + tl.arange(0, BLOCK_D)
-        mask_d = d_offsets < D_total
-
-        # Compute f_idx and h_idx once per tile
-        f_idx = d_offsets % F_total
-        h_idx = f_idx // KC
-
-        # Help compiler with alignment and contiguity hints
-        tl.multiple_of(d_offsets, 16)
-        tl.max_contiguous(d_offsets, BLOCK_D)
-
-        # Accumulator for the tile
-        acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
-
-        # Base offsets for this batch element
-        alpha_b_base = b * (K * H)
-        idx_b_base = b * K
-
-        # Loop over neighbors k
-        for k in range(0, K):
-            # Load neighbor index j for (b, k)
-            j_idx = tl.load(idx_ptr + idx_b_base + k)
-
-            # Load weights alpha[b, k, h_idx] for the vector of h_idx
-            alpha_k_base = alpha_b_base + k * H
-            w = tl.load(alpha_ptr + alpha_k_base + h_idx, mask=mask_d, other=0.0)
-
-            # Compute src offset for this neighbor: contiguous along D
-            src_row_base = j_idx * D_total
-            val = tl.load(src_ptr + src_row_base + d_offsets, mask=mask_d, other=0.0)
-
-            # Accumulate
-            acc += w * val
-
-        # Store accumulated result to out[b, d_offsets]
-        out_off = b * D_total + d_offsets
-        tl.store(out_ptr + out_off, acc, mask=mask_d)
-
-def weighted_gather_reduce(alpha_ij: torch.Tensor, indices: torch.Tensor, src: torch.Tensor) -> torch.Tensor:
-    """
-    Compute out[b, o, h, kc] = sum_k alpha[b, k, h] * src[indices[b, k], o, h, kc]
-    alpha_ij: [B, K, H] float32
-    indices:  [B, K] int64 or int32
-    src:      [N2, O, H, KC] float32
-    Returns:  [B, O, H, KC] float32
-    """
-    # Fallback to PyTorch if Triton is unavailable or gradients required
-    if (not _TRITON_AVAILABLE) or alpha_ij.requires_grad or src.requires_grad:
-        gathered = src[indices]  # [B, K, O, H, KC]
-        out = torch.sum(alpha_ij.unsqueeze(2).unsqueeze(-1) * gathered, dim=1)
-        return out
-
-    B, K, H = alpha_ij.shape
-    N2, O, H_src, KC = src.shape
-    assert H_src == H, "Head dimension mismatch"
-    # Ensure contiguous memory
-    alpha_c = alpha_ij.contiguous()
-    idx_c = indices.contiguous()
-    src_c = src.contiguous()
-
-    # Triton uses int32 for indexing efficiently
-    if idx_c.dtype != torch.int32:
-        idx_c = idx_c.to(torch.int32)
-
-    F = H * KC
-    D = O * F
-    out = torch.empty((B, O, H, KC), device=src.device, dtype=src.dtype)
-    out_flat = out.view(B, O * F)
-
-    # Flatten src last two dims to [N2, O, F]
-    src_flat = src_c.view(N2, O, F)
-
-    BLOCK_D = 128
-    grid = (B, (D + BLOCK_D - 1) // BLOCK_D)
-    num_warps = 4 if BLOCK_D >= 128 else 2
-
-    weighted_gather_reduce_kernel[grid](
-        alpha_c, idx_c, src_flat, out_flat,
-        B, K, H, O, KC, N2, F,
-        BLOCK_D=BLOCK_D,
-        num_warps=num_warps,
-    )
-    return out
 
 # ==============================================================================
 # Model Classes
@@ -803,12 +690,15 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
                         )
 
             # === Component 1 ===
-            component_1_src = exp_h.reshape(f_N2, (self.lmax + 1) ** 2, self.head, self.in_c // self.head)
+            component_1 = exp_h.reshape(f_N2, (self.lmax + 1) ** 2, self.head, self.in_c // self.head)
+            
             if f_sparse_idx_expnode is not None:
-                # Triton-accelerated weighted gather-reduce over neighbors
-                component_1 = weighted_gather_reduce(alpha_ij, f_sparse_idx_expnode, component_1_src)
+                component_1 = torch.sum(
+                    alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1) * component_1[f_sparse_idx_expnode],
+                    dim=1,
+                )
             else:
-                component_1 = torch.einsum("bjh,johk -> bohk", alpha_ij, component_1_src)
+                component_1 = torch.einsum("bjh,johk -> bohk", alpha_ij, component_1)
 
             component_1 = component_1.reshape(f_N1, (self.lmax + 1) ** 2, self.in_c)
             component_1 = self.tensor_product_tp_component_1(component_1, Y_powers[self.order])
@@ -818,11 +708,13 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
             for i, component in enumerate(self.components):
                 k = i + 1
                 c = component["tp_without_sort"](exp_h, exp_Y_powers[k])
-                c = c.reshape(f_N2, -1, self.head, c.shape[-1] // self.head).contiguous()
-
+                c = c.reshape(f_N2, -1, self.head, c.shape[-1] // self.head)
+                
                 if f_sparse_idx_expnode is not None:
-                    # Triton-accelerated weighted gather-reduce
-                    c = weighted_gather_reduce(alpha_ij, f_sparse_idx_expnode, c)
+                    c = torch.sum(
+                        alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1) * c[f_sparse_idx_expnode],
+                        dim=1,
+                    )
                 else:
                     c = torch.einsum("bjh,johk -> bohk", alpha_ij, c)
 
@@ -837,7 +729,7 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
 # Benchmarking
 # ==============================================================================
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self):
         super().__init__()
         head = 64
@@ -876,7 +768,7 @@ def get_inputs():
     L_max = 3
     In_Channels = 64
     dtype = torch.float32
-    device = 'cuda'
+    device = 'cpu'
 
     pos = torch.randn(N1, 3, dtype=dtype, device=device)
     exp_pos = torch.randn(N2, 3, dtype=dtype, device=device)
@@ -888,9 +780,3 @@ def get_inputs():
 
 def get_init_inputs():
     return []
-
-if __name__ == "__main__":
-    torch.set_default_device("cuda")
-    model = Model(*get_init_inputs())
-    inputs = get_inputs()
-    print(model(*inputs).shape)

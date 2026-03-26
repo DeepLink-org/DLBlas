@@ -9,9 +9,6 @@ import sys
 import math
 from e3nn import o3
 
-import triton
-import triton.language as tl
-
 from fairchem.core.models.equiformer_v2.activation import  GateActivation, S2Activation, SeparableS2Activation
 from fairchem.core.models.equiformer_v2.so3 import (
     CoefficientMappingModule,
@@ -20,163 +17,6 @@ from fairchem.core.models.equiformer_v2.so3 import (
     ToS2Grid,
     SO3_Embedding
 )
-
-@triton.jit
-def _linear_fw_kernel(
-    X_ptr, W_ptr, B_ptr, Y_ptr,
-    M, N, K,
-    stride_xm, stride_xk,
-    stride_wk, stride_wn,
-    stride_ym, stride_yn,
-    ADD_BIAS: tl.constexpr,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
-):
-    # Program IDs
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-
-    # Offsets
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = tl.arange(0, BLOCK_K)
-
-    # Helpful alignment hints for the compiler
-    tl.multiple_of(offs_m, BLOCK_M)
-    tl.multiple_of(offs_n, BLOCK_N)
-    tl.multiple_of(offs_k, BLOCK_K)
-
-    # Masks
-    m_mask = offs_m[:, None] < M
-    n_mask = offs_n[None, :] < N
-
-    # Base pointers for first K-tile
-    x_ptrs = X_ptr + offs_m[:, None] * stride_xm + offs_k[None, :] * stride_xk       # [BM, BK]
-    w_ptrs = W_ptr + offs_k[:, None] * stride_wk + offs_n[None, :] * stride_wn       # [BK, BN]
-
-    # Accumulator in fp32
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-
-    # Preload first tiles
-    k_row_mask = (offs_k[None, :] < K)
-    k_col_mask = (offs_k[:, None] < K)
-    a = tl.load(x_ptrs, mask=m_mask & k_row_mask, other=0.0, cache_modifier=".cg", eviction_policy="evict_first")
-    b = tl.load(w_ptrs, mask=k_col_mask & n_mask, other=0.0, cache_modifier=".ca", eviction_policy="evict_last")
-
-    # Iterate over K tiles with simple software pipelining
-    k = 0
-    while k + BLOCK_K < K:
-        # Prefetch next tiles
-        x_ptrs_next = x_ptrs + BLOCK_K * stride_xk
-        w_ptrs_next = w_ptrs + BLOCK_K * stride_wk
-
-        k_next = k + BLOCK_K
-        next_row_mask = (k_next + offs_k[None, :]) < K
-        next_col_mask = (k_next + offs_k[:, None]) < K
-
-        a_next = tl.load(x_ptrs_next, mask=m_mask & next_row_mask, other=0.0, cache_modifier=".cg", eviction_policy="evict_first")
-        b_next = tl.load(w_ptrs_next, mask=next_col_mask & n_mask, other=0.0, cache_modifier=".ca", eviction_policy="evict_last")
-
-        # Compute on current tiles
-        acc += tl.dot(a, b)
-
-        # Advance
-        a = a_next
-        b = b_next
-        x_ptrs = x_ptrs_next
-        w_ptrs = w_ptrs_next
-        k = k_next
-
-    # Final tile
-    acc += tl.dot(a, b)
-
-    # Add bias
-    if ADD_BIAS:
-        bias = tl.load(B_ptr + offs_n, mask=(offs_n < N), other=0.0)
-        acc += bias[None, :]
-
-    # Store
-    y_ptrs = Y_ptr + offs_m[:, None] * stride_ym + offs_n[None, :] * stride_yn
-    tl.store(y_ptrs, acc, mask=m_mask & n_mask)
-
-
-def _triton_linear_batched_lastdim(x, weight, bias):
-    """
-    Compute y = x @ weight.T + bias for x shape [B, 1, K] (or [B, K]).
-    weight: [N, K], bias: [N]
-    Returns y shape [B, 1, N] (or [B, N]).
-    Heuristic: use cuBLAS-accelerated torch.nn.functional.linear for large problems;
-    use Triton for small/medium problems to reduce launch overhead.
-    """
-    # If x is 3D with middle dim 1, prefer using high-performance F.linear directly for large GEMMs
-    is_3d = (x.dim() == 3)
-    if is_3d:
-        B, one, K = x.shape
-        assert one == 1, "Expected the middle dimension to be 1."
-        M = B
-    else:
-        M, K = x.shape
-
-    N = weight.shape[0]
-
-    # Conditions for Triton execution
-    can_triton = (x.is_cuda and weight.is_cuda and (bias is None or bias.is_cuda))
-    # Simple heuristic threshold: for large GEMMs, cuBLAS (F.linear/addmm) is typically faster
-    problem_size = M * N * K
-    # Keep Triton only for relatively small problems to minimize overhead
-    use_triton = can_triton and (problem_size <= (64 * 1024 * 1024))
-
-    if not use_triton:
-        # Fast path via cuBLAS using F.linear; preserves broadcasting and avoids manual reshapes
-        y = torch.nn.functional.linear(x, weight, bias)
-        return y
-
-    # Triton path: collapse to 2D for GEMM
-    if is_3d:
-        x_mat = x.reshape(M, K)
-    else:
-        x_mat = x
-
-    # Allocate output
-    y = torch.empty((M, N), device=x_mat.device, dtype=x_mat.dtype)
-
-    # Strides
-    stride_xm, stride_xk = x_mat.stride()
-    # Treat weight as logical [K, N]
-    stride_wk = weight.stride(1)  # along K
-    stride_wn = weight.stride(0)  # along N
-    stride_ym, stride_yn = y.stride()
-
-    # Tile sizes tuned for K=N=256 on NVIDIA H100/H200
-    # Larger BK reduces the number of K-tiles; choose based on K
-    if K >= 256:
-        BLOCK_M = 64
-        BLOCK_N = 128
-        BLOCK_K = 128
-        num_warps = 8
-        num_stages = 5
-    else:
-        BLOCK_M = 128
-        BLOCK_N = 64
-        BLOCK_K = 64
-        num_warps = 4
-        num_stages = 4
-
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-
-    _linear_fw_kernel[grid](
-        x_mat, weight, bias if bias is not None else y, y,
-        M, N, K,
-        stride_xm, stride_xk,
-        stride_wk, stride_wn,
-        stride_ym, stride_yn,
-        ADD_BIAS=(bias is not None),
-        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K,
-        num_warps=num_warps, num_stages=num_stages,
-    )
-
-    return y.reshape(B, 1, N) if is_3d else y
-
-
 class SO3_Grid(torch.nn.Module):
 
     def __init__(
@@ -200,7 +40,7 @@ class SO3_Grid(torch.nn.Module):
 
         self.mapping = CoefficientMappingModule([self.lmax], [self.lmax])
 
-        device = 'cuda'
+        device = 'cpu'
 
         to_grid = ToS2Grid(
             self.lmax,
@@ -326,7 +166,7 @@ class SO3_Linear_e2former(torch.nn.Module):
     def __repr__(self):
         return f"{self.__class__.__name__}(in_features={self.in_features}, out_features={self.out_features}, lmax={self.lmax})"
 
-class ModelNew(torch.nn.Module):
+class Model(torch.nn.Module):
     
 
     def __init__(
@@ -342,7 +182,7 @@ class ModelNew(torch.nn.Module):
         use_sep_s2_act=True,  # Separable S2 activation. Used for ablation study.
        
     ):
-        super(ModelNew, self).__init__()
+        super(Model, self).__init__()
 
             
         self.sphere_channels = sphere_channels
@@ -443,10 +283,8 @@ class ModelNew(torch.nn.Module):
                 )
         else:
             if self.gating_linear is not None:
-                gi = input_embedding.embedding.narrow(1, 0, 1)
-                # Prefer cuBLAS-backed F.linear for large GEMMs; Triton is used for small problems
-                gating_scalars = _triton_linear_batched_lastdim(
-                    gi, self.gating_linear.weight, self.gating_linear.bias
+                gating_scalars = self.gating_linear(
+                    input_embedding.embedding.narrow(1, 0, 1)
                 )
 
         input_embedding = self.so3_linear_1(input_embedding)
@@ -514,7 +352,7 @@ dim_irreps_total = (lmax + 1) ** 2 # 16
 def get_inputs():
     # torch.manual_seed(42)
     # input_embedding shape: [2240, 16, 256]
-    input_embedding = torch.randn(N_nodes, dim_irreps_total, sphere_channels, dtype=torch.float32,device='cuda')
+    input_embedding = torch.randn(N_nodes, dim_irreps_total, sphere_channels, dtype=torch.float32,device='cpu')
     return [input_embedding]
 def get_init_inputs():
     return [
