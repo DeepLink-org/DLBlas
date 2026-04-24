@@ -107,18 +107,18 @@ if triton is not None:
                 + offs_i[:, None] * stride_rm
                 + offs_h[None, :] * stride_rh
             ).to(tl.float32)
-            comb_t = tl.load(
+            comb = tl.load(
                 comb_mix_ptr
                 + pid_n * stride_cn
-                + offs_o[:, None] * stride_co
-                + offs_i[None, :] * stride_ci
-            )
-            term2 = tl.dot(comb_t, residual_block, input_precision="ieee", out_dtype=tl.float32)
+                + offs_i[:, None] * stride_ci
+                + offs_o[None, :] * stride_co
+            ).to(tl.float32)
+            term2 = tl.dot(tl.trans(comb), residual_block, out_dtype=tl.float32)
             post_mix_block = tl.load(
                 post_mix_ptr
                 + pid_n * stride_pn
                 + offs_o[:, None] * stride_pm
-            )
+            ).to(tl.float32)
             out_block = term2 + post_mix_block * layer_output[None, :]
             tl.store(
                 out_ptr

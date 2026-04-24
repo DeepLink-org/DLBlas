@@ -1,70 +1,78 @@
 import torch
 import torch.nn as nn
-
 import triton
 import triton.language as tl
 
 
 @triton.jit
 def fused_backward_kernel(
-    input_ptr,           # *f32, shape [Ni, Mh]
-    grad_out_ptr,        # *f32, shape [Ni, Mh]
-    mhc_scale_ptr,       # *f32, shape [1]
-    mhc_base_ptr,        # *f32, shape [Mh]
-    grad_input_ptr,      # *f32, shape [Ni, Mh]
-    grad_mhc_base_ptr,   # *f32, shape [Mh]
-    grad_mhc_scale_ptr,  # *f32, shape [1]
-    Ni: tl.constexpr,    # int
-    Mh: tl.constexpr,    # int
-    BLOCK_N: tl.constexpr,
+    input_ptr,            # float* (n0, n1, k)
+    mhc_scale_ptr,        # float* (1,)
+    mhc_base_ptr,         # float* (k,)
+    grad_out_ptr,         # float* (n0, n1, k)
+    grad_input_ptr,       # float* (n0, n1, k)
+    grad_scale_ptr,       # float* (1,)
+    grad_base_ptr,        # float* (k,)
+    n0, n1, k,            # int sizes
+    stride_in_0, stride_in_1, stride_in_2,   # input strides
+    stride_go_0, stride_go_1, stride_go_2,   # grad_out strides
+    stride_gi_0, stride_gi_1, stride_gi_2,   # grad_input strides
     BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_m = tl.program_id(1)
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
 
-    n_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    tl.max_contiguous(offs_k, BLOCK_K)
 
-    # Hints for better codegen/vectorization
-    tl.multiple_of(n_offsets, BLOCK_N)
-    tl.multiple_of(m_offsets, BLOCK_M)
+    M = n0 * n1
+    mask_m = offs_m < M
+    mask_k = offs_k < k
+    mask = mask_m[:, None] & mask_k[None, :]
 
-    n_mask = n_offsets < Ni
-    m_mask = m_offsets < Mh
-    mask = n_mask[:, None] & m_mask[None, :]
+    # Decompose offs_m -> (i0, i1)
+    i0 = offs_m // n1
+    i1 = offs_m - i0 * n1  # cheaper than modulo
 
-    # Compute base pointers for 2D tile
-    base_ptrs = n_offsets[:, None] * Mh + m_offsets[None, :]
+    # Compute pointers
+    ptr_in = input_ptr + (i0[:, None] * stride_in_0 + i1[:, None] * stride_in_1 + offs_k[None, :] * stride_in_2)
+    ptr_go = grad_out_ptr + (i0[:, None] * stride_go_0 + i1[:, None] * stride_go_1 + offs_k[None, :] * stride_go_2)
+    ptr_gi = grad_input_ptr + (i0[:, None] * stride_gi_0 + i1[:, None] * stride_gi_1 + offs_k[None, :] * stride_gi_2)
 
-    # Loads with cache hints: stream x/g, keep base in cache (reused across rows)
-    x = tl.load(input_ptr + base_ptrs, mask=mask, other=0.0, cache_modifier=".cg")
-    g = tl.load(grad_out_ptr + base_ptrs, mask=mask, other=0.0, cache_modifier=".cg")
-    s = tl.load(mhc_scale_ptr)  # scalar
-    b_m = tl.load(mhc_base_ptr + m_offsets, mask=m_mask, other=0.0, cache_modifier=".ca")
+    # Loads with cache/eviction hints
+    x = tl.load(ptr_in, mask=mask, other=0.0, cache_modifier=".cg")
+    go = tl.load(ptr_go, mask=mask, other=0.0, cache_modifier=".cg")
+    scale = tl.load(mhc_scale_ptr, eviction_policy="evict_last")
+    base_k = tl.load(mhc_base_ptr + offs_k, mask=mask_k, other=0.0, eviction_policy="evict_last")
 
-    # Broadcast mhc_base across rows and compute sigmoid and its derivative
-    z = tl.fma(x, s, b_m[None, :])
-    sig = tl.sigmoid(z)
-    one_minus_sig = 1.0 - sig
-    gz = g * sig * one_minus_sig
+    # z = x * scale + base
+    z = x * scale + base_k[None, :]
+
+    # sigmoid and grad_z (use s - s*s for derivative)
+    s = tl.sigmoid(z)
+    t = s - s * s
+    grad_z = go * t
 
     # grad_input_mix
-    grad_input = gz * s
-    tl.store(grad_input_ptr + base_ptrs, grad_input, mask=mask)
+    gi = grad_z * scale
+    tl.store(ptr_gi, gi, mask=mask)
 
-    # Partial reductions for grad_mhc_base (sum over n for each m)
-    partial_base = tl.sum(gz, axis=0)  # [BLOCK_M]
-    tl.atomic_add(grad_mhc_base_ptr + m_offsets, partial_base, mask=m_mask)
+    # grad_mhc_base: sum over m for each k, then atomic add
+    sum_m = tl.sum(grad_z, axis=0)
+    tl.atomic_add(grad_base_ptr + offs_k, sum_m, mask=mask_k)
 
-    # Partial reduction for grad_mhc_scale (sum over all n and m)
-    partial_scale_rows = tl.sum(gz * x, axis=1)  # [BLOCK_N]
-    partial_scale = tl.sum(partial_scale_rows, axis=0)
-    tl.atomic_add(grad_mhc_scale_ptr, partial_scale)
+    # grad_mhc_scale: sum over all elements of grad_z * x
+    prod = grad_z * x
+    tile_row_sum = tl.sum(prod, axis=1)          # [BLOCK_M]
+    tile_sum = tl.sum(tile_row_sum, axis=0)      # scalar
+    tl.atomic_add(grad_scale_ptr, tile_sum)
 
 
 class ModelNew(nn.Module):
     """
-    Model that computes manual backward of mhc_head_compute_mix using a fused Triton kernel when available.
+    Model that computes manual backward of mhc_head_compute_mix using a fused Triton kernel.
     """
 
     def __init__(self):
@@ -89,61 +97,42 @@ class ModelNew(nn.Module):
         Returns:
             grad_input_mix, grad_mhc_scale, grad_mhc_base
         """
-        # Fallback to PyTorch if inputs are not CUDA tensors or not float32
-        if (
-            (not input_mix.is_cuda)
-            or (not grad_out.is_cuda)
-            or (not mhc_scale.is_cuda)
-            or (not mhc_base.is_cuda)
-            or (input_mix.dtype != torch.float32)
-            or (grad_out.dtype != torch.float32)
-            or (mhc_scale.dtype != torch.float32)
-            or (mhc_base.dtype != torch.float32)
-        ):
-            z = input_mix * mhc_scale + mhc_base
-            sigmoid = torch.sigmoid(z)
-            grad_z = grad_out * sigmoid * (1 - sigmoid)
-            grad_input_mix = grad_z * mhc_scale
-            grad_mhc_base = grad_z.sum(dim=(0, 1), keepdim=True).view(-1)
-            grad_mhc_scale = (grad_z * input_mix).sum(dim=(0, 1, 2), keepdim=True).view(1)
-            return grad_input_mix, grad_mhc_scale, grad_mhc_base
 
-        # Ensure contiguous memory layout
-        n0, n1, mh = input_mix.shape
-        Ni = n0 * n1
-        Mh = mh
-
-        x2d = input_mix.reshape(Ni, Mh).contiguous()
-        g2d = grad_out.reshape(Ni, Mh).contiguous()
-
+        # Prepare outputs
         grad_input_mix = torch.empty_like(input_mix)
-        grad_input_2d = grad_input_mix.view(Ni, Mh)
+        grad_mhc_scale = torch.zeros_like(mhc_scale)
+        grad_mhc_base = torch.zeros_like(mhc_base)
 
-        grad_mhc_base = torch.zeros(Mh, device=input_mix.device, dtype=input_mix.dtype)
-        grad_mhc_scale = torch.zeros(1, device=input_mix.device, dtype=input_mix.dtype)
+        n0, n1, k = input_mix.shape
+
+        # Strides (in elements)
+        s_in0, s_in1, s_in2 = input_mix.stride()
+        s_go0, s_go1, s_go2 = grad_out.stride()
+        s_gi0, s_gi1, s_gi2 = grad_input_mix.stride()
 
         # Launch Triton kernel
-        BLOCK_N = 128
-        BLOCK_M = 32
-        grid = (triton.cdiv(Ni, BLOCK_N), triton.cdiv(Mh, BLOCK_M))
+        BLOCK_M = 128
+        BLOCK_K = 32
+        grid = (triton.cdiv(n0 * n1, BLOCK_M), triton.cdiv(k, BLOCK_K))
         fused_backward_kernel[grid](
-            x2d,
-            g2d,
+            input_mix,
             mhc_scale,
             mhc_base,
-            grad_input_2d,
-            grad_mhc_base,
+            grad_out,
+            grad_input_mix,
             grad_mhc_scale,
-            Ni,
-            Mh,
-            BLOCK_N=BLOCK_N,
+            grad_mhc_base,
+            n0, n1, k,
+            s_in0, s_in1, s_in2,
+            s_go0, s_go1, s_go2,
+            s_gi0, s_gi1, s_gi2,
             BLOCK_M=BLOCK_M,
+            BLOCK_K=BLOCK_K,
             num_warps=4,
             num_stages=2,
         )
 
-        return grad_input_mix, grad_mhc_scale, grad_mhc_base
-
+        return grad_input_mix, grad_mhc_scale.view(1), grad_mhc_base
 
 batch0 = 2
 batch1 = 1024

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()
@@ -9,27 +10,41 @@ class Model(nn.Module):
         self,
         x: torch.Tensor,
         residual: torch.Tensor,
-        post_layer_mix: torch.Tensor,
-        comb_res_mix: torch.Tensor,
+        post: torch.Tensor,
+        comb: torch.Tensor,
     ) -> torch.Tensor:
-        term2 = torch.einsum('abmn,abmc->abnc', comb_res_mix, residual.float())
-        return (x.float().unsqueeze(-2) * post_layer_mix + term2).bfloat16()
+        x_f = x.float()
+        residual_f = residual.float()
+        post_f = post.float().unsqueeze(-1)
+        comb_f = comb.float().unsqueeze(-1)
+        output = post_f * x_f.unsqueeze(-2) + torch.sum(
+            comb_f * residual_f.unsqueeze(-2), dim=2
+        )
+        return output.bfloat16()
 
-n0 = 1
-n1 = 4096
-h = 1280
-mhc_mult = 4
-device = 'cuda'
+
+def generate_test_data(params):
+    batch_size = params['batch_size']
+    seq_len = params['seq_len']
+    hidden_size = params['hidden']
+    hc_mult = params['hc']
+    x_data = torch.randn(batch_size, seq_len, hidden_size, dtype=torch.bfloat16, device='cpu')
+    residual_data = torch.randn(batch_size, seq_len, hc_mult, hidden_size, dtype=torch.bfloat16, device='cpu')
+    post_data = torch.randn(batch_size, seq_len, hc_mult, dtype=torch.float32, device='cpu')
+    comb_data = torch.randn(batch_size, seq_len, hc_mult, hc_mult, dtype=torch.float32, device='cpu')
+    o_grad = torch.randn(batch_size, seq_len, hc_mult, hidden_size, dtype=torch.bfloat16, device='cpu')
+    return x_data, residual_data, post_data, comb_data, o_grad
+
+
+def test_hc_post_fwd():
+    return Model(*get_init_inputs()).forward(*get_inputs())
+
 
 def get_inputs():
-    x = torch.randn((n0, n1, h), dtype=torch.bfloat16, device=device)
-    residual = torch.randn((n0, n1, mhc_mult, h), dtype=torch.bfloat16, device=device)
-    post_layer_mix = torch.randn((n0, n1, mhc_mult, 1), dtype=torch.float32, device=device)
-    comb_res_mix = torch.randn((n0, n1, mhc_mult, mhc_mult), dtype=torch.float32, device=device)
+    params = {'batch_size': 1, 'seq_len': 4096, 'hidden': 1280, 'hc': 4}
+    x_data, residual_data, post_data, comb_data, o_grad = generate_test_data(params)
+    return [x_data, residual_data, post_data, comb_data]
 
-    return [
-        x, residual, post_layer_mix, comb_res_mix,
-    ]
 
 def get_init_inputs():
     return []

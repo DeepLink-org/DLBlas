@@ -6,36 +6,44 @@ import triton.language as tl
 
 @triton.jit
 def expand_to_mhc_kernel(
-    x_ptr,  # *x* pointer, shape (L, H), contiguous
-    y_ptr,  # *y* pointer, shape (L, M, H), contiguous
-    L,      # total leading elements collapsed
-    M,      # mhc_mult
-    H,      # hidden size
+    x_ptr, y_ptr,
+    B, S, M, H,
+    stride_x_b, stride_x_s, stride_x_h,
+    stride_y_b, stride_y_s, stride_y_m, stride_y_h,
     BLOCK_H: tl.constexpr,
-    BLOCK_M: tl.constexpr,
 ):
-    # Program IDs along (L, ceil_div(M, BLOCK_M), ceil_div(H, BLOCK_H))
-    pid_l = tl.program_id(0)
-    pid_mb = tl.program_id(1)
-    pid_ht = tl.program_id(2)
+    pid_bs = tl.program_id(0)
+    pid_h = tl.program_id(1)
+    pid_m = tl.program_id(2)
 
-    # Offsets along H and M for this program
-    offs_h = pid_ht * BLOCK_H + tl.arange(0, BLOCK_H)
-    mask_h = offs_h < H
-    offs_m = pid_mb * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask_m = offs_m < M
+    # Map program ids to (b, s, m)
+    b = pid_bs // S
+    s = pid_bs - b * S
+    m = pid_m
 
-    # Load a contiguous tile of H from x for this l
-    x_row_ptr = x_ptr + pid_l * H + offs_h
-    vals = tl.load(x_row_ptr, mask=mask_h, other=0)
+    # Offsets along hidden dimension
+    h_offsets = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
+    tl.max_contiguous(h_offsets, BLOCK_H)
+    tl.multiple_of(h_offsets, 16)
+    h_mask = h_offsets < H
 
-    # Prepare a 2D tile pointer for y with shape (BLOCK_M, BLOCK_H)
-    # y index: ((l * M + m) * H + h)
-    y_row_offsets = (pid_l * M + offs_m) * H
-    y_tile_ptrs = y_ptr + y_row_offsets[:, None] + offs_h[None, :]
+    # Precompute base pointers for (b, s, m)
+    base_x = b.to(tl.int64) * stride_x_b + s.to(tl.int64) * stride_x_s
+    base_y = (b.to(tl.int64) * stride_y_b +
+              s.to(tl.int64) * stride_y_s +
+              m.to(tl.int64) * stride_y_m)
 
-    # Broadcast vals across the M dimension and store once
-    tl.store(y_tile_ptrs, vals[None, :], mask=mask_m[:, None] & mask_h[None, :])
+    # Compute input/output pointers
+    x_ptrs = x_ptr + base_x + h_offsets.to(tl.int64) * stride_x_h
+    y_ptrs = y_ptr + base_y + h_offsets.to(tl.int64) * stride_y_h
+
+    # Hints for locality/coalescing
+    tl.max_contiguous(x_ptrs, BLOCK_H)
+    tl.max_contiguous(y_ptrs, BLOCK_H)
+
+    # Load once and store; use L2 cache to improve reuse across M CTAs
+    x_vals = tl.load(x_ptrs, mask=h_mask, other=0, cache_modifier=".cg")
+    tl.store(y_ptrs, x_vals, mask=h_mask)
 
 
 class ModelNew(nn.Module):
@@ -59,63 +67,35 @@ class ModelNew(nn.Module):
         Returns:
             torch.Tensor: 扩展后的张量，形状为 (batch, seq_len, mhc_mult, hidden_dim)。
         """
-        original_shape = x.shape
-        M = self.mhc_mult
-        H = original_shape[-1]
+        # Fast path: Triton kernel for CUDA tensors with 3D shape (B, S, H)
+        if  x.ndim == 3:
+            B, S, H = x.shape
+            M = self.mhc_mult
+            # Allocate contiguous output
+            y = torch.empty((B, S, M, H), dtype=x.dtype, device=x.device)
 
-        # Fallback to reference path for CPU or degenerate cases
-        if (not x.is_cuda) or (H == 0) or (M == 0) or (x.numel() == 0):
-            return x.unsqueeze(-2).expand(*original_shape[:-1], M, H).contiguous()
+            # Get strides in element units
+            sx_b, sx_s, sx_h = x.stride()
+            sy_b, sy_s, sy_m, sy_h = y.stride()
 
-        # Ensure contiguous and flatten leading dims into L
-        x_contig = x.contiguous()
-        L = 1
-        for d in original_shape[:-1]:
-            L *= d
-        x_flat = x_contig.view(L, H)
+            # Larger tile and more warps for better bandwidth utilization
+            BLOCK_H = 1024
+            grid = (B * S, triton.cdiv(H, BLOCK_H), M)
 
-        # Allocate output tensor as (L, M, H), then reshape to final
-        y_flat = torch.empty((L, M, H), dtype=x.dtype, device=x.device)
-
-        # Kernel launch configuration tuning
-        # Larger BLOCK_H improves bandwidth by reducing grid overhead; choose based on H
-        if H >= 512:
-            BLOCK_H = 512
-            num_warps = 8
-        elif H >= 256:
-            BLOCK_H = 256
-            num_warps = 8
-        elif H >= 128:
-            BLOCK_H = 128
-            num_warps = 4
+            expand_to_mhc_kernel[grid](
+                x, y,
+                B, S, M, H,
+                sx_b, sx_s, sx_h,
+                sy_b, sy_s, sy_m, sy_h,
+                BLOCK_H=BLOCK_H,
+                num_warps=8,
+                num_stages=2,
+            )
+            return y
         else:
-            BLOCK_H = 64
-            num_warps = 2
-
-        # Replicate multiple M slices per program; choose a small power of two for occupancy
-        if M >= 16:
-            BLOCK_M = 16
-        elif M >= 8:
-            BLOCK_M = 8
-        elif M >= 4:
-            BLOCK_M = 4
-        elif M >= 2:
-            BLOCK_M = 2
-        else:
-            BLOCK_M = 1
-
-        grid = (L, (M + BLOCK_M - 1) // BLOCK_M, (H + BLOCK_H - 1) // BLOCK_H)
-
-        expand_to_mhc_kernel[grid](
-            x_flat, y_flat,
-            L, M, H,
-            BLOCK_H=BLOCK_H,
-            BLOCK_M=BLOCK_M,
-            num_warps=num_warps,
-        )
-
-        # Reshape back to (..., M, H)
-        return y_flat.view(*original_shape[:-1], M, H)
+            # Fallback to reference implementation for non-CUDA or non-3D cases
+            original_shape = x.shape
+            return x.unsqueeze(-2).expand(*original_shape[:-1], self.mhc_mult, original_shape[-1]).contiguous()
 
 
 def get_init_inputs():
@@ -134,5 +114,5 @@ def get_inputs():
     batch_size = 1
     seq_len = 1024
     hidden_dim = 1280
-    x = torch.randn(batch_size, seq_len, hidden_dim, device='cuda')
+    x = torch.randn(batch_size, seq_len, hidden_dim)
     return [x]
