@@ -12,6 +12,8 @@ it improves over Triton's autotuner in the following ways:
 
 - **caching** the best operator implementation and kernel configurations are cached for the input tensors. It is shape, dtype, device specific.
 
+## Latest News
+- 04/24/2026 🚀: The [KernelSwift](https://deeplink.org.cn/kernelswift) fully automatic intelligent operator generation system achieves 100% correctness on NV chips and an average of over 75% correctness on domestic chips, with an average speedup ratio of 3.4x. After manual refinement of the automatically generated operators, an average of 100% correctness is attained on domestic chips, significantly boosting the efficiency of operator development and migration.
 
 ## Install
 
