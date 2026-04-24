@@ -241,15 +241,16 @@ def main():
 
     # defined here
     device = 'cuda'
-    root_path = f"/datapool/zmz/04kernelagent/caizheng/DLBlas-add-kernelbench-triton-gpt5high/dlblas/kernels"
-    output_file = f"/datapool/zmz/04kernelagent/caizheng/DLBlas-add-kernelbench-triton-gpt5high/dlblas/kernels/output_{device}.json"
+    
+    root_path = Path(__file__).resolve().parent
+    output_file = os.path.join(root_path, f"output_{device}.json")
     
     
     # init
     result_list = []
     total_cnt = 0
     correct_cnt = 0
-    dataset = KernelBenchDataset(os.path.join(root_path, "kernelagent_original")).shard(1, 0)
+    dataset = KernelBenchDataset(os.path.join(root_path, "kernelswift_torch")).shard(1, 0)
 
     for idx, item in enumerate(dataset, 1):
         total_cnt = total_cnt + 1
@@ -261,7 +262,7 @@ def main():
         context = {}
         original_model_src=item['reference_code']
         uid = item['uid'].split('_', 1)
-        custom_src_path=os.path.join(root_path, 'kernelagent', uid[0], uid[1]+'.py')
+        custom_src_path=os.path.join(root_path, 'kernelswift_triton', uid[0], uid[1]+'.py')
 
         correctness = True
         
