@@ -61,9 +61,7 @@ class ModelNew(nn.Module):
         mhc_pre_eps: float,
     ) -> torch.Tensor:
         # Fallback to PyTorch if Triton unavailable or running on CPU
-        if (not _TRITON_AVAILABLE) or (not input_mix.is_cuda) or (not mhc_scale.is_cuda) or (not mhc_base.is_cuda):
-            mhc_head_layer_mix = input_mix * mhc_scale + mhc_base
-            return torch.sigmoid(mhc_head_layer_mix) + mhc_pre_eps
+
 
         assert input_mix.dim() == 3, "input_mix must be 3D [B, N, C]"
         B, N, C = input_mix.shape
@@ -87,7 +85,7 @@ class ModelNew(nn.Module):
 
         _sigmoid_affine_kernel[grid](
             x, scale, base, y,
-            total, C, float(mhc_pre_eps),
+            total, C, mhc_pre_eps.float(),
             BLOCK=BLOCK,
             num_warps=8,
             num_stages=2,

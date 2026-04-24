@@ -151,6 +151,25 @@ def _move_to_device(obj, device):
     return obj
 
 
+def _outputs_match(expected, actual, tol):
+    if isinstance(expected, torch.Tensor) and isinstance(actual, torch.Tensor):
+        if expected.shape != actual.shape:
+            return False
+        return torch.allclose(expected, actual, atol=tol, rtol=tol)
+
+    if isinstance(expected, (list, tuple)) and isinstance(actual, (list, tuple)):
+        if len(expected) != len(actual):
+            return False
+        return all(_outputs_match(x, y, tol) for x, y in zip(expected, actual))
+
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if expected.keys() != actual.keys():
+            return False
+        return all(_outputs_match(expected[k], actual[k], tol) for k in expected)
+
+    return expected == actual
+
+
 class KernelBenchDataset:
     """
     条目示例
@@ -240,7 +259,7 @@ class KernelBenchDataset:
 def main():
 
     # defined here
-    device = 'cuda'
+    device = 'npu'
     
     root_path = Path(__file__).resolve().parent
     output_file = os.path.join(root_path, f"output_{device}.json")
@@ -303,19 +322,8 @@ def main():
             inputs = _move_to_device(inputs, device)
             output = original_model(*inputs)
             output_new = custom_model(*inputs)
-            outputs = (output,) if not isinstance(output, tuple) else output
-            outputs_new = (output_new,) if not isinstance(output_new, tuple) else output_new
-            if len(outputs) != len(outputs_new):
+            if not _outputs_match(output, output_new, tol):
                 correctness=False
-            # 遍历每个输出张量
-            for i, (out, out_new) in enumerate(zip(outputs, outputs_new)):
-                # 检查形状是否一致
-                if out.shape != out_new.shape:
-                    correctness=False
-
-                # 检查数值是否一致
-                if not torch.allclose(out, out_new, atol=tol, rtol=tol):
-                    correctness=False
         except Exception as e:
             print(f"{item['uid']} run with exception: {e}", flush=True)
             correctness=False
