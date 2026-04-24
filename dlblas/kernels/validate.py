@@ -259,7 +259,7 @@ class KernelBenchDataset:
 def main():
 
     # defined here
-    device = 'npu'
+    device = 'cuda'
     
     root_path = Path(__file__).resolve().parent
     output_file = os.path.join(root_path, f"output_{device}.json")
