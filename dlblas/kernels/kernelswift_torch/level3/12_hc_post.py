@@ -12,8 +12,9 @@ class Model(nn.Module):
         post_layer_mix: torch.Tensor,
         comb_res_mix: torch.Tensor,
     ) -> torch.Tensor:
-        term2 = torch.einsum('abmn,abmc->abnc', comb_res_mix, residual.float())
-        return (x.float().unsqueeze(-2) * post_layer_mix + term2).bfloat16()
+        # x: [b,s,d], residual: [b,s,hc,d], post: [b,s,hc], comb: [b,s,hc,hc], y: [b,s,hc,d]
+        y = post_layer_mix * x.unsqueeze(-2) + torch.sum(comb_res_mix.unsqueeze(-1) * residual.unsqueeze(-2), dim=2)
+        return y.type_as(x)
 
 n0 = 1
 n1 = 4096
