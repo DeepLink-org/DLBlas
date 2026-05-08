@@ -6,11 +6,18 @@ import triton.language as tl
 
 @triton.jit
 def _pairwise_distance_kernel(
-    X, Y, D,
-    N, M, F,
-    stride_xn, stride_xf,
-    stride_ym, stride_yf,
-    stride_dn, stride_dm,
+    X,
+    Y,
+    D,
+    N,
+    M,
+    F,
+    stride_xn,
+    stride_xf,
+    stride_ym,
+    stride_yf,
+    stride_dn,
+    stride_dm,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_F: tl.constexpr,
@@ -63,11 +70,18 @@ def _pairwise_distance_kernel(
 
 @triton.jit
 def _pairwise_dot_kernel(
-    X, Y, S,
-    N, M, F,
-    stride_xn, stride_xf,
-    stride_ym, stride_yf,
-    stride_sn, stride_sm,
+    X,
+    Y,
+    S,
+    N,
+    M,
+    F,
+    stride_xn,
+    stride_xf,
+    stride_ym,
+    stride_yf,
+    stride_sn,
+    stride_sm,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_F: tl.constexpr,
@@ -125,12 +139,21 @@ def _launch_pairwise_distance(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
     grid = (triton.cdiv(N, BLOCK_N), triton.cdiv(M, BLOCK_M))
     _pairwise_distance_kernel[grid](
-        x_c, y_c, out,
-        N, M, F,
-        x_c.stride(0), x_c.stride(1),
-        y_c.stride(0), y_c.stride(1),
-        out.stride(0), out.stride(1),
-        BLOCK_N=BLOCK_N, BLOCK_M=BLOCK_M, BLOCK_F=BLOCK_F,
+        x_c,
+        y_c,
+        out,
+        N,
+        M,
+        F,
+        x_c.stride(0),
+        x_c.stride(1),
+        y_c.stride(0),
+        y_c.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_N=BLOCK_N,
+        BLOCK_M=BLOCK_M,
+        BLOCK_F=BLOCK_F,
         num_warps=4,
         num_stages=2,
     )
@@ -155,12 +178,21 @@ def _launch_pairwise_dot(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
     grid = (triton.cdiv(N, BLOCK_N), triton.cdiv(M, BLOCK_M))
     _pairwise_dot_kernel[grid](
-        x_c, y_c, out,
-        N, M, F,
-        x_c.stride(0), x_c.stride(1),
-        y_c.stride(0), y_c.stride(1),
-        out.stride(0), out.stride(1),
-        BLOCK_N=BLOCK_N, BLOCK_M=BLOCK_M, BLOCK_F=BLOCK_F,
+        x_c,
+        y_c,
+        out,
+        N,
+        M,
+        F,
+        x_c.stride(0),
+        x_c.stride(1),
+        y_c.stride(0),
+        y_c.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_N=BLOCK_N,
+        BLOCK_M=BLOCK_M,
+        BLOCK_F=BLOCK_F,
         num_warps=4,
         num_stages=2,
     )
@@ -175,7 +207,7 @@ def _knn_single_batch(x, y, k, cosine=False):
     M, _ = y.shape
 
     # Fallback to PyTorch if tensors are not on CUDA
-    use_triton = True   # x.is_cuda and y.is_cuda
+    use_triton = True  # x.is_cuda and y.is_cuda
 
     if cosine:
         # 使用余弦相似度
@@ -190,7 +222,9 @@ def _knn_single_batch(x, y, k, cosine=False):
             similarity = torch.matmul(x_norm, y_norm.t())
 
         # 获取top-k相似度的索引（largest=True）
-        topk_values, topk_indices = torch.topk(similarity, k=min(k, M), dim=1, largest=True)
+        topk_values, topk_indices = torch.topk(
+            similarity, k=min(k, M), dim=1, largest=True
+        )
 
     else:
         # 使用欧氏距离
@@ -199,14 +233,16 @@ def _knn_single_batch(x, y, k, cosine=False):
             distance = _launch_pairwise_distance(x, y)
         else:
             # 计算距离矩阵: ||x - y||^2 = ||x||^2 + ||y||^2 - 2*x·y
-            x_squared = (x ** 2).sum(dim=1, keepdim=True)  # [N, 1]
-            y_squared = (y ** 2).sum(dim=1, keepdim=True)  # [M, 1]
+            x_squared = (x**2).sum(dim=1, keepdim=True)  # [N, 1]
+            y_squared = (y**2).sum(dim=1, keepdim=True)  # [M, 1]
             xy = torch.matmul(x, y.t())  # [N, M]
             distance = x_squared + y_squared.t() - 2 * xy  # [N, M]
             distance = torch.clamp(distance, min=0)
 
         # 获取top-k最小距离的索引
-        topk_values, topk_indices = torch.topk(distance, k=min(k, M), dim=1, largest=False)
+        topk_values, topk_indices = torch.topk(
+            distance, k=min(k, M), dim=1, largest=False
+        )
 
     # 构建row和col索引（保持与原实现一致）
     row = torch.arange(N, device=x.device).repeat_interleave(k)  # [N*k]
@@ -265,16 +301,20 @@ class ModelNew(torch.nn.Module):
 
 
 def get_inputs():
-    x = torch.randn(15, 3, device='npu')
-    y = torch.randn(25, 3, device='npu')
+    x = torch.randn(15, 3, device="npu")
+    y = torch.randn(25, 3, device="npu")
     k = 2
-    batch_x = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2], device='npu')
-    batch_y = torch.tensor([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], device='npu')
+    batch_x = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2], device="npu")
+    batch_y = torch.tensor(
+        [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+        device="npu",
+    )
     return [x, y, k, batch_x, batch_y]
 
 
 def get_init_inputs():
     return []
+
 
 torch.manual_seed(42)
 out = ModelNew(*get_init_inputs()).forward(*get_inputs())

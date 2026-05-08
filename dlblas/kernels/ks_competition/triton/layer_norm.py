@@ -6,10 +6,14 @@ import triton.language as tl
 
 @triton.jit
 def layer_norm_lastdim_fwd_kernel(
-    x_ptr, y_ptr,
-    M, N,
-    stride_xm, stride_xn,
-    stride_ym, stride_yn,
+    x_ptr,
+    y_ptr,
+    M,
+    N,
+    stride_xm,
+    stride_xn,
+    stride_ym,
+    stride_yn,
     eps,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -50,7 +54,9 @@ def _layer_norm_lastdim_triton(x: torch.Tensor, eps: float = 1e-5) -> torch.Tens
 
     M, N = x.shape
     # Ensure we match the exact behavior of LayerNorm(10): normalize over last dim of size 10
-    assert N == 10, "This optimized kernel assumes normalized_shape=10 as in the original program."
+    assert (
+        N == 10
+    ), "This optimized kernel assumes normalized_shape=10 as in the original program."
 
     # Use input strides directly to avoid extra copies
     y = torch.empty_like(x)
@@ -59,10 +65,14 @@ def _layer_norm_lastdim_triton(x: torch.Tensor, eps: float = 1e-5) -> torch.Tens
     grid = (M,)
 
     layer_norm_lastdim_fwd_kernel[grid](
-        x, y,
-        M, N,
-        x.stride(0), x.stride(1),
-        y.stride(0), y.stride(1),
+        x,
+        y,
+        M,
+        N,
+        x.stride(0),
+        x.stride(1),
+        y.stride(0),
+        y.stride(1),
         eps,
         BLOCK_SIZE=BLOCK_SIZE,
         num_warps=1,
@@ -75,20 +85,20 @@ class ModelNew(nn.Module):
     def __init__(self):
         super(ModelNew, self).__init__()
 
-    def forward(
-        self, x
-    ):
+    def forward(self, x):
         # Original: torch.nn.LayerNorm(10).cuda()(x)
         # Equivalent: LayerNorm over last dim=10 with gamma=1, beta=0, eps=1e-5
         return _layer_norm_lastdim_triton(x, eps=1e-5)
 
 
 def get_inputs():
-    x = torch.rand(10, 10, device='npu')
+    x = torch.rand(10, 10, device="npu")
     return [x]
+
 
 def get_init_inputs():
     return []
+
 
 torch.manual_seed(42)
 out = ModelNew(*get_init_inputs()).forward(*get_inputs())
