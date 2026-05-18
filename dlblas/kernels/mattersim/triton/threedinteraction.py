@@ -6,8 +6,8 @@ import triton.language as tl
 from torch.cuda import nvtx
 from typing import Union, Optional
 
+device = "cuda"
 
-device = 'cuda'
 
 def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
     if dim < 0:
@@ -19,6 +19,7 @@ def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
         src = src.unsqueeze(-1)
     src = src.expand_as(other)
     return src
+
 
 def scatter(
     src: torch.Tensor,
@@ -81,15 +82,19 @@ def scatter(
     else:
         return out.scatter_add_(dim, bcast_index, src)
 
+
 @triton.jit
 def _scatter_add_2d_dim0_kernel(
-    src_ptr,          # *f32
-    idx_ptr,          # *i32 (destination row indices)
-    out_ptr,          # *f32
-    T, D,             # int32
-    stride_src0, stride_src1,  # int32
-    stride_out0, stride_out1,  # int32
-    BLOCK_D: tl.constexpr
+    src_ptr,  # *f32
+    idx_ptr,  # *i32 (destination row indices)
+    out_ptr,  # *f32
+    T,
+    D,  # int32
+    stride_src0,
+    stride_src1,  # int32
+    stride_out0,
+    stride_out1,  # int32
+    BLOCK_D: tl.constexpr,
 ):
     pid_d = tl.program_id(0)
     pid_t = tl.program_id(1)
@@ -120,7 +125,10 @@ def _scatter_add_2d_dim0_kernel(
     out_offsets = idx_val * stride_out0 + cols * stride_out1
     tl.atomic_add(out_ptr + out_offsets, vals, mask=mask)
 
-def _scatter_add_2d_dim0_triton(src: torch.Tensor, index: torch.Tensor, out_rows: int) -> torch.Tensor:
+
+def _scatter_add_2d_dim0_triton(
+    src: torch.Tensor, index: torch.Tensor, out_rows: int
+) -> torch.Tensor:
     # Expect src: [T, D], index: [T]
     assert src.dim() == 2 and index.dim() == 1
     T, D = src.shape
@@ -149,15 +157,21 @@ def _scatter_add_2d_dim0_triton(src: torch.Tensor, index: torch.Tensor, out_rows
     stride_src0, stride_src1 = src_c.stride()
     stride_out0, stride_out1 = out.stride()
     _scatter_add_2d_dim0_kernel[grid](
-        src_c, idx_c, out,
-        T, D,
-        stride_src0, stride_src1,
-        stride_out0, stride_out1,
+        src_c,
+        idx_c,
+        out,
+        T,
+        D,
+        stride_src0,
+        stride_src1,
+        stride_out0,
+        stride_out1,
         BLOCK_D=BLOCK_D,
         num_warps=NUM_WARPS,
         num_stages=1,
     )
     return out
+
 
 class LinearLayer(nn.Module):
     def __init__(
@@ -221,6 +235,7 @@ class ReLULayer(nn.Module):
         self.linear = nn.Linear(in_dim, out_dim, bias=bias, device=device)
         self.relu = nn.ReLU()
 
+
 class GatedMLP(nn.Module):
     def __init__(
         self,
@@ -280,6 +295,7 @@ class GatedMLP(nn.Module):
     ):
         return self.g(x) * self.sigma(x)
 
+
 def polynomial(r: torch.Tensor, cutoff: float) -> torch.Tensor:
     """
     Polynomial cutoff function
@@ -296,6 +312,7 @@ def polynomial(r: torch.Tensor, cutoff: float) -> torch.Tensor:
         - 10 * torch.pow(ratio, 3)
     )
     return torch.clamp(result, min=0.0)
+
 
 class ModelNew(nn.Module):
     def __init__(
@@ -345,7 +362,9 @@ class ModelNew(nn.Module):
         )
         three_basis = three_basis * atom_mask
         index_map = torch.arange(torch.sum(num_edges).item(), device=edge_length.device)
-        index_map = torch.repeat_interleave(index_map, num_triple_ij).to(edge_length.device)
+        index_map = torch.repeat_interleave(index_map, num_triple_ij).to(
+            edge_length.device
+        )
         # Triton-accelerated scatter-add along dim=0 (with small-size fallback)
         e_ij_tuda = scatter(
             three_basis,
@@ -357,6 +376,7 @@ class ModelNew(nn.Module):
         edge_attr_prime = edge_attr + self.edge_gate_mlp(e_ij_tuda)
         return edge_attr_prime
 
+
 max_n = 4
 max_l = 5
 units = 64
@@ -367,16 +387,20 @@ cutoff = threebody_cutoff = 1.0
 def get_init_inputs():
     return [max_n, max_l, cutoff, units, spherical_dim, threebody_cutoff]
 
+
 def get_inputs():
     edge_attr = torch.randn(8, units, device=device)
     num_triple_ij = torch.tensor([3, 2, 4, 1, 3, 2, 3, 2], device=device)
     total_triples = num_triple_ij.sum().item()
     three_basis = torch.randn(total_triples, spherical_dim, device=device)
     atom_attr = torch.randn(5, units, device=device)
-    edge_index = torch.tensor([
-        [0, 0, 0, 1, 1, 2, 2, 3],  # ~P~J~B~B
-        [1, 2, 3, 2, 4, 3, 4, 4]   # ~[| ~G~J~B~B
-    ], device=device)
+    edge_index = torch.tensor(
+        [
+            [0, 0, 0, 1, 1, 2, 2, 3],  # ~P~J~B~B
+            [1, 2, 3, 2, 4, 3, 4, 4],  # ~[| ~G~J~B~B
+        ],
+        device=device,
+    )
     three_body_index = torch.zeros(total_triples, 2, dtype=torch.long, device=device)
 
     idx = 0
@@ -392,6 +416,16 @@ def get_inputs():
     edge_length = torch.rand(8, device=device) * 3.0  # 边~U度~L~C~[ 0-3
     num_edges = torch.tensor([8], device=device)
     num_triple_ij = torch.tensor([3, 2, 4, 1, 3, 2, 3, 2], device=device)
-    return [edge_attr, three_basis, atom_attr, edge_index, three_body_index, edge_length, num_edges, num_triple_ij]
+    return [
+        edge_attr,
+        three_basis,
+        atom_attr,
+        edge_index,
+        three_body_index,
+        edge_length,
+        num_edges,
+        num_triple_ij,
+    ]
+
 
 out = ModelNew(*get_init_inputs()).forward(*get_inputs())

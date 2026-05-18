@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from typing import Union
 
-device = 'cuda'
+device = "cuda"
 
 
 class LinearLayer(nn.Module):
@@ -18,6 +18,7 @@ class LinearLayer(nn.Module):
 
     def forward(self, x):
         return self.linear(x)
+
 
 class SigmoidLayer(nn.Module):
     def __init__(
@@ -35,6 +36,7 @@ class SigmoidLayer(nn.Module):
         x,
     ):
         return self.sigmoid(self.linear(x))
+
 
 class SwishLayer(nn.Module):
     def __init__(
@@ -54,6 +56,7 @@ class SwishLayer(nn.Module):
         x = self.linear(x)
         return x * self.sigmoid(x)
 
+
 class ReLULayer(nn.Module):
     def __init__(
         self,
@@ -70,6 +73,7 @@ class ReLULayer(nn.Module):
         x,
     ):
         return self.relu(self.linear(x))
+
 
 class Model(nn.Module):
     def __init__(
@@ -133,6 +137,7 @@ class Model(nn.Module):
 
 def get_init_inputs():
     return [10, [20, 30]]
+
 
 def get_inputs():
     return [torch.randn(32, 10, device=device)]

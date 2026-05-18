@@ -4,8 +4,8 @@ import torch.nn as nn
 from torch.cuda import nvtx
 from typing import Union, Optional
 
+device = "cuda"
 
-device = 'cuda'
 
 def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
     if dim < 0:
@@ -17,6 +17,7 @@ def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
         src = src.unsqueeze(-1)
     src = src.expand_as(other)
     return src
+
 
 def scatter(
     src: torch.Tensor,
@@ -40,6 +41,7 @@ def scatter(
         return out.scatter_add_(dim, index, src)
     else:
         return out.scatter_add_(dim, index, src)
+
 
 class LinearLayer(nn.Module):
     def __init__(
@@ -103,6 +105,7 @@ class ReLULayer(nn.Module):
         self.linear = nn.Linear(in_dim, out_dim, bias=bias, device=device)
         self.relu = nn.ReLU()
 
+
 class GatedMLP(nn.Module):
     def __init__(
         self,
@@ -162,6 +165,7 @@ class GatedMLP(nn.Module):
     ):
         return self.g(x) * self.sigma(x)
 
+
 def polynomial(r: torch.Tensor, cutoff: float) -> torch.Tensor:
     """
     Polynomial cutoff function
@@ -178,6 +182,7 @@ def polynomial(r: torch.Tensor, cutoff: float) -> torch.Tensor:
         - 10 * torch.pow(ratio, 3)
     )
     return torch.clamp(result, min=0.0)
+
 
 class Model(nn.Module):
     def __init__(
@@ -242,6 +247,7 @@ class Model(nn.Module):
         edge_attr_prime = edge_attr + self.edge_gate_mlp(e_ij_tuda)
         return edge_attr_prime
 
+
 max_n = 4
 max_l = 5
 units = 64
@@ -252,16 +258,20 @@ cutoff = threebody_cutoff = 1.0
 def get_init_inputs():
     return [max_n, max_l, cutoff, units, spherical_dim, threebody_cutoff]
 
+
 def get_inputs():
     edge_attr = torch.randn(8, units, device=device)
     num_triple_ij = torch.tensor([3, 2, 4, 1, 3, 2, 3, 2], device=device)
     total_triples = num_triple_ij.sum().item()
     three_basis = torch.randn(total_triples, spherical_dim, device=device)
     atom_attr = torch.randn(5, units, device=device)
-    edge_index = torch.tensor([
-        [0, 0, 0, 1, 1, 2, 2, 3],  # ~P~J~B~B
-        [1, 2, 3, 2, 4, 3, 4, 4]   # ~[| ~G~J~B~B
-    ], device=device)
+    edge_index = torch.tensor(
+        [
+            [0, 0, 0, 1, 1, 2, 2, 3],  # ~P~J~B~B
+            [1, 2, 3, 2, 4, 3, 4, 4],  # ~[| ~G~J~B~B
+        ],
+        device=device,
+    )
     three_body_index = torch.zeros(total_triples, 2, dtype=torch.long, device=device)
 
     idx = 0
@@ -277,6 +287,16 @@ def get_inputs():
     edge_length = torch.rand(8, device=device) * 3.0  # 边~U度~L~C~[ 0-3
     num_edges = torch.tensor([8], device=device)
     num_triple_ij = torch.tensor([3, 2, 4, 1, 3, 2, 3, 2], device=device)
-    return [edge_attr, three_basis, atom_attr, edge_index, three_body_index, edge_length, num_edges, num_triple_ij]
+    return [
+        edge_attr,
+        three_basis,
+        atom_attr,
+        edge_index,
+        three_body_index,
+        edge_length,
+        num_edges,
+        num_triple_ij,
+    ]
+
 
 out = Model(*get_init_inputs()).forward(*get_inputs())

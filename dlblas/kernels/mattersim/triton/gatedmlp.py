@@ -5,7 +5,7 @@ from typing import Union
 import triton
 import triton.language as tl
 
-device = 'cuda'
+device = "cuda"
 
 
 @triton.jit
@@ -14,11 +14,16 @@ def linear_bias_act_kernel(
     W_ptr,  # [N, K]
     BIAS_ptr,  # [N] or unused if USE_BIAS=0
     Y_ptr,  # [M, N]
-    M, N, K,
-    stride_xm, stride_xk,
-    stride_wn, stride_wk,
-    stride_ym, stride_yn,
-    ACT: tl.constexpr,       # 0: none, 1: sigmoid, 2: swish
+    M,
+    N,
+    K,
+    stride_xm,
+    stride_xk,
+    stride_wn,
+    stride_wk,
+    stride_ym,
+    stride_yn,
+    ACT: tl.constexpr,  # 0: none, 1: sigmoid, 2: swish
     USE_BIAS: tl.constexpr,  # 0 or 1
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -65,31 +70,50 @@ def linear_bias_act_kernel(
 def two_path_two_layer_kernel(
     X_ptr,
     # g-path
-    W1g_ptr, B1g_ptr,
-    W2g_ptr, B2g_ptr,
+    W1g_ptr,
+    B1g_ptr,
+    W2g_ptr,
+    B2g_ptr,
     # sigma-path
-    W1s_ptr, B1s_ptr,
-    W2s_ptr, B2s_ptr,
+    W1s_ptr,
+    B1s_ptr,
+    W2s_ptr,
+    B2s_ptr,
     # output
     Y_ptr,
     # sizes
-    M, K0, N1, N2,
+    M,
+    K0,
+    N1,
+    N2,
     # strides
-    stride_xm, stride_xk,
-    stride_w1g_n, stride_w1g_k,
-    stride_w2g_n, stride_w2g_k,
-    stride_w1s_n, stride_w1s_k,
-    stride_w2s_n, stride_w2s_k,
-    stride_ym, stride_yn,
+    stride_xm,
+    stride_xk,
+    stride_w1g_n,
+    stride_w1g_k,
+    stride_w2g_n,
+    stride_w2g_k,
+    stride_w1s_n,
+    stride_w1s_k,
+    stride_w2s_n,
+    stride_w2s_k,
+    stride_ym,
+    stride_yn,
     # activations
-    ACT1_G: tl.constexpr, ACT2_G: tl.constexpr,
-    ACT1_S: tl.constexpr, ACT2_S: tl.constexpr,
+    ACT1_G: tl.constexpr,
+    ACT2_G: tl.constexpr,
+    ACT1_S: tl.constexpr,
+    ACT2_S: tl.constexpr,
     # bias flags
-    USE_B1G: tl.constexpr, USE_B2G: tl.constexpr,
-    USE_B1S: tl.constexpr, USE_B2S: tl.constexpr,
+    USE_B1G: tl.constexpr,
+    USE_B2G: tl.constexpr,
+    USE_B1S: tl.constexpr,
+    USE_B2S: tl.constexpr,
     # tiling
-    BLOCK_M: tl.constexpr, BLOCK_N2: tl.constexpr,
-    BLOCK_K0: tl.constexpr, BLOCK_N1: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N2: tl.constexpr,
+    BLOCK_K0: tl.constexpr,
+    BLOCK_N1: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_n2 = tl.program_id(1)
@@ -116,8 +140,16 @@ def two_path_two_layer_kernel(
             x_ptrs = X_ptr + offs_m[:, None] * stride_xm + offs_k0[None, :] * stride_xk
             x = tl.load(x_ptrs, mask=mask_m[:, None] & k_mask[None, :], other=0.0)
 
-            w1g_ptrs = W1g_ptr + offs_n1[:, None] * stride_w1g_n + offs_k0[None, :] * stride_w1g_k
-            w1s_ptrs = W1s_ptr + offs_n1[:, None] * stride_w1s_n + offs_k0[None, :] * stride_w1s_k
+            w1g_ptrs = (
+                W1g_ptr
+                + offs_n1[:, None] * stride_w1g_n
+                + offs_k0[None, :] * stride_w1g_k
+            )
+            w1s_ptrs = (
+                W1s_ptr
+                + offs_n1[:, None] * stride_w1s_n
+                + offs_k0[None, :] * stride_w1s_k
+            )
 
             w1g = tl.load(w1g_ptrs, mask=n1_mask[:, None] & k_mask[None, :], other=0.0)
             w1s = tl.load(w1s_ptrs, mask=n1_mask[:, None] & k_mask[None, :], other=0.0)
@@ -142,8 +174,12 @@ def two_path_two_layer_kernel(
         elif ACT1_S == 2:
             h_s = h_s * tl.sigmoid(h_s)
 
-        w2g_ptrs = W2g_ptr + offs_n2[:, None] * stride_w2g_n + offs_n1[None, :] * stride_w2g_k
-        w2s_ptrs = W2s_ptr + offs_n2[:, None] * stride_w2s_n + offs_n1[None, :] * stride_w2s_k
+        w2g_ptrs = (
+            W2g_ptr + offs_n2[:, None] * stride_w2g_n + offs_n1[None, :] * stride_w2g_k
+        )
+        w2s_ptrs = (
+            W2s_ptr + offs_n2[:, None] * stride_w2s_n + offs_n1[None, :] * stride_w2s_k
+        )
 
         w2g = tl.load(w2g_ptrs, mask=mask_n2[:, None] & n1_mask[None, :], other=0.0)
         w2s = tl.load(w2s_ptrs, mask=mask_n2[:, None] & n1_mask[None, :], other=0.0)
@@ -174,11 +210,20 @@ def two_path_two_layer_kernel(
     tl.store(y_ptrs, y, mask=mask_m[:, None] & mask_n2[None, :])
 
 
-def _linear_triton(x: torch.Tensor, weight: torch.Tensor, bias: Union[torch.Tensor, None], activation: str):
+def _linear_triton(
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    bias: Union[torch.Tensor, None],
+    activation: str,
+):
     # Ensure contiguous tensors for predictable strides
     x = x.contiguous()
     w = weight.contiguous()
-    BIAS = bias.contiguous() if bias is not None else torch.empty(0, device=x.device, dtype=x.dtype)
+    BIAS = (
+        bias.contiguous()
+        if bias is not None
+        else torch.empty(0, device=x.device, dtype=x.dtype)
+    )
 
     M, K = x.shape
     N = w.shape[0]
@@ -212,12 +257,19 @@ def _linear_triton(x: torch.Tensor, weight: torch.Tensor, bias: Union[torch.Tens
 
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
     linear_bias_act_kernel[grid](
-        x, w, BIAS if USE_BIAS else w,  # pass some valid ptr even if not used
+        x,
+        w,
+        BIAS if USE_BIAS else w,  # pass some valid ptr even if not used
         y,
-        M, N, K,
-        stride_xm, stride_xk,
-        stride_wn, stride_wk,
-        stride_ym, stride_yn,
+        M,
+        N,
+        K,
+        stride_xm,
+        stride_xk,
+        stride_wn,
+        stride_wk,
+        stride_ym,
+        stride_yn,
         ACT=ACT,
         USE_BIAS=USE_BIAS,
         BLOCK_M=BLOCK_M,
@@ -235,10 +287,26 @@ def _two_path_mlp_triton(x: torch.Tensor, g_seq: nn.Sequential, s_seq: nn.Sequen
     s0, s1 = s_seq[0], s_seq[1]
 
     # Extract weights and biases
-    W1g, B1g = g0.linear.weight.contiguous(), (g0.linear.bias.contiguous() if g0.linear.bias is not None else torch.empty(0, device=x.device, dtype=x.dtype))
-    W2g, B2g = g1.linear.weight.contiguous(), (g1.linear.bias.contiguous() if g1.linear.bias is not None else torch.empty(0, device=x.device, dtype=x.dtype))
-    W1s, B1s = s0.linear.weight.contiguous(), (s0.linear.bias.contiguous() if s0.linear.bias is not None else torch.empty(0, device=x.device, dtype=x.dtype))
-    W2s, B2s = s1.linear.weight.contiguous(), (s1.linear.bias.contiguous() if s1.linear.bias is not None else torch.empty(0, device=x.device, dtype=x.dtype))
+    W1g, B1g = g0.linear.weight.contiguous(), (
+        g0.linear.bias.contiguous()
+        if g0.linear.bias is not None
+        else torch.empty(0, device=x.device, dtype=x.dtype)
+    )
+    W2g, B2g = g1.linear.weight.contiguous(), (
+        g1.linear.bias.contiguous()
+        if g1.linear.bias is not None
+        else torch.empty(0, device=x.device, dtype=x.dtype)
+    )
+    W1s, B1s = s0.linear.weight.contiguous(), (
+        s0.linear.bias.contiguous()
+        if s0.linear.bias is not None
+        else torch.empty(0, device=x.device, dtype=x.dtype)
+    )
+    W2s, B2s = s1.linear.weight.contiguous(), (
+        s1.linear.bias.contiguous()
+        if s1.linear.bias is not None
+        else torch.empty(0, device=x.device, dtype=x.dtype)
+    )
 
     # Sizes
     x = x.contiguous()
@@ -290,31 +358,50 @@ def _two_path_mlp_triton(x: torch.Tensor, g_seq: nn.Sequential, s_seq: nn.Sequen
     two_path_two_layer_kernel[grid](
         x,
         # g-path
-        W1g, B1g if USE_B1G else W1g,
-        W2g, B2g if USE_B2G else W2g,
+        W1g,
+        B1g if USE_B1G else W1g,
+        W2g,
+        B2g if USE_B2G else W2g,
         # sigma-path
-        W1s, B1s if USE_B1S else W1s,
-        W2s, B2s if USE_B2S else W2s,
+        W1s,
+        B1s if USE_B1S else W1s,
+        W2s,
+        B2s if USE_B2S else W2s,
         # out
         y,
         # sizes
-        M, K0, N1, N2,
+        M,
+        K0,
+        N1,
+        N2,
         # strides
-        stride_xm, stride_xk,
-        s_w1g_n, s_w1g_k,
-        s_w2g_n, s_w2g_k,
-        s_w1s_n, s_w1s_k,
-        s_w2s_n, s_w2s_k,
-        stride_ym, stride_yn,
+        stride_xm,
+        stride_xk,
+        s_w1g_n,
+        s_w1g_k,
+        s_w2g_n,
+        s_w2g_k,
+        s_w1s_n,
+        s_w1s_k,
+        s_w2s_n,
+        s_w2s_k,
+        stride_ym,
+        stride_yn,
         # activations
-        ACT1_G=ACT1_G, ACT2_G=ACT2_G,
-        ACT1_S=ACT1_S, ACT2_S=ACT2_S,
+        ACT1_G=ACT1_G,
+        ACT2_G=ACT2_G,
+        ACT1_S=ACT1_S,
+        ACT2_S=ACT2_S,
         # biases
-        USE_B1G=USE_B1G, USE_B2G=USE_B2G,
-        USE_B1S=USE_B1S, USE_B2S=USE_B2S,
+        USE_B1G=USE_B1G,
+        USE_B2G=USE_B2G,
+        USE_B1S=USE_B1S,
+        USE_B2S=USE_B2S,
         # tiling
-        BLOCK_M=BLOCK_M, BLOCK_N2=BLOCK_N2,
-        BLOCK_K0=BLOCK_K0, BLOCK_N1=BLOCK_N1,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N2=BLOCK_N2,
+        BLOCK_K0=BLOCK_K0,
+        BLOCK_N1=BLOCK_N1,
         num_warps=num_warps,
         num_stages=num_stages,
     )
@@ -333,7 +420,9 @@ class LinearLayer(nn.Module):
 
     def forward(self, x):
         # Fused Triton linear
-        return _linear_triton(x, self.linear.weight, self.linear.bias, activation="none")
+        return _linear_triton(
+            x, self.linear.weight, self.linear.bias, activation="none"
+        )
 
 
 class SigmoidLayer(nn.Module):
@@ -352,7 +441,9 @@ class SigmoidLayer(nn.Module):
         x,
     ):
         # Fused Triton linear + sigmoid
-        return _linear_triton(x, self.linear.weight, self.linear.bias, activation="sigmoid")
+        return _linear_triton(
+            x, self.linear.weight, self.linear.bias, activation="sigmoid"
+        )
 
 
 class SwishLayer(nn.Module):
@@ -371,7 +462,9 @@ class SwishLayer(nn.Module):
         x,
     ):
         # Fused Triton linear + swish
-        return _linear_triton(x, self.linear.weight, self.linear.bias, activation="swish")
+        return _linear_triton(
+            x, self.linear.weight, self.linear.bias, activation="swish"
+        )
 
 
 class ReLULayer(nn.Module):
@@ -462,6 +555,7 @@ class ModelNew(nn.Module):
 
 def get_init_inputs():
     return [10, [20, 30]]
+
 
 def get_inputs():
     return [torch.randn(32, 10, device=device)]
