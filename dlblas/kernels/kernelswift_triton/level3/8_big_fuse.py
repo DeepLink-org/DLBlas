@@ -1,286 +1,586 @@
+"""
+Ascend-optimized fused Triton implementation of 8_torch.Model.
+
+Fuses in one kernel per (n0, n1) token row:
+  RMS-normalized projection  ->  split (scale/base/sigmoid)  ->  Sinkhorn  ->  apply_mix
+
+Default: force Triton on NPU. Set force_triton=False or OP8_FORCE_TRITON=0 for PyTorch path.
+
+Reference: 8_torch.py
+"""
+from __future__ import annotations
+
+import os
+
 import torch
 import torch.nn as nn
-
-# Optional: Triton acceleration
-try:
-    import triton
-    import triton.language as tl
-    _TRITON_AVAILABLE = True
-except Exception:
-    _TRITON_AVAILABLE = False
+import torch_npu  # noqa: F401
+import triton
+import triton.language as tl
+import triton.runtime.driver as driver
 
 
-def _mhc_pre_norm_fn(
+def _num_vectorcores() -> int:
+    device = torch.npu.current_device()
+    return int(driver.active.utils.get_device_properties(device)["num_vectorcore"])
+
+
+def _phase1_mixes_torch(
     residual: torch.Tensor,
-    mhc_fn: torch.Tensor,
-    mhc_norm_weight: torch.Tensor | None,
-    mhc_norm_eps: float,
+    fn: torch.Tensor,
+    rms_eps: float,
 ) -> torch.Tensor:
-    # residual: [n0, n1, mhc_mult, hidden_size] -> tokens x (mhc_mult*hidden_size)
-    if mhc_norm_weight is not None:
-        mhc_fn = mhc_fn * mhc_norm_weight
+    """Batched RMS + projection (matches 8_big_fuse._mhc_pre_norm_fn)."""
     n0, n1 = residual.shape[:2]
-    x = residual.flatten(2, 3).float().reshape(n0 * n1, -1)  # [n_tokens, rgs]
-    mixes = x @ mhc_fn.T                                      # [n_tokens, mhc_mult3]
-    sqrsum = x.square().sum(-1, keepdim=True)                 # [n_tokens, 1]
-    mixes = mixes * (sqrsum / x.shape[-1] + mhc_norm_eps).rsqrt()
-    return mixes.view(n0, n1, -1)                             # [n0, n1, mhc_mult3]
+    x = residual.reshape(n0 * n1, -1).float()
+    mixes = x @ fn.T
+    sqrsum = (x * x).sum(dim=1, keepdim=True)
+    return mixes * torch.rsqrt(sqrsum / x.shape[-1] + rms_eps)
 
 
-def _mhc_pre_split_mixes(
-    input_mixes: torch.Tensor,
+@triton.jit
+def _mhc_tail_fuse_kernel(
+    residual_ptr,
+    base_ptr,
+    mixes_scratch_ptr,
+    post_ptr,
+    comb_ptr,
+    layer_input_ptr,
+    n0,
+    n1,
+    mhc_pre_eps,
+    sinkhorn_eps,
+    post_mult,
+    s0,
+    s1,
+    s2,
+    stride_res_n0,
+    stride_res_n1,
+    stride_res_mhc,
+    stride_res_h,
+    stride_post_n0,
+    stride_post_n1,
+    stride_post_mhc,
+    stride_comb_n0,
+    stride_comb_n1,
+    stride_comb_h,
+    stride_comb_w,
+    stride_out_n0,
+    stride_out_n1,
+    stride_out_h,
+    MHC: tl.constexpr,
+    H: tl.constexpr,
+    MIX_DIM: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    SINKHORN_ITERS: tl.constexpr,
+    NUM_CORES: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    n_bn = n0 * n1
+    r = tl.arange(0, MHC)
+    c = tl.arange(0, MHC)
+    row_i = r[:, None]
+    col_j = c[None, :]
+    mask_hc_2d = (row_i < MHC) & (col_j < MHC)
+
+    # Map grid to Vector Core count with 1D stride loop over blocks
+    # Ensures coreDim overflow avoidance and UB-bound tile reuse
+    for bn in range(pid, n_bn, NUM_CORES):
+        b_idx = bn // n1
+        n_idx = bn - b_idx * n1
+        res_bn = residual_ptr + b_idx * stride_res_n0 + n_idx * stride_res_n1
+        mix_row = mixes_scratch_ptr + bn * MIX_DIM
+
+        col = tl.arange(0, MHC)
+        mask_m = col < MHC
+
+        x_pre = tl.load(mix_row + col, mask=mask_m, other=0.0) * s0
+        x_pre = x_pre + tl.load(base_ptr + col, mask=mask_m, other=0.0)
+        pre_val = tl.sigmoid(x_pre) + mhc_pre_eps
+
+        x_post = tl.load(mix_row + MHC + col, mask=mask_m, other=0.0) * s1
+        x_post = x_post + tl.load(base_ptr + MHC + col, mask=mask_m, other=0.0)
+        post_val = tl.sigmoid(x_post) * post_mult
+
+        flat_ij = row_i * MHC + col_j
+        raw_off = 2 * MHC + flat_ij
+        x_raw = tl.load(mix_row + raw_off, mask=mask_hc_2d, other=0.0)
+        b_comb = tl.load(base_ptr + raw_off, mask=mask_hc_2d, other=0.0)
+        comb = x_raw * s2 + b_comb
+        tl.store(mix_row + col, pre_val, mask=mask_m)
+
+        # --- Phase 3: Sinkhorn (matches 8_big_fuse._sinkhorn_normalize) ---
+        row_max = tl.max(comb, axis=1)
+        comb = tl.exp(comb - row_max[:, None])
+        row_sum = tl.sum(comb, axis=1)
+        comb = comb / row_sum[:, None] + sinkhorn_eps
+        col_sum = tl.sum(comb, axis=0)
+        comb = comb / (col_sum[None, :] + sinkhorn_eps)
+
+        for _ in tl.static_range(SINKHORN_ITERS - 1):
+            row_sum = tl.sum(comb, axis=1)
+            comb = comb / (row_sum[:, None] + sinkhorn_eps)
+            col_sum = tl.sum(comb, axis=0)
+            comb = comb / (col_sum[None, :] + sinkhorn_eps)
+
+        post_bn = post_ptr + b_idx * stride_post_n0 + n_idx * stride_post_n1
+        comb_bn = comb_ptr + b_idx * stride_comb_n0 + n_idx * stride_comb_n1
+        out_bn = layer_input_ptr + b_idx * stride_out_n0 + n_idx * stride_out_n1
+
+        tl.store(post_bn + col * stride_post_mhc, post_val, mask=mask_m)
+        tl.store(
+            comb_bn + row_i * stride_comb_h + col_j * stride_comb_w,
+            comb,
+            mask=mask_hc_2d,
+        )
+
+        w0 = tl.load(mix_row + 0, mask=True, other=0.0)
+        w1 = tl.load(mix_row + 1, mask=True, other=0.0)
+        w2 = tl.load(mix_row + 2, mask=True, other=0.0)
+        w3 = tl.load(mix_row + 3, mask=True, other=0.0)
+
+        num_h_blocks = (H + BLOCK_H - 1) // BLOCK_H
+        for hb in range(num_h_blocks):
+            h_start = hb * BLOCK_H
+            h_offs = h_start + tl.arange(0, BLOCK_H)
+            mask_h = h_offs < H
+            x0 = tl.load(
+                res_bn + 0 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x1 = tl.load(
+                res_bn + 1 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x2 = tl.load(
+                res_bn + 2 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x3 = tl.load(
+                res_bn + 3 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            acc_h = (
+                x0.to(tl.float32) * w0
+                + x1.to(tl.float32) * w1
+                + x2.to(tl.float32) * w2
+                + x3.to(tl.float32) * w3
+            )
+            tl.store(
+                out_bn + h_offs * stride_out_h,
+                acc_h.to(tl.bfloat16),
+                mask=mask_h,
+            )
+
+
+@triton.jit
+def _mhc_big_fuse_kernel(
+    residual_ptr,
+    fn_ptr,
+    base_ptr,
+    mixes_scratch_ptr,
+    post_ptr,
+    comb_ptr,
+    layer_input_ptr,
+    n0,
+    n1,
+    rms_eps,
+    mhc_pre_eps,
+    sinkhorn_eps,
+    post_mult,
+    s0,
+    s1,
+    s2,
+    stride_res_n0,
+    stride_res_n1,
+    stride_res_mhc,
+    stride_res_h,
+    stride_fn_n,
+    stride_fn_k,
+    stride_post_n0,
+    stride_post_n1,
+    stride_post_mhc,
+    stride_post_one,
+    stride_comb_n0,
+    stride_comb_n1,
+    stride_comb_h,
+    stride_comb_w,
+    stride_out_n0,
+    stride_out_n1,
+    stride_out_h,
+    MHC: tl.constexpr,
+    H: tl.constexpr,
+    RGS: tl.constexpr,
+    MIX_DIM: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    SINKHORN_ITERS: tl.constexpr,
+    NUM_CORES: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    n_bn = n0 * n1
+    r = tl.arange(0, MHC)
+    c = tl.arange(0, MHC)
+    row_i = r[:, None]
+    col_j = c[None, :]
+    mask_hc_2d = (row_i < MHC) & (col_j < MHC)
+
+    # Map grid to Vector Core count with 1D stride loop over blocks
+    # Ensures coreDim overflow avoidance and UB-bound tile reuse
+    for bn in range(pid, n_bn, NUM_CORES):
+        b_idx = bn // n1
+        n_idx = bn - b_idx * n1
+        res_bn = residual_ptr + b_idx * stride_res_n0 + n_idx * stride_res_n1
+        res_flat = res_bn  # [MHC, H] flattened as RGS contiguous in last two dims
+
+        # --- Phase 1: K-tiled RMS + mixes = (x @ fn.T) * rsqrt(mean(x^2)+eps) ---
+        acc_mix = tl.zeros((MIX_DIM,), dtype=tl.float32)
+        sqrsum = tl.zeros((1,), dtype=tl.float32)
+        n_k_blocks = (RGS + BLOCK_K - 1) // BLOCK_K
+
+        for kb in range(n_k_blocks):
+            k_start = kb * BLOCK_K
+            k_offs = k_start + tl.arange(0, BLOCK_K)
+            mask_k = k_offs < RGS
+
+            mhc_idx = k_offs // H
+            h_idx = k_offs - mhc_idx * H
+            x_k = tl.load(
+                res_flat + mhc_idx * stride_res_mhc + h_idx * stride_res_h,
+                mask=mask_k,
+                other=0.0,
+            )
+            x_k = x_k.to(tl.float32)
+            sqrsum += tl.sum(x_k * x_k)
+
+            j_offs = tl.arange(0, MIX_DIM)
+            w = tl.load(
+                fn_ptr + j_offs[:, None] * stride_fn_n + k_offs[None, :] * stride_fn_k,
+                mask=mask_k[None, :],
+                other=0.0,
+            )
+            acc_mix += tl.sum(w.to(tl.float32) * x_k[None, :], axis=1)
+
+        rms_inv = tl.rsqrt(sqrsum / RGS + rms_eps)
+        acc_mix = acc_mix * rms_inv
+
+        mix_row = mixes_scratch_ptr + bn * MIX_DIM
+        j_all = tl.arange(0, MIX_DIM)
+        tl.store(mix_row + j_all, acc_mix, mask=True)
+
+        # --- Phase 2: split (scale + base + sigmoid) ---
+        col = tl.arange(0, MHC)
+        mask_m = col < MHC
+
+        x_pre = tl.load(mix_row + col, mask=mask_m, other=0.0) * s0
+        x_pre = x_pre + tl.load(base_ptr + col, mask=mask_m, other=0.0)
+        pre_val = tl.sigmoid(x_pre) + mhc_pre_eps
+
+        x_post = tl.load(mix_row + MHC + col, mask=mask_m, other=0.0) * s1
+        x_post = x_post + tl.load(base_ptr + MHC + col, mask=mask_m, other=0.0)
+        post_val = tl.sigmoid(x_post) * post_mult
+
+        flat_ij = row_i * MHC + col_j
+        raw_off = 2 * MHC + flat_ij
+        x_raw = tl.load(mix_row + raw_off, mask=mask_hc_2d, other=0.0)
+        b_comb = tl.load(base_ptr + raw_off, mask=mask_hc_2d, other=0.0)
+        comb = x_raw * s2 + b_comb
+        tl.store(mix_row + col, pre_val, mask=mask_m)
+
+        # --- Phase 3: Sinkhorn (matches 8_big_fuse._sinkhorn_normalize) ---
+        row_max = tl.max(comb, axis=1)
+        comb = tl.exp(comb - row_max[:, None])
+        row_sum = tl.sum(comb, axis=1)
+        comb = comb / row_sum[:, None] + sinkhorn_eps
+        col_sum = tl.sum(comb, axis=0)
+        comb = comb / (col_sum[None, :] + sinkhorn_eps)
+
+        for _ in tl.static_range(SINKHORN_ITERS - 1):
+            row_sum = tl.sum(comb, axis=1)
+            comb = comb / (row_sum[:, None] + sinkhorn_eps)
+            col_sum = tl.sum(comb, axis=0)
+            comb = comb / (col_sum[None, :] + sinkhorn_eps)
+
+        # --- Phase 4: layer_input = (residual * pre_mix).sum(-2) -> bf16 ---
+        post_bn = post_ptr + b_idx * stride_post_n0 + n_idx * stride_post_n1
+        comb_bn = comb_ptr + b_idx * stride_comb_n0 + n_idx * stride_comb_n1
+        out_bn = layer_input_ptr + b_idx * stride_out_n0 + n_idx * stride_out_n1
+
+        tl.store(
+            post_bn + col * stride_post_mhc,
+            post_val,
+            mask=mask_m,
+        )
+
+        tl.store(
+            comb_bn + row_i * stride_comb_h + col_j * stride_comb_w,
+            comb,
+            mask=mask_hc_2d,
+        )
+
+        w0 = tl.load(mix_row + 0, mask=True, other=0.0)
+        w1 = tl.load(mix_row + 1, mask=True, other=0.0)
+        w2 = tl.load(mix_row + 2, mask=True, other=0.0)
+        w3 = tl.load(mix_row + 3, mask=True, other=0.0)
+
+        num_h_blocks = (H + BLOCK_H - 1) // BLOCK_H
+        for hb in range(num_h_blocks):
+            h_start = hb * BLOCK_H
+            h_offs = h_start + tl.arange(0, BLOCK_H)
+            mask_h = h_offs < H
+            x0 = tl.load(
+                res_bn + 0 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x1 = tl.load(
+                res_bn + 1 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x2 = tl.load(
+                res_bn + 2 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            x3 = tl.load(
+                res_bn + 3 * stride_res_mhc + h_offs * stride_res_h,
+                mask=mask_h,
+                other=0.0,
+            )
+            acc_h = (
+                x0.to(tl.float32) * w0
+                + x1.to(tl.float32) * w1
+                + x2.to(tl.float32) * w2
+                + x3.to(tl.float32) * w3
+            )
+            tl.store(
+                out_bn + h_offs * stride_out_h,
+                acc_h.to(tl.bfloat16),
+                mask=mask_h,
+            )
+
+
+def _mhc_big_fuse_torch(
+    residual: torch.Tensor,
+    fn: torch.Tensor,
     mhc_scale: torch.Tensor,
     mhc_base: torch.Tensor,
     mhc_mult: int,
-    mhc_post_mult_value: float,
+    hidden_size: int,
+    rms_eps: float,
     mhc_pre_eps: float,
+    sinkhorn_eps: float,
+    mhc_post_mult_value: float,
+    sinkhorn_repeat: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    a, b = input_mixes.shape[:2]
-    scale = torch.cat([
-        mhc_scale[0].expand(mhc_mult),
-        mhc_scale[1].expand(mhc_mult),
-        mhc_scale[2].expand(mhc_mult * mhc_mult),
-    ])
-    input_mixes = input_mixes * scale + mhc_base
+    """PyTorch reference path (8_torch.Model semantics)."""
+    n0, n1 = residual.shape[:2]
+    x = residual.flatten(2, 3).float().reshape(n0 * n1, -1)
+    mixes = x @ fn.T
+    sqrsum = x.square().sum(-1, keepdim=True)
+    mixes = mixes * (sqrsum / x.shape[-1] + rms_eps).rsqrt()
+    mixes = mixes.view(n0, n1, -1)
+
+    a, b = mixes.shape[:2]
+    scale = torch.cat(
+        [
+            mhc_scale[0].expand(mhc_mult),
+            mhc_scale[1].expand(mhc_mult),
+            mhc_scale[2].expand(mhc_mult * mhc_mult),
+        ]
+    )
+    input_mixes = mixes * scale + mhc_base
     pre_mix = input_mixes[:, :, :mhc_mult].sigmoid().unsqueeze(-1) + mhc_pre_eps
-    post_mix = (input_mixes[:, :, mhc_mult:2 * mhc_mult].sigmoid() * mhc_post_mult_value).unsqueeze(-1)
-    comb_mix = input_mixes[:, :, 2 * mhc_mult:].view(a, b, mhc_mult, mhc_mult)
-    return pre_mix, post_mix, comb_mix
+    post_mix = (
+        input_mixes[:, :, mhc_mult : 2 * mhc_mult].sigmoid() * mhc_post_mult_value
+    ).unsqueeze(-1)
+    comb_mix = input_mixes[:, :, 2 * mhc_mult :].view(a, b, mhc_mult, mhc_mult)
+
+    comb_mix = comb_mix.softmax(-1) + sinkhorn_eps
+    comb_mix = comb_mix / (comb_mix.sum(-2, keepdim=True) + sinkhorn_eps)
+    for _ in range(sinkhorn_repeat - 1):
+        comb_mix = comb_mix / (comb_mix.sum(-1, keepdim=True) + sinkhorn_eps)
+        comb_mix = comb_mix / (comb_mix.sum(-2, keepdim=True) + sinkhorn_eps)
+
+    layer_input = (residual * pre_mix).sum(-2).bfloat16()
+    return post_mix, comb_mix, layer_input
 
 
-def _sinkhorn_normalize(x: torch.Tensor, repeat: int = 10, eps: float = 1e-6) -> torch.Tensor:
-    x = x.softmax(-1) + eps
-    x = x / (x.sum(-2, keepdim=True) + eps)
-    for _ in range(repeat - 1):
-        x = x / (x.sum(-1, keepdim=True) + eps)
-        x = x / (x.sum(-2, keepdim=True) + eps)
-    return x
-
-
-def _mhc_pre_apply_mix(x: torch.Tensor, mix: torch.Tensor) -> torch.Tensor:
-    return (x * mix).sum(-2).bfloat16()
-
-
-# Triton kernels: fused projection + split, and weighted sum
-if _TRITON_AVAILABLE:
-    @triton.jit
-    def mhc_pre_proj_split_kernel(
-        residual_ptr,          # bfloat16/float16/float32*, [B, S, mhc_mult, hidden_size]
-        weight_ptr,            # float32*, [M, K]
-        base_ptr,              # float32*, [M]
-        pre_out_ptr,           # float32*, [B, S, mhc_mult, 1]
-        post_out_ptr,          # float32*, [B, S, mhc_mult, 1]
-        comb_out_ptr,          # float32*, [B, S, mhc_mult, mhc_mult]
-        mhc_scale0, mhc_scale1, mhc_scale2,  # float32 scalars
-        mhc_post_mult_value,   # float32
-        mhc_pre_eps,           # float32
-        rms_eps,               # float32
-        n1,                    # int32: seq_len
-        mhc_mult,              # int32
-        hidden_size,           # int32
-        M,                     # int32: mhc_mult3 = 2*mhc_mult + mhc_mult*mhc_mult
-        K,                     # int32: mhc_mult * hidden_size
-        stride_res_b, stride_res_s, stride_res_h, stride_res_g,
-        stride_w_m, stride_w_k,
-        stride_base,
-        stride_pre_b, stride_pre_s, stride_pre_h, stride_pre_1,
-        stride_post_b, stride_post_s, stride_post_h, stride_post_1,
-        stride_comb_b, stride_comb_s, stride_comb_r, stride_comb_c,
-        BLOCK_K: tl.constexpr, BLOCK_M: tl.constexpr
-    ):
-        pid = tl.program_id(0)  # token id across B*S
-        b = pid // n1
-        s = pid % n1
-
-        # Base pointers for residual and outputs for this token
-        res_base = residual_ptr + b * stride_res_b + s * stride_res_s
-        pre_base = pre_out_ptr + b * stride_pre_b + s * stride_pre_s
-        post_base = post_out_ptr + b * stride_post_b + s * stride_post_s
-        comb_base = comb_out_ptr + b * stride_comb_b + s * stride_comb_s
-
-        # -------- Tile 0: fuse RMS pass with first M-tile matvec to reduce residual loads --------
-        mo = 0
-        m_offsets0 = mo + tl.arange(0, BLOCK_M)
-        m_mask0 = m_offsets0 < M
-        out0 = tl.zeros([BLOCK_M], dtype=tl.float32)
-        sqr_sum = tl.zeros((), dtype=tl.float32)
-
-        k = 0
-        while k < K:
-            k_offsets = k + tl.arange(0, BLOCK_K)
-            k_mask = k_offsets < K
-            head_off = k_offsets // hidden_size
-            hid_off = k_offsets % hidden_size
-            x_ptrs = res_base + head_off * stride_res_h + hid_off * stride_res_g
-            x_vals = tl.load(x_ptrs, mask=k_mask, other=0.0).to(tl.float32)
-
-            # Accumulate RMS sum for the token
-            sqr_sum += tl.sum(x_vals * x_vals, axis=0)
-
-            # Accumulate matvec for the first M tile
-            w_ptrs0 = weight_ptr + m_offsets0[:, None] * stride_w_m + k_offsets[None, :] * stride_w_k
-            w_tile0 = tl.load(w_ptrs0, mask=(m_mask0[:, None] & k_mask[None, :]), other=0.0).to(tl.float32)
-            out0 += tl.sum(w_tile0 * x_vals[None, :], axis=1)
-
-            k += BLOCK_K
-
-        # Compute RMS scale and apply to first tile
-        scale_rms = tl.rsqrt(sqr_sum / K + rms_eps)
-        out0 = out0 * scale_rms
-
-        # Apply piecewise scale and base, compute sigmoid once
-        s0 = tl.full([BLOCK_M], mhc_scale0, tl.float32)
-        s1 = tl.full([BLOCK_M], mhc_scale1, tl.float32)
-        s2 = tl.full([BLOCK_M], mhc_scale2, tl.float32)
-        cond0_0 = m_offsets0 < mhc_mult
-        cond1_0 = (m_offsets0 >= mhc_mult) & (m_offsets0 < 2 * mhc_mult)
-        scale_vals0 = tl.where(cond0_0, s0, tl.where(cond1_0, s1, s2))
-        out0 = out0 * scale_vals0
-        base_ptrs0 = base_ptr + m_offsets0 * stride_base
-        base_vals0 = tl.load(base_ptrs0, mask=m_mask0, other=0.0)
-        out0 = out0 + base_vals0
-        sig0 = tl.sigmoid(out0)
-
-        # Store pre/post/comb for first tile
-        pre_mask0 = m_mask0 & (m_offsets0 < mhc_mult)
-        pre_vals0 = sig0 + mhc_pre_eps
-        pre_ptrs0 = pre_base + m_offsets0 * stride_pre_h
-        tl.store(pre_ptrs0, pre_vals0, mask=pre_mask0)
-
-        post_mask0 = m_mask0 & (m_offsets0 >= mhc_mult) & (m_offsets0 < 2 * mhc_mult)
-        post_vals0 = sig0 * mhc_post_mult_value
-        post_off0 = tl.where(post_mask0, m_offsets0 - mhc_mult, 0)
-        post_ptrs0 = post_base + post_off0 * stride_post_h
-        tl.store(post_ptrs0, post_vals0, mask=post_mask0)
-
-        comb_mask0 = m_mask0 & (m_offsets0 >= 2 * mhc_mult)
-        comb_idx0 = tl.where(comb_mask0, m_offsets0 - 2 * mhc_mult, 0)
-        row_idx0 = comb_idx0 // mhc_mult
-        col_idx0 = comb_idx0 % mhc_mult
-        comb_ptrs0 = comb_base + row_idx0 * stride_comb_r + col_idx0 * stride_comb_c
-        tl.store(comb_ptrs0, out0, mask=comb_mask0)
-
-        # -------- Remaining tiles: reuse scale_rms, compute matvec only --------
-        mo += BLOCK_M
-        while mo < M:
-            m_offsets = mo + tl.arange(0, BLOCK_M)
-            m_mask = m_offsets < M
-
-            out_seg = tl.zeros([BLOCK_M], dtype=tl.float32)
-
-            k2 = 0
-            while k2 < K:
-                k_offsets = k2 + tl.arange(0, BLOCK_K)
-                k_mask = k_offsets < K
-
-                head_off = k_offsets // hidden_size
-                hid_off = k_offsets % hidden_size
-                x_ptrs = res_base + head_off * stride_res_h + hid_off * stride_res_g
-                x_vals = tl.load(x_ptrs, mask=k_mask, other=0.0).to(tl.float32)
-
-                w_ptrs = weight_ptr + m_offsets[:, None] * stride_w_m + k_offsets[None, :] * stride_w_k
-                w_tile = tl.load(w_ptrs, mask=(m_mask[:, None] & k_mask[None, :]), other=0.0).to(tl.float32)
-                out_seg += tl.sum(w_tile * x_vals[None, :], axis=1)
-
-                k2 += BLOCK_K
-
-            # Apply RMS scaling computed from first fused pass
-            out_seg = out_seg * scale_rms
-
-            # Apply piecewise scale and base
-            s0 = tl.full([BLOCK_M], mhc_scale0, tl.float32)
-            s1 = tl.full([BLOCK_M], mhc_scale1, tl.float32)
-            s2 = tl.full([BLOCK_M], mhc_scale2, tl.float32)
-            cond0 = m_offsets < mhc_mult
-            cond1 = (m_offsets >= mhc_mult) & (m_offsets < 2 * mhc_mult)
-            scale_vals = tl.where(cond0, s0, tl.where(cond1, s1, s2))
-            out_seg = out_seg * scale_vals
-
-            base_ptrs = base_ptr + m_offsets * stride_base
-            base_vals = tl.load(base_ptrs, mask=m_mask, other=0.0)
-            out_seg = out_seg + base_vals
-
-            # Compute sigmoid once for pre/post paths
-            sig = tl.sigmoid(out_seg)
-
-            # Store pre
-            pre_mask = m_mask & (m_offsets < mhc_mult)
-            pre_vals = sig + mhc_pre_eps
-            pre_ptrs = pre_base + m_offsets * stride_pre_h
-            tl.store(pre_ptrs, pre_vals, mask=pre_mask)
-
-            # Store post
-            post_mask = m_mask & (m_offsets >= mhc_mult) & (m_offsets < 2 * mhc_mult)
-            post_vals = sig * mhc_post_mult_value
-            post_off = tl.where(post_mask, m_offsets - mhc_mult, 0)
-            post_ptrs = post_base + post_off * stride_post_h
-            tl.store(post_ptrs, post_vals, mask=post_mask)
-
-            # Store comb
-            comb_mask = m_mask & (m_offsets >= 2 * mhc_mult)
-            comb_idx = tl.where(comb_mask, m_offsets - 2 * mhc_mult, 0)
-            row_idx = comb_idx // mhc_mult
-            col_idx = comb_idx % mhc_mult
-            comb_ptrs = comb_base + row_idx * stride_comb_r + col_idx * stride_comb_c
-            tl.store(comb_ptrs, out_seg, mask=comb_mask)
-
-            mo += BLOCK_M
-
-    @triton.jit
-    def mhc_weighted_sum_kernel(
-        residual_ptr,     # bfloat16/float16/float32*, [B, S, mhc_mult, hidden_size]
-        pre_ptr,          # float32*, [B, S, mhc_mult, 1]
-        out_ptr,          # bfloat16*, [B, S, hidden_size]
-        n1,               # int32
-        mhc_mult,         # int32
-        hidden_size,      # int32
-        stride_res_b, stride_res_s, stride_res_h, stride_res_g,
-        stride_pre_b, stride_pre_s, stride_pre_h, stride_pre_1,
-        stride_out_b, stride_out_s, stride_out_g,
-        BLOCK_D: tl.constexpr,
-    ):
-        pid_token = tl.program_id(0)  # token across B*S
-        pid_col = tl.program_id(1)    # tile along hidden_size
-
-        b = pid_token // n1
-        s = pid_token % n1
-
-        # Base pointers for token
-        res_base = residual_ptr + b * stride_res_b + s * stride_res_s
-        pre_base = pre_ptr + b * stride_pre_b + s * stride_pre_s
-        out_base = out_ptr + b * stride_out_b + s * stride_out_s
-
-        d_offsets = pid_col * BLOCK_D + tl.arange(0, BLOCK_D)
-        d_mask = d_offsets < hidden_size
-
-        acc = tl.zeros([BLOCK_D], dtype=tl.float32)
-
-        h = 0
-        while h < mhc_mult:
-            # Load scalar weight for this head
-            w_ptr = pre_base + h * stride_pre_h
-            w = tl.load(w_ptr)  # float32 scalar (the trailing dim is 1)
-            # Load residual tile for this head and accumulate
-            x_ptrs = res_base + h * stride_res_h + d_offsets * stride_res_g
-            x_vals = tl.load(x_ptrs, mask=d_mask, other=0.0).to(tl.float32)
-            acc += x_vals * w
-            h += 1
-
-        # Store accumulated result as bfloat16
-        out_ptrs = out_base + d_offsets * stride_out_g
-        tl.store(out_ptrs, acc.to(tl.bfloat16), mask=d_mask)
-
-
-class ModelNew(nn.Module):
+def mhc_mhc_triton(
+    residual: torch.Tensor,
+    fn: torch.Tensor,
+    mhc_scale: torch.Tensor,
+    mhc_base: torch.Tensor,
+    mhc_mult: int = 4,
+    hidden_size: int = 1280,
+    rms_eps: float = 1e-6,
+    mhc_pre_eps: float = 1e-6,
+    sinkhorn_eps: float = 1e-6,
+    mhc_post_mult_value: float = 1.0,
+    sinkhorn_repeat: int = 10,
+    block_k: int = 128,
+    block_h: int = 128,
+    torch_phase1: bool = True,
+    *,
+    force_triton: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Pure PyTorch/Triton-accelerated implementation of the MHC pre-processing fused kernel.
+    Fused MHC pre pipeline; outputs match 8_torch.Model.forward.
 
-    Pipeline:
-      1. RMS-normalized linear projection of residual (mhc_pre_norm_fn) [Triton fused]
-      2. Split mixing logits into pre / post / comb components (mhc_pre_split_mixes) [Triton fused]
-      3. Sinkhorn doubly-stochastic normalization of comb_mix
-      4. Weighted sum of MHC heads with pre_mix to produce layer_input [Triton accelerated]
+    Default (force_triton=True): launch Triton on NPU. Set force_triton=False or
+    OP8_FORCE_TRITON=0 for PyTorch reference path.
+
+    When torch_phase1=True (default), Phase-1 batched GEMM runs on NPU via Torch;
+    Triton fuses Phase 2–4 only.
     """
+    env_force = os.environ.get("OP8_FORCE_TRITON", "1").lower()
+    use_triton = force_triton and env_force not in ("0", "false", "no")
+    if not use_triton:
+        return _mhc_big_fuse_torch(
+            residual,
+            fn,
+            mhc_scale,
+            mhc_base,
+            mhc_mult,
+            hidden_size,
+            rms_eps,
+            mhc_pre_eps,
+            sinkhorn_eps,
+            mhc_post_mult_value,
+            sinkhorn_repeat,
+        )
+
+    if residual.device.type != "npu":
+        raise RuntimeError(
+            f"mhc_mhc_triton requires NPU when force_triton=True, got {residual.device}"
+        )
+
+    if residual.dim() != 4:
+        raise ValueError(f"residual must be 4D, got {residual.dim()}D")
+    n0, n1, mhc, h = residual.shape
+    if mhc != mhc_mult or h != hidden_size:
+        raise ValueError(f"shape mismatch: got ({mhc}, {h}), expected ({mhc_mult}, {hidden_size})")
+
+    mix_dim = mhc_mult * 2 + mhc_mult * mhc_mult
+    rgs = mhc_mult * hidden_size
+    if fn.shape != (mix_dim, rgs):
+        raise ValueError(f"fn shape {tuple(fn.shape)} != ({mix_dim}, {rgs})")
+    if mhc_base.numel() != mix_dim:
+        raise ValueError(f"mhc_base len {mhc_base.numel()} != {mix_dim}")
+
+    res_c = residual.contiguous()
+    fn_c = fn.contiguous()
+    base_c = mhc_base.reshape(-1).contiguous().to(torch.float32)
+    if fn_c.dtype != torch.float32:
+        fn_c = fn_c.to(torch.float32)
+
+    post = torch.empty((n0, n1, mhc_mult, 1), device=residual.device, dtype=torch.float32)
+    comb = torch.empty((n0, n1, mhc_mult, mhc_mult), device=residual.device, dtype=torch.float32)
+    layer_input = torch.empty((n0, n1, hidden_size), device=residual.device, dtype=torch.bfloat16)
+
+    s0 = float(mhc_scale[0].item())
+    s1 = float(mhc_scale[1].item())
+    s2 = float(mhc_scale[2].item())
+    num_cores = _num_vectorcores()
+    if torch_phase1:
+        mixes_scratch = _phase1_mixes_torch(res_c, fn_c, rms_eps)
+    else:
+        mixes_scratch = torch.empty((n0 * n1, mix_dim), device=residual.device, dtype=torch.float32)
+
+    if torch_phase1:
+        # Launch with grid mapped to Vector Core count using 1D stride loop
+        _mhc_tail_fuse_kernel[(num_cores,)](
+            res_c,
+            base_c,
+            mixes_scratch,
+            post,
+            comb,
+            layer_input,
+            n0,
+            n1,
+            mhc_pre_eps,
+            sinkhorn_eps,
+            mhc_post_mult_value,
+            s0,
+            s1,
+            s2,
+            res_c.stride(0),
+            res_c.stride(1),
+            res_c.stride(2),
+            res_c.stride(3),
+            post.stride(0),
+            post.stride(1),
+            post.stride(2),
+            comb.stride(0),
+            comb.stride(1),
+            comb.stride(2),
+            comb.stride(3),
+            layer_input.stride(0),
+            layer_input.stride(1),
+            layer_input.stride(2),
+            MHC=mhc_mult,
+            H=hidden_size,
+            MIX_DIM=mix_dim,
+            BLOCK_H=block_h,
+            SINKHORN_ITERS=sinkhorn_repeat,
+            NUM_CORES=num_cores,
+        )
+        return post, comb, layer_input
+
+    # Launch with grid mapped to Vector Core count using 1D stride loop
+    _mhc_big_fuse_kernel[(num_cores,)](
+        res_c,
+        fn_c,
+        base_c,
+        mixes_scratch,
+        post,
+        comb,
+        layer_input,
+        n0,
+        n1,
+        rms_eps,
+        mhc_pre_eps,
+        sinkhorn_eps,
+        mhc_post_mult_value,
+        s0,
+        s1,
+        s2,
+        res_c.stride(0),
+        res_c.stride(1),
+        res_c.stride(2),
+        res_c.stride(3),
+        fn_c.stride(0),
+        fn_c.stride(1),
+        post.stride(0),
+        post.stride(1),
+        post.stride(2),
+        post.stride(3),
+        comb.stride(0),
+        comb.stride(1),
+        comb.stride(2),
+        comb.stride(3),
+        layer_input.stride(0),
+        layer_input.stride(1),
+        layer_input.stride(2),
+        MHC=mhc_mult,
+        H=hidden_size,
+        RGS=rgs,
+        MIX_DIM=mix_dim,
+        BLOCK_K=block_k,
+        BLOCK_H=block_h,
+        SINKHORN_ITERS=sinkhorn_repeat,
+        NUM_CORES=num_cores,
+    )
+    return post, comb, layer_input
+
+
+class ModelTriton(nn.Module):
+    """Drop-in module using fused Triton forward on NPU (force Triton by default)."""
 
     def __init__(
         self,
@@ -291,110 +591,45 @@ class ModelNew(nn.Module):
         mhc_sinkhorn_eps: float = 1e-6,
         mhc_post_mult_value: float = 1.0,
         sinkhorn_repeat: int = 10,
+        *,
+        force_triton: bool = True,
     ):
         super().__init__()
         self.mhc_mult = mhc_mult
+        self.hidden_size = hidden_size
         self.rms_eps = rms_eps
         self.mhc_pre_eps = mhc_pre_eps
         self.mhc_sinkhorn_eps = mhc_sinkhorn_eps
         self.mhc_post_mult_value = mhc_post_mult_value
         self.sinkhorn_repeat = sinkhorn_repeat
+        self.force_triton = force_triton
 
-        mhc_mult3 = mhc_mult * 2 + mhc_mult * mhc_mult
-        self.fn = nn.Parameter(torch.randn(mhc_mult3, mhc_mult * hidden_size) * 1e-4)
+        mix_dim = mhc_mult * 2 + mhc_mult * mhc_mult
+        self.fn = nn.Parameter(torch.randn(mix_dim, mhc_mult * hidden_size) * 1e-4)
         self.mhc_scale = nn.Parameter(torch.randn(3) * 0.1)
-        self.mhc_base = nn.Parameter(torch.randn(mhc_mult3) * 0.1)
+        self.mhc_base = nn.Parameter(torch.randn(mix_dim) * 0.1)
 
     def forward(
         self,
         residual: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            residual: [batch, seq_len, mhc_mult, hidden_size] bfloat16
+        return mhc_mhc_triton(
+            residual,
+            self.fn,
+            self.mhc_scale,
+            self.mhc_base,
+            mhc_mult=self.mhc_mult,
+            hidden_size=self.hidden_size,
+            rms_eps=self.rms_eps,
+            mhc_pre_eps=self.mhc_pre_eps,
+            sinkhorn_eps=self.mhc_sinkhorn_eps,
+            mhc_post_mult_value=self.mhc_post_mult_value,
+            sinkhorn_repeat=self.sinkhorn_repeat,
+            force_triton=self.force_triton,
+        )
 
-        Returns:
-            post_mix:   [batch, seq_len, mhc_mult, 1]           float32
-            comb_mix:   [batch, seq_len, mhc_mult, mhc_mult]    float32
-            layer_input:[batch, seq_len, hidden_size]            bfloat16
-        """
-        B, S, Hm, Hd = residual.shape
-        assert Hm == self.mhc_mult, "mhc_mult mismatch with residual shape"
-        M = self.mhc_mult * 2 + self.mhc_mult * self.mhc_mult
-        K = self.mhc_mult * Hd
 
-        # Allocate outputs
-        device = residual.device
-        pre_mix = torch.empty((B, S, self.mhc_mult, 1), dtype=torch.float32, device=device)
-        post_mix = torch.empty((B, S, self.mhc_mult, 1), dtype=torch.float32, device=device)
-        comb_mix = torch.empty((B, S, self.mhc_mult, self.mhc_mult), dtype=torch.float32, device=device)
-
-        if _TRITON_AVAILABLE and residual.is_cuda:
-            # Kernel launch configuration
-            BLOCK_K = 256
-            BLOCK_M = 32
-
-            # Strides
-            s_res = residual.stride()
-            s_w = self.fn.stride()
-            s_base = self.mhc_base.stride()
-            s_pre = pre_mix.stride()
-            s_post = post_mix.stride()
-            s_comb = comb_mix.stride()
-
-            grid = (B * S,)
-
-            mhc_pre_proj_split_kernel[grid](
-                residual, self.fn, self.mhc_base,
-                pre_mix, post_mix, comb_mix,
-                float(self.mhc_scale[0].item()),
-                float(self.mhc_scale[1].item()),
-                float(self.mhc_scale[2].item()),
-                float(self.mhc_post_mult_value),
-                float(self.mhc_pre_eps),
-                float(self.rms_eps),
-                S, self.mhc_mult, Hd, M, K,
-                s_res[0], s_res[1], s_res[2], s_res[3],
-                s_w[0], s_w[1],
-                s_base[0] if len(s_base) > 0 else 1,
-                s_pre[0], s_pre[1], s_pre[2], s_pre[3],
-                s_post[0], s_post[1], s_post[2], s_post[3],
-                s_comb[0], s_comb[1], s_comb[2], s_comb[3],
-                BLOCK_K=BLOCK_K, BLOCK_M=BLOCK_M,
-                num_warps=4, num_stages=3
-            )
-
-            # Sinkhorn normalization (PyTorch)
-            comb_mix = _sinkhorn_normalize(comb_mix, repeat=self.sinkhorn_repeat, eps=self.mhc_sinkhorn_eps)
-
-            # Weighted sum kernel for layer_input
-            layer_input = torch.empty((B, S, Hd), dtype=torch.bfloat16, device=device)
-            s_res = residual.stride()
-            s_pre = pre_mix.stride()
-            s_out = layer_input.stride()
-
-            grid_ws = (B * S, triton.cdiv(Hd, 128))
-            mhc_weighted_sum_kernel[grid_ws](
-                residual, pre_mix, layer_input,
-                S, self.mhc_mult, Hd,
-                s_res[0], s_res[1], s_res[2], s_res[3],
-                s_pre[0], s_pre[1], s_pre[2], s_pre[3],
-                s_out[0], s_out[1], s_out[2],
-                BLOCK_D=128,
-                num_warps=2, num_stages=2
-            )
-        else:
-            # Fallback pure PyTorch path (CPU or missing Triton)
-            mixes = _mhc_pre_norm_fn(residual, self.fn, None, self.rms_eps)
-            pre_mix, post_mix, comb_mix = _mhc_pre_split_mixes(
-                mixes, self.mhc_scale, self.mhc_base,
-                self.mhc_mult, self.mhc_post_mult_value, self.mhc_pre_eps,
-            )
-            comb_mix = _sinkhorn_normalize(comb_mix, repeat=self.sinkhorn_repeat, eps=self.mhc_sinkhorn_eps)
-            layer_input = _mhc_pre_apply_mix(residual, pre_mix)
-
-        return post_mix, comb_mix, layer_input
-
+ModelNew = ModelTriton
 
 n1 = 512
 mhc_mult = 4
@@ -408,3 +643,44 @@ def get_inputs():
 
 def get_init_inputs():
     return [mhc_mult, hidden_size]
+
+
+def _accuracy_smoke() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "mhc_torch_ori", Path(__file__).parent / "8_torch.py"
+    )
+    assert spec and spec.loader
+    ori = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ori)
+
+    device = "npu"
+    torch.manual_seed(0)
+    residual = ori.get_inputs()[0].to(device)
+    init = ori.get_init_inputs()
+
+    ref_m = ori.Model(*init).to(device)
+    tri_m = ModelTriton(*init).to(device)
+    tri_m.fn.data.copy_(ref_m.fn.data)
+    tri_m.mhc_scale.data.copy_(ref_m.mhc_scale.data)
+    tri_m.mhc_base.data.copy_(ref_m.mhc_base.data)
+
+    with torch.no_grad():
+        r_post, r_comb, r_layer = ref_m(residual)
+        t_post, t_comb, t_layer = tri_m(residual)
+
+    for name, ref, got in [
+        ("post_mix", r_post, t_post),
+        ("comb_mix", r_comb, t_comb),
+        ("layer_input", r_layer, t_layer),
+    ]:
+        err = (got.float() - ref.float()).abs().max().item()
+        rtol, atol = (2e-2, 2e-2) if name == "layer_input" else (1e-5, 1e-5)
+        torch.testing.assert_close(got.cpu(), ref.cpu(), rtol=rtol, atol=atol)
+        print(f"{name}: ok max_err={err:.3e}")
+
+
+if __name__ == "__main__":
+    _accuracy_smoke()
