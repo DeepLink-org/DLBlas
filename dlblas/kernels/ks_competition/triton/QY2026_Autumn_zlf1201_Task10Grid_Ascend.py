@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 
-
 try:
     import triton
     import triton.language as tl
+
     _TRITON_AVAILABLE = True
 except Exception:
     triton = None
@@ -14,9 +14,11 @@ except Exception:
 
 
 if _TRITON_AVAILABLE:
+
     @triton.jit
-    def _cluster_ids_2d_kernel(pos_ptr, size_ptr, end_ptr, out_ptr, N,
-                               BLOCK_SIZE: tl.constexpr):
+    def _cluster_ids_2d_kernel(
+        pos_ptr, size_ptr, end_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offs < N
@@ -56,9 +58,7 @@ class Model(nn.Module):
         sorted_ids = cluster_ids[order]
 
         flags = torch.ones(
-            sorted_ids.shape,
-            dtype=torch.bool,
-            device=cluster_ids.device
+            sorted_ids.shape, dtype=torch.bool, device=cluster_ids.device
         )
         flags[1:] = sorted_ids[1:] != sorted_ids[:-1]
 
@@ -66,9 +66,7 @@ class Model(nn.Module):
         ranks = ranks_i32.to(torch.long)
 
         inverse_indices = torch.empty(
-            cluster_ids.shape,
-            dtype=torch.long,
-            device=cluster_ids.device
+            cluster_ids.shape, dtype=torch.long, device=cluster_ids.device
         )
         inverse_indices[order] = ranks
 
@@ -76,10 +74,14 @@ class Model(nn.Module):
 
     def forward(self, pos, size, start=None, end=None):
         if pos.dim() != 2:
-            raise ValueError(f"pos should be 2-dimensional, got {pos.dim()}-dimensional")
+            raise ValueError(
+                f"pos should be 2-dimensional, got {pos.dim()}-dimensional"
+            )
 
         if size.dim() != 1:
-            raise ValueError(f"size should be 1-dimensional, got {size.dim()}-dimensional")
+            raise ValueError(
+                f"size should be 1-dimensional, got {size.dim()}-dimensional"
+            )
 
         if pos.size(1) != size.size(0):
             raise ValueError(
@@ -191,7 +193,11 @@ class Model(nn.Module):
             cluster_ids = idx0
 
             for d in range(1, D):
-                idxd = ((pos_calc[:, d] - start_calc[d]) / size_calc[d]).long().clamp_min(0)
+                idxd = (
+                    ((pos_calc[:, d] - start_calc[d]) / size_calc[d])
+                    .long()
+                    .clamp_min(0)
+                )
                 cluster_ids = cluster_ids * grid_counts[d] + idxd
 
         return self._inverse_from_cluster_ids(cluster_ids)
