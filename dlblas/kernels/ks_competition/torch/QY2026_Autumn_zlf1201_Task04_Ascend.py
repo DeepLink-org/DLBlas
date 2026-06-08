@@ -16,7 +16,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 # Pre-allocated sentinel values (created once per device, reused across calls)
 _SENTINEL_CACHE = {}
 
@@ -53,7 +52,9 @@ def generate_relp(
     b_same_entity = entity_id[:, None] == entity_id[None, :]
 
     # Residue relative position (clamped, with sentinel for cross-chain)
-    d_residue = (residue_index[:, None] - residue_index[None, :]).clamp(-r_max, r_max) + r_max
+    d_residue = (residue_index[:, None] - residue_index[None, :]).clamp(
+        -r_max, r_max
+    ) + r_max
     d_residue = torch.where(b_same_chain, d_residue, sentinel_res)
     a_rel_pos = F.one_hot(d_residue, 2 * (r_max + 1))
 
