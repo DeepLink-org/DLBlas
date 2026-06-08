@@ -1,15 +1,18 @@
-"""
-Task 05: TriAttentionFallback - Ascend NPU Implementation
-
-Scaled dot-product attention with dimension reshaping for 5D inputs.
-Uses F.scaled_dot_product_attention for efficient NPU execution.
-
-Hardware: Huawei Ascend 910B2C
-"""
-
+# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+try:
+    import torch_npu
+
+    _NPU_FA = torch_npu.npu_fusion_attention
+except Exception:
+    _NPU_FA = None
+
+
+_SDPA = F.scaled_dot_product_attention
+_NPU_FA_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 
 def tri_attention_fallback(
@@ -23,41 +26,66 @@ def tri_attention_fallback(
     Args:
         q,k,v: [B, N, S, H, D]
         bias1: [B, N, S, 1, S] or None
-        bias2: [B, N, 1, H, S, S] or None
+        bias2: [B, N, 1, H, S, S] or [B, N, H, S, S] or None
+
     Returns:
         out: [B, N, S, H, D]
     """
     B, N, S, H, D = q.shape
-    # Reshape to [B*N*H, S, D] for SDPA
-    q2 = q.permute(0, 1, 3, 2, 4).reshape(B * N * H, S, D)
-    k2 = k.permute(0, 1, 3, 2, 4).reshape(B * N * H, S, D)
-    v2 = v.permute(0, 1, 3, 2, 4).reshape(B * N * H, S, D)
+
+    # Fast path: no bias + NPU fused attention.
+    # Original layout [B, N, S, H, D]
+    # Merge B and N -> [B*N, S, H, D], which matches BSND layout.
+    if bias1 is None and bias2 is None and _NPU_FA is not None:
+        if q.device.type == "npu" and q.dtype in _NPU_FA_DTYPES:
+            try:
+                out = _NPU_FA(
+                    q.flatten(0, 1),
+                    k.flatten(0, 1),
+                    v.flatten(0, 1),
+                    H,
+                    "BSND",
+                    scale=D**-0.5,
+                    keep_prob=1.0,
+                )[0]
+
+                return out.reshape(B, N, S, H, D)
+            except Exception:
+                pass
+
+    # General fallback path.
+    # SDPA expects [..., H, S, D], so move H before S.
+    q = q.transpose(2, 3)
+    k = k.transpose(2, 3)
+    v = v.transpose(2, 3)
 
     attn_bias = None
-    if bias1 is not None or bias2 is not None:
-        attn_bias = 0.0
-        if bias1 is not None:
-            b1 = bias1.expand(B, N, S, H, S).permute(0, 1, 3, 2, 4)
-            b1 = b1.reshape(B * N * H, S, S)
-            attn_bias = attn_bias + b1
-        if bias2 is not None:
-            if bias2.dim() == 5:
-                b2 = bias2
-            else:
-                b2 = bias2.squeeze(2)
-            b2 = b2.reshape(B * N * H, S, S)
-            attn_bias = attn_bias + b2
 
-    out = F.scaled_dot_product_attention(
-        q2, k2, v2, attn_mask=attn_bias, dropout_p=0.0, is_causal=False
+    if bias1 is not None:
+        # [B, N, S, 1, S] -> [B, N, 1, S, S]
+        # Let SDPA broadcast over H.
+        attn_bias = bias1.transpose(2, 3)
+
+    if bias2 is not None:
+        # [B, N, 1, H, S, S] -> [B, N, H, S, S]
+        b2 = bias2.squeeze(2) if bias2.dim() == 6 else bias2
+        attn_bias = b2 if attn_bias is None else attn_bias + b2
+
+    out = _SDPA(
+        q,
+        k,
+        v,
+        attn_mask=attn_bias,
+        dropout_p=0.0,
+        is_causal=False,
     )
-    out = out.reshape(B, N, H, S, D).permute(0, 1, 3, 2, 4)
-    return out
+
+    return out.transpose(2, 3)
 
 
 class Model(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(Model, self).__init__()
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
@@ -89,13 +117,3 @@ def get_inputs():
 
 def get_init_inputs():
     return []
-
-
-if __name__ == "__main__":
-    torch.npu.set_device(0)
-    model = Model(*get_init_inputs())
-    inputs = get_inputs()
-    out = model(*inputs)
-    print(f"Output shape: {out.shape}")
-    print(f"Output device: {out.device}")
-    print(out)
