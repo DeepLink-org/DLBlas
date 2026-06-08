@@ -59,7 +59,9 @@ class Model(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+    ) -> torch.Tensor:
         return tri_attention_fallback(q, k, v, None, None)
 
 
