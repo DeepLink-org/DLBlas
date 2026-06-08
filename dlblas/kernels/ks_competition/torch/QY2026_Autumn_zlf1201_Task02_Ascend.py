@@ -36,10 +36,10 @@ from opt_einsum_fx import optimize_einsums_full
 from sympy.physics.wigner import wigner_6j
 from torch import fx
 
-
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
+
 
 def slices_basis(irreps):
     s = []
@@ -119,9 +119,9 @@ def _codegen_graph(si1, si2, so, sins, sim_tp=None, info=None):
                     sim_tp.get_weight_byL1L2L3(info[idx][0], info[idx][1], info[idx][2])
                 ].reshape(tuple(ins.path_shape))
             else:
-                w = weights[flat_weight_index : flat_weight_index + prod(ins.path_shape)].reshape(
-                    tuple(ins.path_shape)
-                )
+                w = weights[
+                    flat_weight_index : flat_weight_index + prod(ins.path_shape)
+                ].reshape(tuple(ins.path_shape))
             flat_weight_index += prod(ins.path_shape)
 
         if ins.connection_mode == "uvw":
@@ -212,8 +212,11 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
 
         if instructions is None:
             instructions, irreps_output = self._get_instruction(
-                irreps_in1, irreps_in2, irreps_out,
-                learnable_weight=learnable_weight, connection_mode=connection_mode,
+                irreps_in1,
+                irreps_in2,
+                irreps_out,
+                learnable_weight=learnable_weight,
+                connection_mode=connection_mode,
             )
             self.irreps_out = irreps_output
 
@@ -222,7 +225,11 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
         self.instructions = []
         for i_in1, i_in2, i_out, cm, hw, pw in instructions:
             path_shape = {
-                "uvw": (self.irreps_in1[i_in1].mul, self.irreps_in2[i_in2].mul, self.irreps_out[i_out].mul),
+                "uvw": (
+                    self.irreps_in1[i_in1].mul,
+                    self.irreps_in2[i_in2].mul,
+                    self.irreps_out[i_out].mul,
+                ),
                 "uvu": (self.irreps_in1[i_in1].mul, self.irreps_in2[i_in2].mul),
                 "uuu": (self.irreps_in1[i_in1].mul,),
             }[cm]
@@ -251,13 +258,23 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
             normalization_coefficients.append(alpha)
 
         self.instructions = [
-            Instruction(ins.i_in1, ins.i_in2, ins.i_out, ins.connection_mode, ins.has_weight, alpha, ins.path_shape)
+            Instruction(
+                ins.i_in1,
+                ins.i_in2,
+                ins.i_out,
+                ins.connection_mode,
+                ins.has_weight,
+                alpha,
+                ins.path_shape,
+            )
             for ins, alpha in zip(self.instructions, normalization_coefficients)
         ]
 
         self._in1_dim = self.irreps_in1.dim
         self._in2_dim = self.irreps_in2.dim
-        self.weight_numel = sum(prod(ins.path_shape) for ins in self.instructions if ins.has_weight)
+        self.weight_numel = sum(
+            prod(ins.path_shape) for ins in self.instructions if ins.has_weight
+        )
         self.internal_weights = internal_weights
 
         if internal_weights and self.weight_numel > 0:
@@ -265,10 +282,20 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
         else:
             self.register_buffer("weight", torch.Tensor([0]))
 
-        graphmod = _codegen_graph(self.irreps_in1, self.irreps_in2, self.irreps_out, self.instructions)
+        graphmod = _codegen_graph(
+            self.irreps_in1, self.irreps_in2, self.irreps_out, self.instructions
+        )
         self._codegen_register({"_compiled_main_left_right": graphmod})
 
-    def _get_instruction(self, input1, input2, output, learnable_weight=True, connection_mode="uvu", reduce_sameorder=True):
+    def _get_instruction(
+        self,
+        input1,
+        input2,
+        output,
+        learnable_weight=True,
+        connection_mode="uvu",
+        reduce_sameorder=True,
+    ):
         input1 = o3.Irreps(input1)
         input2 = o3.Irreps(input2)
         output = o3.Irreps(output)
@@ -282,7 +309,9 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
                     if ir_out in output:
                         k = len(irreps_output)
                         irreps_output.append((mul, ir_out))
-                        instructions.append((i, j, k, connection_mode, learnable_weight))
+                        instructions.append(
+                            (i, j, k, connection_mode, learnable_weight)
+                        )
         return instructions, o3.Irreps(irreps_output)
 
     def get_weight_byL1L2L3(self, L1, L2, L3):
@@ -295,14 +324,29 @@ class Simple_TensorProduct_oTchannel(torch.nn.Module, CodeGenMixin):
 
 
 class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
-    def __init__(self, irreps_in1, irreps_in2, irreps_out, max_ir=None,
-                 irrep_normalization="none", path_normalization="none",
-                 connection_mode="uvu", learnable_weight=True, **kwargs):
-        irreps_in1 = o3.Irreps(irreps_in1) if isinstance(irreps_in1, str) else irreps_in1
-        irreps_in2 = o3.Irreps(irreps_in2) if isinstance(irreps_in2, str) else irreps_in2
+    def __init__(
+        self,
+        irreps_in1,
+        irreps_in2,
+        irreps_out,
+        max_ir=None,
+        irrep_normalization="none",
+        path_normalization="none",
+        connection_mode="uvu",
+        learnable_weight=True,
+        **kwargs,
+    ):
+        irreps_in1 = (
+            o3.Irreps(irreps_in1) if isinstance(irreps_in1, str) else irreps_in1
+        )
+        irreps_in2 = (
+            o3.Irreps(irreps_in2) if isinstance(irreps_in2, str) else irreps_in2
+        )
         instr, out_source = [], []
         if max_ir is None:
-            irreps_out = o3.Irreps(irreps_out) if isinstance(irreps_out, str) else irreps_out
+            irreps_out = (
+                o3.Irreps(irreps_out) if isinstance(irreps_out, str) else irreps_out
+            )
             for i_1, (m1, ir_1) in enumerate(irreps_in1):
                 for i_2, (m2, ir_2) in enumerate(irreps_in2):
                     for i_out, (_, ir_out) in enumerate(irreps_out):
@@ -316,33 +360,64 @@ class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
                     for ir_out in ir_1 * ir_2:
                         if ir_out.l > max_ir + max(irreps_in1.ls) - ir_2.l:
                             continue
-                        instr += [(i_1, i_2, ir_out.l, connection_mode, learnable_weight)]
+                        instr += [
+                            (i_1, i_2, ir_out.l, connection_mode, learnable_weight)
+                        ]
                         out_source.append((ir_1.l, ir_2.l, ir_out.l))
             max_out_order = max([i[2] for i in instr])
             irreps_out = "+".join(
-                ["{c}x0e", "{c}x1e", "{c}x2e", "{c}x3e", "{c}x4e",
-                 "{c}x5e", "{c}x6e", "{c}x7e", "{c}x8e"][: max_out_order + 1]
+                [
+                    "{c}x0e",
+                    "{c}x1e",
+                    "{c}x2e",
+                    "{c}x3e",
+                    "{c}x4e",
+                    "{c}x5e",
+                    "{c}x6e",
+                    "{c}x7e",
+                    "{c}x8e",
+                ][: max_out_order + 1]
             )
             irreps_out = irreps_out.format(c=m1 * m2)
             irreps_out = o3.Irreps(irreps_out)
         self.out_source = out_source
         super().__init__(
-            irreps_in1, irreps_in2, irreps_out, instr,
-            irrep_normalization=irrep_normalization, path_normalization=path_normalization, **kwargs,
+            irreps_in1,
+            irreps_in2,
+            irreps_out,
+            instr,
+            irrep_normalization=irrep_normalization,
+            path_normalization=path_normalization,
+            **kwargs,
         )
         fwi = 0
         self.weights_dict = {}
         for ins in self.instructions:
-            mi1, mi2, mo = self.irreps_in1[ins.i_in1], self.irreps_in2[ins.i_in2], self.irreps_out[ins.i_out]
+            mi1, mi2, mo = (
+                self.irreps_in1[ins.i_in1],
+                self.irreps_in2[ins.i_in2],
+                self.irreps_out[ins.i_out],
+            )
             if ins.has_weight:
-                self.weights_dict[(mi1.ir.l, mi2.ir.l, mo.ir.l)] = slice(fwi, fwi + prod(ins.path_shape))
+                self.weights_dict[(mi1.ir.l, mi2.ir.l, mo.ir.l)] = slice(
+                    fwi, fwi + prod(ins.path_shape)
+                )
                 fwi += prod(ins.path_shape)
 
 
 class DepthwiseTensorProduct_wosort(Simple_TensorProduct_oTchannel):
-    def __init__(self, irreps_in1, irreps_in2, filter_ir_out=None, max_ir=1000,
-                 irrep_normalization=None, path_normalization=None,
-                 learnable_weight=False, connection_mode="uvu", **kwargs):
+    def __init__(
+        self,
+        irreps_in1,
+        irreps_in2,
+        filter_ir_out=None,
+        max_ir=1000,
+        irrep_normalization=None,
+        path_normalization=None,
+        learnable_weight=False,
+        connection_mode="uvu",
+        **kwargs,
+    ):
         irreps_in1 = o3.Irreps(irreps_in1).simplify()
         irreps_in2 = o3.Irreps(irreps_in2).simplify()
         if filter_ir_out is not None:
@@ -360,16 +435,31 @@ class DepthwiseTensorProduct_wosort(Simple_TensorProduct_oTchannel):
         out = o3.Irreps(out)
         self.out_source = out_source
         super().__init__(
-            irreps_in1, irreps_in2, out, instr,
-            irrep_normalization=irrep_normalization, path_normalization=path_normalization, **kwargs,
+            irreps_in1,
+            irreps_in2,
+            out,
+            instr,
+            irrep_normalization=irrep_normalization,
+            path_normalization=path_normalization,
+            **kwargs,
         )
 
 
 class FullyConnectedTensorProductWigner6j(Simple_TensorProduct_oTchannel):
-    def __init__(self, irreps_in1, irreps_in2, irreps_out, rij_order,
-                 irrep_normalization="none", path_normalization="none",
-                 previous_out_source=None, learnable_weight=False,
-                 connection_mode="uvu", simulate_tp=None, **kwargs):
+    def __init__(
+        self,
+        irreps_in1,
+        irreps_in2,
+        irreps_out,
+        rij_order,
+        irrep_normalization="none",
+        path_normalization="none",
+        previous_out_source=None,
+        learnable_weight=False,
+        connection_mode="uvu",
+        simulate_tp=None,
+        **kwargs,
+    ):
         irreps_in1 = o3.Irreps(irreps_in1)
         irreps_in2 = o3.Irreps(irreps_in2)
         irreps_out = o3.Irreps(irreps_out)
@@ -391,17 +481,35 @@ class FullyConnectedTensorProductWigner6j(Simple_TensorProduct_oTchannel):
                             * math.sqrt((2 * d + 1) * (2 * bc + 1))
                         )
                         if path_weight != 0:
-                            self.ins.append((i_1, i_2, i_out, connection_mode, learnable_weight, path_weight))
+                            self.ins.append(
+                                (
+                                    i_1,
+                                    i_2,
+                                    i_out,
+                                    connection_mode,
+                                    learnable_weight,
+                                    path_weight,
+                                )
+                            )
                             self.info.append((a, bc, abc))
         super().__init__(
-            irreps_in1, irreps_in2, irreps_out, self.ins,
-            irrep_normalization=irrep_normalization, path_normalization=path_normalization,
-            path_weight_sqrt=False, **kwargs,
+            irreps_in1,
+            irreps_in2,
+            irreps_out,
+            self.ins,
+            irrep_normalization=irrep_normalization,
+            path_normalization=path_normalization,
+            path_weight_sqrt=False,
+            **kwargs,
         )
         self.simulate_tp = simulate_tp
         gm = _codegen_graph(
-            self.irreps_in1, self.irreps_in2, self.irreps_out,
-            self.instructions, self.simulate_tp, self.info,
+            self.irreps_in1,
+            self.irreps_in2,
+            self.irreps_out,
+            self.instructions,
+            self.simulate_tp,
+            self.info,
         )
         assert gm is not None
         self.weight = nn.Parameter(torch.ones(1))
@@ -415,8 +523,16 @@ class FullyConnectedTensorProductWigner6j(Simple_TensorProduct_oTchannel):
 
 
 class E2TensorProductArbitraryOrder(torch.nn.Module):
-    def __init__(self, irreps_in, irreps_out, head, order,
-                 learnable_weight=True, connection_mode="uvw", path_normalization="element"):
+    def __init__(
+        self,
+        irreps_in,
+        irreps_out,
+        head,
+        order,
+        learnable_weight=True,
+        connection_mode="uvw",
+        path_normalization="element",
+    ):
         super().__init__()
         self.irreps_in = irreps_in
         self.irreps_out = irreps_out
@@ -428,45 +544,83 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
         if not learnable_weight:
             connection_mode = "uvu"
         self.tensor_product_tp_component_1 = DepthWiseTensorProduct_reducesameorder(
-            irreps_in, f"1x{order}e", irreps_out,
-            irrep_normalization="component", path_normalization="none",
-            learnable_weight=learnable_weight, connection_mode=connection_mode,
+            irreps_in,
+            f"1x{order}e",
+            irreps_out,
+            irrep_normalization="component",
+            path_normalization="none",
+            learnable_weight=learnable_weight,
+            connection_mode=connection_mode,
         )
-        e3nn.o3.Irreps([(mul // head, (ir, p)) for mul, (ir, p) in e3nn.o3.Irreps(irreps_in)])
+        e3nn.o3.Irreps(
+            [(mul // head, (ir, p)) for mul, (ir, p) in e3nn.o3.Irreps(irreps_in)]
+        )
         self.head = head
         self.components = nn.ModuleList(
-            [self._create_component(i, learnable_weight, connection_mode) for i in range(1, order + 1)]
+            [
+                self._create_component(i, learnable_weight, connection_mode)
+                for i in range(1, order + 1)
+            ]
         )
         self.coeffs = self.get_coeffs()
         if order > 6:
             raise ValueError("Coeffs for order > 6 not implemented")
         if path_normalization == "element" or path_normalization is None:
-            pn = 1 / torch.sqrt(get_path_norm(irreps_in, f"1x{order}e", irreps_in).reshape(1, -1, 1))
+            pn = 1 / torch.sqrt(
+                get_path_norm(irreps_in, f"1x{order}e", irreps_in).reshape(1, -1, 1)
+            )
             self.register_buffer("path_norm", pn)
         else:
             self.register_buffer("path_norm", torch.ones(1))
 
     def _create_component(self, i, learnable_weight, connection_mode):
         tp_ws = DepthwiseTensorProduct_wosort(
-            self.irreps_in, o3.Irreps(f"1x{i}e"),
+            self.irreps_in,
+            o3.Irreps(f"1x{i}e"),
             max_ir=e3nn.o3.Irreps(self.irreps_in)[-1][1].l + (self.order - i),
-            irrep_normalization="component", path_normalization="none", learnable_weight=False,
+            irrep_normalization="component",
+            path_normalization="none",
+            learnable_weight=False,
         )
-        e3nn.o3.Irreps([(mul // self.head, (ir, p)) for mul, (ir, p) in tp_ws.irreps_out])
+        e3nn.o3.Irreps(
+            [(mul // self.head, (ir, p)) for mul, (ir, p) in tp_ws.irreps_out]
+        )
         w6j_tp = FullyConnectedTensorProductWigner6j(
-            tp_ws.irreps_out, o3.Irreps(f"1x{self.order - i}e"), self.irreps_out,
-            rij_order=self.order, previous_out_source=tp_ws.out_source,
-            irrep_normalization="component", path_normalization="none",
-            learnable_weight=learnable_weight, connection_mode=connection_mode,
+            tp_ws.irreps_out,
+            o3.Irreps(f"1x{self.order - i}e"),
+            self.irreps_out,
+            rij_order=self.order,
+            previous_out_source=tp_ws.out_source,
+            irrep_normalization="component",
+            path_normalization="none",
+            learnable_weight=learnable_weight,
+            connection_mode=connection_mode,
             simulate_tp=self.tensor_product_tp_component_1,
         )
         return nn.ModuleDict({"tp_without_sort": tp_ws, "wigner_6j_tp": w6j_tp})
 
     @staticmethod
     def get_coeffs():
-        return [1, 2.046653509140, 1.29441716, 0.84739512, 0.56493002, 0.38087577, 0.25875416]
+        return [
+            1,
+            2.046653509140,
+            1.29441716,
+            0.84739512,
+            0.56493002,
+            0.38087577,
+            0.25875416,
+        ]
 
-    def forward(self, pos, exp_pos, h, exp_h, alpha_ij, f_sparse_idx_expnode=None, batched_data={}):
+    def forward(
+        self,
+        pos,
+        exp_pos,
+        h,
+        exp_h,
+        alpha_ij,
+        f_sparse_idx_expnode=None,
+        batched_data={},
+    ):
         f_N1, topK = alpha_ij.shape[:2]
         f_N2 = exp_pos.shape[0]
 
@@ -477,32 +631,48 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
             Y_powers = []
             for i in range(self.order + 1):
                 if i == 0:
-                    Y_powers.append(self.coeffs[i] * torch.ones_like(pos.narrow(-1, 0, 1).unsqueeze(dim=-1)))
+                    Y_powers.append(
+                        self.coeffs[i]
+                        * torch.ones_like(pos.narrow(-1, 0, 1).unsqueeze(dim=-1))
+                    )
                 else:
                     Y_powers.append(
                         self.coeffs[i]
-                        * e3nn.o3.spherical_harmonics(i, pos, normalize=False, normalization="integral").unsqueeze(-1)
+                        * e3nn.o3.spherical_harmonics(
+                            i, pos, normalize=False, normalization="integral"
+                        ).unsqueeze(-1)
                     )
             exp_Y_powers = []
             for i in range(self.order + 1):
                 if i == 0:
-                    exp_Y_powers.append(self.coeffs[i] * torch.ones_like(exp_pos.narrow(-1, 0, 1).unsqueeze(dim=-1)))
+                    exp_Y_powers.append(
+                        self.coeffs[i]
+                        * torch.ones_like(exp_pos.narrow(-1, 0, 1).unsqueeze(dim=-1))
+                    )
                 else:
                     exp_Y_powers.append(
                         self.coeffs[i]
-                        * e3nn.o3.spherical_harmonics(i, exp_pos, normalize=False, normalization="integral").unsqueeze(-1)
+                        * e3nn.o3.spherical_harmonics(
+                            i, exp_pos, normalize=False, normalization="integral"
+                        ).unsqueeze(-1)
                     )
 
         # Component 1
-        component_1 = exp_h.reshape(f_N2, (self.lmax + 1) ** 2, self.head, self.in_c // self.head)
+        component_1 = exp_h.reshape(
+            f_N2, (self.lmax + 1) ** 2, self.head, self.in_c // self.head
+        )
         if f_sparse_idx_expnode is not None:
             component_1 = torch.sum(
-                alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1) * component_1[f_sparse_idx_expnode], dim=1,
+                alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1)
+                * component_1[f_sparse_idx_expnode],
+                dim=1,
             )
         else:
             component_1 = torch.einsum("bjh,johk -> bohk", alpha_ij, component_1)
         component_1 = component_1.reshape(f_N1, (self.lmax + 1) ** 2, self.in_c)
-        component_1 = self.tensor_product_tp_component_1(component_1, Y_powers[self.order])
+        component_1 = self.tensor_product_tp_component_1(
+            component_1, Y_powers[self.order]
+        )
 
         # Additional components
         out = component_1
@@ -512,7 +682,9 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
             c = c.reshape(f_N2, -1, self.head, c.shape[-1] // self.head)
             if f_sparse_idx_expnode is not None:
                 c = torch.sum(
-                    alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1) * c[f_sparse_idx_expnode], dim=1,
+                    alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1)
+                    * c[f_sparse_idx_expnode],
+                    dim=1,
                 )
             else:
                 c = torch.einsum("bjh,johk -> bohk", alpha_ij, c)
@@ -535,17 +707,24 @@ class Model(nn.Module):
         hidden = 1
         order = 2
 
-        irreps_in = "+".join([
-            f"{head * hidden}x0e",
-            f"{head * hidden}x1e",
-            f"{head * hidden}x2e",
-            f"{head * hidden}x3e",
-        ])
+        irreps_in = "+".join(
+            [
+                f"{head * hidden}x0e",
+                f"{head * hidden}x1e",
+                f"{head * hidden}x2e",
+                f"{head * hidden}x3e",
+            ]
+        )
         irreps_out = "512x0e+512x1e+512x2e+512x3e"
 
         self.model = E2TensorProductArbitraryOrder(
-            irreps_in, irreps_out, head, order=order,
-            learnable_weight=True, connection_mode="uvw", path_normalization="element",
+            irreps_in,
+            irreps_out,
+            head,
+            order=order,
+            learnable_weight=True,
+            connection_mode="uvw",
+            path_normalization="element",
         )
 
     def forward(self, pos, exp_pos, exp_h, alpha_ij, f_sparse_idx_expnode):
@@ -568,7 +747,9 @@ def get_inputs():
     exp_pos = torch.randn(N2, 3, dtype=dtype, device=device)
     exp_h = torch.randn(N2, (L_max + 1) ** 2, In_Channels, dtype=dtype, device=device)
     alpha_ij = torch.randn(N1, K, Head, dtype=dtype, device=device)
-    f_sparse_idx_expnode = torch.randint(0, N2, (N1, K), dtype=torch.int64, device=device)
+    f_sparse_idx_expnode = torch.randint(
+        0, N2, (N1, K), dtype=torch.int64, device=device
+    )
 
     return [pos, exp_pos, exp_h, alpha_ij, f_sparse_idx_expnode]
 
