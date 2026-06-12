@@ -214,7 +214,7 @@ def _merge_normalize_fused_torch(v_a, s_a, v_b, s_b):
     return vb32, s_merged
 
 
-class ModelNew(torch.nn.Module):
+class Model(torch.nn.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -251,5 +251,5 @@ def get_init_inputs():
 
 
 torch.manual_seed(42)
-out = ModelNew(*get_init_inputs()).forward(*get_inputs())
+out = Model(*get_init_inputs()).forward(*get_inputs())
 print(out)
