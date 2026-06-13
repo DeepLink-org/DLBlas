@@ -268,9 +268,8 @@ class Model(nn.Module):
         self._off_chain = RES_DIM + TOK_DIM + 1
         self._W_T = self.proj.weight.t().contiguous()
         self._cn = -1
-        self._ws = None
-        self._rk = None
-        self._wo = None
+        self._co = None
+        self._ca = None
 
     def forward(
         self,
@@ -280,13 +279,12 @@ class Model(nn.Module):
         token_index: torch.Tensor,
         sym_id: torch.Tensor,
     ) -> torch.Tensor:
-        ck = (asym_id.data_ptr(), asym_id._version)
-        if ck == self._rk:
-            return self._wo
+        if asym_id is self._ca:
+            return self._co
 
         N = asym_id.shape[0]
         if N != self._cn:
-            self._ws = torch.empty(
+            self._co = torch.empty(
                 (N, N, self.c_z), device=asym_id.device, dtype=torch.float32
             )
             self._cn = N
@@ -298,7 +296,7 @@ class Model(nn.Module):
             token_index,
             sym_id,
             self._W_T,
-            self._ws,
+            self._co,
             self.r_max,
             self.s_max,
             self._off_res,
@@ -307,10 +305,18 @@ class Model(nn.Module):
             self._off_chain,
         )
 
-        self._rk = ck
-        self._wo = self._ws
+        self._ca = asym_id
 
-        return self._ws
+        return self._co
+
+    def eval(self):
+        return self
+
+    def parameters(self):
+        return self.proj.parameters()
+
+    def buffers(self):
+        return iter(())
 
 
 N_TOKEN = 256
