@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-# try:
-#       import torch_npu
-# except ImportError:
-#       pass
+try:
+      import torch_npu
+except ImportError:
+      pass
 
 class KsCompareError(Exception):
     pass
