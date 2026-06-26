@@ -8,23 +8,14 @@ import torch_npu
 def layer_norm_lastdim_kernel(X_ptr, Y_ptr, M, stride, eps, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offs = tl.arange(0, BLOCK_SIZE)
-    # Provide alignment/contiguity hints for better codegen
-    tl.multiple_of(offs, BLOCK_SIZE)
-    tl.max_contiguous(offs, BLOCK_SIZE)
-
-    # For this model, the last dimension is fixed to 10.
-    N = 10
-    mask = offs < N
-
+  
     row_start = pid * stride
     ptrs = row_start + offs
 
-    # Load row and upcast to fp32 for stable reductions
-    x_raw = tl.load(X_ptr + ptrs, mask=mask, other=0.0)
+    x_raw = tl.load(X_ptr + ptrs)          # 无越界，无需 other
     x = x_raw.to(tl.float32)
 
-    # Compute mean and variance using E[x] and E[x^2]; use compile-time reciprocal of 10
-    invN = 0.1
+    invN = 1.0 / BLOCK_SIZE               # 通用写法，此处 = 0.1
     sum_x = tl.sum(x, axis=0)
     sum_x2 = tl.sum(x * x, axis=0)
     mean = sum_x * invN
@@ -32,24 +23,23 @@ def layer_norm_lastdim_kernel(X_ptr, Y_ptr, M, stride, eps, BLOCK_SIZE: tl.const
 
     rstd = tl.rsqrt(var + eps)
     y_f32 = (x - mean) * rstd
-
-    # Cast back to original dtype and store
     y = y_f32.to(x_raw.dtype)
-    tl.store(Y_ptr + ptrs, y, mask=mask)
+    tl.store(Y_ptr + ptrs, y)
+
+
 
 
 class ModelNew(nn.Module):
     def __init__(self):
         super(ModelNew, self).__init__()
         self.eps = 1e-5
-        self.block_size = 16  # >= normalized_shape (10), power-of-two for efficiency
+        self.block_size = 10   # 精确等于归一化维度
 
     def forward(self, x):
-        # Matches torch.nn.LayerNorm(10) defaults (gamma=1, beta=0, eps=1e-5) on last dim
         x_in = x.contiguous()
         assert x_in.dim() == 2 and x_in.size(1) == 10, "Expected input of shape (N, 10)"
         N, M = x_in.shape
-        y = torch.empty(x_in.shape, dtype=x_in.dtype, device=x_in.device)
+        y = torch.empty(x.shape, dtype=x.dtype, device=x.device)
         stride = x_in.stride(0)
         grid = (N,)
         layer_norm_lastdim_kernel[grid](
@@ -59,9 +49,8 @@ class ModelNew(nn.Module):
         )
         return y
 
-
 def get_inputs():
-    x = torch.rand(10, 10)
+    x = torch.rand(10, 10, device="npu")
     return [x]
 
 

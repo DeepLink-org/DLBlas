@@ -3,14 +3,14 @@ Compute Contact Probability (distogram logits -> contact probability)
 
 From: protenix/model/sample_confidence.py:compute_contact_prob
 """
-    
+
 import torch
 import torch.nn as nn
 
 
 def get_bin_centers(min_bin: float, max_bin: float, no_bins: int) -> torch.Tensor:
     """
-    distogram bins centers
+    distogram bins centers锛堝父瑙佸仛娉曪細绾挎€х瓑闂撮殧锛�
     """
     edges = torch.linspace(min_bin, max_bin, no_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
@@ -66,20 +66,19 @@ THRES = 8.0
 
 
 def get_inputs():
+    device = 'npu'
     torch.manual_seed(42)
-    distogram_logits = torch.randn(N_TOKEN, N_TOKEN, NO_BINS)
+
+    distogram_logits = torch.randn(N_TOKEN, N_TOKEN, NO_BINS, device=device)
 
     return [distogram_logits]
 
 
 def get_init_inputs():
     return [MIN_BIN, MAX_BIN, NO_BINS, THRES]
-
-
+    
 if __name__ == "__main__":
-    import torch_npu 
-    torch_npu.npu.set_device(0)
-    device = torch.device("npu:0")
-    model = Model(*get_init_inputs()).to(device)
+    torch.set_default_device("npu")
+    model = Model(*get_init_inputs())
     inputs = get_inputs()
-    print(model(*inputs).shape)
+    print(model(*inputs))

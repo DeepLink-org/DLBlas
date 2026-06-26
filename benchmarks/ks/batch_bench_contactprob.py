@@ -3,8 +3,8 @@ import re
 import time
 
 # ===================== 配置区域 =====================
-TRIAL_COUNT = 50  # 跑50次
-V0_FILE = "/workspace/DLBlas/dlblas/kernels/ks_competition/torch/layernorm_v0.py"
+TRIAL_COUNT = 50  # 跄1�750欄1�7
+V0_FILE = "//workspace/DLBlas/dlblas/kernels/ks_competition/triton/layernorm_v1.py"
 V1_FILE = "/workspace/DLBlas/dlblas/kernels/ks_competition/triton/layernorm_v2.py"
 BENCH_SCRIPT = "/workspace/DLBlas/benchmarks/ks/auto_bench.py"
 # ====================================================
@@ -15,7 +15,7 @@ speedup_list = []
 pass_count = 0
 fail_count = 0
 
-print(f"开始批量评测，总轮数：{TRIAL_COUNT}")
+print(f"弢�始批量评测，总轮数：{TRIAL_COUNT}")
 print(f"v0: {V0_FILE}")
 print(f"v1: {V1_FILE}\n")
 
@@ -44,7 +44,7 @@ for idx in range(TRIAL_COUNT):
                 speedup_list.append(sp)
                 print(f"[{idx+1:2d}/{TRIAL_COUNT}] PASS | v0={t0:.6f}ms v1={t1:.6f}ms speedup={sp:.4f}")
             else:
-                print(f"[{idx+1:2d}/{TRIAL_COUNT}] PASS 但解析耗时失败")
+                print(f"[{idx+1:2d}/{TRIAL_COUNT}] PASS 但解析��时失败")
         else:
             fail_count += 1
             print(f"[{idx+1:2d}/{TRIAL_COUNT}] FAIL")
@@ -55,9 +55,9 @@ for idx in range(TRIAL_COUNT):
         fail_count += 1
         print(f"[{idx+1:2d}/{TRIAL_COUNT}] 执行异常: {e}")
 
-# 统计汇总
-print("\n==================== 统计汇总 ====================")
-print(f"总次数: {TRIAL_COUNT} | 通过: {pass_count} | 失败: {fail_count}")
+# 统计汇��1�7
+print("\n==================== 统计汇��1�7 ====================")
+print(f"总次敄1�7: {TRIAL_COUNT} | 通过: {pass_count} | 失败: {fail_count}")
 if len(v0_time_list) > 0:
     avg_v0 = sum(v0_time_list) / len(v0_time_list)
     avg_v1 = sum(v1_time_list) / len(v1_time_list)
@@ -65,6 +65,6 @@ if len(v0_time_list) > 0:
 
     print(f"v0 平均耗时: {avg_v0:.6f} ms")
     print(f"v1 平均耗时: {avg_v1:.6f} ms")
-    print(f"平均加速比: {avg_sp:.4f} x")
+    print(f"平均加��比: {avg_sp:.4f} x")
 else:
-    print("无有效成功数据")
+    print("无有效成功数捄1�7")

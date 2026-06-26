@@ -41,7 +41,7 @@ def contact_prob_kernel(
     sum_exp = tl.sum(exp_logits, axis=-1, keep_dims=True)
     prob = exp_logits / sum_exp
 
-    # ========== 修复：不用切片，用掩码累加前 thres_idx 个 bin ==========
+    # ========== 娣囶喖顦查敍姘瑝閻€劌鍨忛悧鍥风礉閻€劍甯洪惍浣虹柈閸旂姴澧� thres_idx 娑擄拷 bin ==========
     bin_mask = offs_bin[None, None, :] < thres_idx
     contact = tl.sum(prob * bin_mask, axis=-1)
 
@@ -94,9 +94,10 @@ MAX_BIN = 21.6875
 THRES = 8.0
 
 def get_inputs():
+    device = 'npu'
     torch.manual_seed(42)
-    logits = torch.randn(N_TOKEN, N_TOKEN, NO_BINS)
-    return [logits]
+    distogram_logits = torch.randn(N_TOKEN, N_TOKEN, NO_BINS, device=device)
+    return [distogram_logits]
 
 def get_init_inputs():
     return [MIN_BIN, MAX_BIN, NO_BINS, THRES]
