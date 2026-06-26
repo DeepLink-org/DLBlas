@@ -10,7 +10,7 @@ import torch.nn as nn
 
 def get_bin_centers(min_bin: float, max_bin: float, no_bins: int) -> torch.Tensor:
     """
-    distogram bins centers���������������Եȼ����
+    distogram bins centers
     """
     edges = torch.linspace(min_bin, max_bin, no_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])

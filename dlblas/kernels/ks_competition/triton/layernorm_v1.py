@@ -49,7 +49,7 @@ class ModelNew(nn.Module):
         x_in = x.contiguous()
         assert x_in.dim() == 2 and x_in.size(1) == 10, "Expected input of shape (N, 10)"
         N, M = x_in.shape
-        y = torch.empty_like(x_in)
+        y = torch.empty(x_in.shape, dtype=x_in.dtype, device=x_in.device)
         stride = x_in.stride(0)
         grid = (N,)
         layer_norm_lastdim_kernel[grid](
@@ -73,7 +73,7 @@ if __name__ == "__main__":
       torch_npu.npu.set_device(0)
       device = torch.device("npu:0")
 
-      model = Model().to(device)
+      model = ModelNew().to(device)
       inputs = [x.to(device) for x in get_inputs()]
       with torch.no_grad():
           res = model(*inputs)

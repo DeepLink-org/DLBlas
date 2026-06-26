@@ -41,7 +41,7 @@ if __name__ == "__main__":
     torch_npu.npu.set_device(0)
     device = torch.device("npu:0")
 
-    model = Model(*get_init_inputs()).to(device)
+    model = ModelNew(*get_init_inputs()).to(device)
     # JIT编译加速
     model = torch.jit.script(model)
 
