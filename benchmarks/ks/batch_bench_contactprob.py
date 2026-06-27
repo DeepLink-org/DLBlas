@@ -4,8 +4,8 @@ import time
 
 # ===================== 配置区域 =====================
 TRIAL_COUNT = 50  # 跄1�750欄1�7
-V0_FILE = "//workspace/DLBlas/dlblas/kernels/ks_competition/triton/layernorm_v1.py"
-V1_FILE = "/workspace/DLBlas/dlblas/kernels/ks_competition/triton/layernorm_v2.py"
+V0_FILE = "/workspace/user_data/Grid.py"
+V1_FILE = "/workspace/user_data/Grid_v2.py"
 BENCH_SCRIPT = "/workspace/DLBlas/benchmarks/ks/auto_bench.py"
 # ====================================================
 
