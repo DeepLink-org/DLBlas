@@ -98,6 +98,46 @@ def _filter_module_ast(tree):
     return tree
 
 
+def _auto_accel_name() -> str | None:
+    """Name of the first available accelerator (cuda/npu/mlu), or None."""
+    for name, _ in _iter_accelerators():
+        return name
+    return None
+
+
+class _RewriteDeviceStr(ast.NodeTransformer):
+    """Rewrite device string literals in ks source so a file written for one
+    backend runs on whatever accelerator is available here.
+
+    Bare string constants equal to the source device name (e.g. 'npu') are
+    rewritten to the detected target. In ks files these only appear as
+    `device='npu'` / `.to('npu')`, so this is a safe, targeted swap.
+    """
+
+    def __init__(self, src: str, dst: str):
+        self.src = src
+        self.dst = dst
+
+    def visit_Constant(self, node):
+        if isinstance(node.value, str) and node.value == self.src:
+            return ast.copy_location(ast.Constant(value=self.dst), node)
+        return node
+
+
+def _rewrite_device_for_backend(tree: ast.AST) -> None:
+    """In-place: remap 'npu' device strings to the available accelerator.
+
+    ks competition files are written against Ascend ('npu'); on other backends
+    (mlu/cuda) the literal is rejected by torch at runtime, so rewrite it
+    before exec. No-op on npu hosts or when no accelerator is present.
+    """
+    target = _auto_accel_name()
+    if target is None or target == "npu":
+        return
+    _RewriteDeviceStr("npu", target).visit(tree)
+    ast.fix_missing_locations(tree)
+
+
 def load_ks_module(path: Path) -> types.ModuleType:
     if not path.exists():
         raise KsCompareError(f"file does not exist: {path}")
@@ -113,6 +153,7 @@ def load_ks_module(path: Path) -> types.ModuleType:
 
     try:
         tree = ast.parse(source, filename=str(path))
+        _rewrite_device_for_backend(tree)
     except SyntaxError as exc:
         raise KsCompareError(f"syntax error in {path}:{exc.lineno}: {exc.msg}") from exc
 
@@ -160,25 +201,36 @@ def as_args(value, description):
     )
 
 
+def _iter_accelerators():
+    """Yield (name, module) for each available accelerator backend.
+
+    Covers cuda / npu (Ascend) / mlu (Cambricon). Add more backends here as
+    needed; set_seed / sync_devices / device detection all derive from this.
+    """
+    for name in ("cuda", "npu", "mlu"):
+        mod = getattr(torch, name, None)
+        if mod is None:
+            continue
+        try:
+            if mod.is_available():
+                yield name, mod
+        except Exception:
+            continue
+
+
 def set_seed(seed):
     torch.manual_seed(seed)
-    if hasattr(torch, "cuda") and torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    if hasattr(torch, "npu"):
+    for _name, mod in _iter_accelerators():
         try:
-            if torch.npu.is_available():
-                torch.npu.manual_seed_all(seed)
+            mod.manual_seed_all(seed)
         except Exception:
             pass
 
 
 def sync_devices():
-    if hasattr(torch, "cuda") and torch.cuda.is_available():
-        torch.cuda.synchronize()
-    if hasattr(torch, "npu"):
+    for _name, mod in _iter_accelerators():
         try:
-            if torch.npu.is_available():
-                torch.npu.synchronize()
+            mod.synchronize()
         except Exception:
             pass
 
@@ -434,16 +486,10 @@ def _detect_target_device(model, model_new, v0_inputs, v1_inputs):
         d = _first_input_device(inputs)
         if d is not None and d.type != "cpu":
             return d
-    if hasattr(torch, "cuda") and torch.cuda.is_available():
-        return torch.device("cuda")
-    if hasattr(torch, "npu"):
-        try:
-            if torch.npu.is_available():
-                return torch.device("npu")
-        except Exception:
-            pass
+    for name, _ in _iter_accelerators():
+        return torch.device(name)
     raise KsCompareError(
-        "no accelerator device available (cuda/npu); "
+        "no accelerator device available (cuda/npu/mlu); "
         "cannot run accuracy or performance comparison on CPU."
     )
 
