@@ -1,0 +1,28 @@
+{
+  "tag": "baseline",
+  "source": "/home/ailab/opt_test/norm_fn_run/profile-artifacts/norm_fn_v0_baseline",
+  "artifact_dir": "/home/ailab/opt_test/norm_fn_run/profile-artifacts/norm_fn_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260626190529343.png",
+    "DPC_Computing_cycles_comparison20260626190529458.png",
+    "Dnoc_Read_Latency_Histogram20260626190530053.png",
+    "ISU_stall_cycles_layout20260626190529659.png",
+    "Instructions_Comparison20260626190529555.png",
+    "Memory_Data_Flow_Chart20260626190529766.png",
+    "RoofLine20260626190530410.png",
+    "VL1_partition_stall_cycles_layout20260626190530194.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_2.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

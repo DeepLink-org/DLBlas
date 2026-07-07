@@ -1,0 +1,16 @@
+Operator: norm_fn
+Shape: residual=(13, 5120), mhc_fn=(24, 5120)
+Output: (13, 24)
+
+Torch (einsum+rsqrt):      0.129956 ms
+MACAC ori (baseline):      0.040582 ms
+MACAC opt (best):          0.027792 ms
+MACAC runtime_ratio:       0.6849
+MACAC improvement:         1.46x over baseline
+Speedup (Torch/MACAC_opt): 4.68x
+MACAC_opt/Torch ratio:     0.2139
+
+MACAC best kernel: warp-shuffle reduction + float4 + inv_K precompute, block=256
+Precision: True
+Optimization iterations: 20 total
+Key optimizations: warp-shuffle, float4 vectorization, inv_K, warp-level reduction

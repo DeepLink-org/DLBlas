@@ -1,0 +1,28 @@
+{
+  "tag": "baseline",
+  "source": "/home/ailab/maca-vendor-workspace/maca_c_opt/workspace/apply_mix_run/profile-artifacts/apply_mix_v0_baseline",
+  "artifact_dir": "/home/ailab/maca-vendor-workspace/maca_c_opt/workspace/apply_mix_run/profile-artifacts/apply_mix_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260626122759555.png",
+    "DPC_Computing_cycles_comparison20260626122759673.png",
+    "Dnoc_Read_Latency_Histogram20260626122800174.png",
+    "ISU_stall_cycles_layout20260626122759875.png",
+    "Instructions_Comparison20260626122759771.png",
+    "Memory_Data_Flow_Chart20260626122759979.png",
+    "RoofLine20260626122800513.png",
+    "VL1_partition_stall_cycles_layout20260626122800271.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_2.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

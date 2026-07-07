@@ -1,0 +1,17 @@
+=== big_fuse Performance Comparison ===
+Shape: residual [1, 512, 4, 1280] bf16, fn [24, 5120]
+mhc_mult=4, hidden_size=1280
+Platform: MetaX C500 (container: metax_gemm_opt)
+
+Results:
+  Torch (PyTorch fused):          1.001 ms
+  MACAC baseline (ori kernel):    0.531 ms  
+  MACAC optimized (warp-shuffle): 0.373 ms
+
+Ratios:
+  MACAC baseline vs Torch:     1.88x faster
+  MACAC optimized vs Torch:    2.68x faster
+  MACAC optimized vs baseline: 1.42x faster (ratio=0.702)
+
+Optimization: warp-shuffle reduction using C500 64-lane warp,
+eliminating 192 __syncthreads barriers. Registers: 108->50.

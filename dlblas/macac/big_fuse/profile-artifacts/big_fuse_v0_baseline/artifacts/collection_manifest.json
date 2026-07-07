@@ -1,0 +1,28 @@
+{
+  "tag": "baseline",
+  "source": "/mnt/opt_test/big_fuse_run/profile-artifacts/big_fuse_v0_baseline",
+  "artifact_dir": "/mnt/opt_test/big_fuse_run/profile-artifacts/big_fuse_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260626124706618.png",
+    "DPC_Computing_cycles_comparison20260626124706712.png",
+    "Dnoc_Read_Latency_Histogram20260626124707224.png",
+    "ISU_stall_cycles_layout20260626124706923.png",
+    "Instructions_Comparison20260626124706810.png",
+    "Memory_Data_Flow_Chart20260626124707031.png",
+    "RoofLine20260626124707578.png",
+    "VL1_partition_stall_cycles_layout20260626124707367.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_2.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

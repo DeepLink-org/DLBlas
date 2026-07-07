@@ -1,0 +1,13 @@
+{
+  "n0": 2,
+  "n1": 4096,
+  "h": 1280,
+  "mhc_mult": 4,
+  "torch_einsum_ms": 3.8520514145493507,
+  "torch_matmul_ms": 5.833277776837349,
+  "maca_ori_ms": 0.167706,
+  "maca_opt_ms": 0.161676,
+  "maca_speedup": 1.0372968158539302,
+  "torch_einsum_vs_maca_opt": 23.82574664482886,
+  "torch_matmul_vs_maca_opt": 36.08004760655477
+}

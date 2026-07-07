@@ -1,0 +1,80 @@
+#pragma once
+#include "helpers.cuh"
+
+__global__ void engram_gate_fwd_kernel_opt(const uint16_t* __restrict__ x, const uint16_t* __restrict__ k, const uint16_t* __restrict__ v,
+    const uint16_t* __restrict__ wh, const uint16_t* __restrict__ we,
+    uint16_t* __restrict__ out, float* __restrict__ dot_out, float* __restrict__ gate_out,
+    float* __restrict__ rstd_x_out, float* __restrict__ rstd_k_out,
+    int T, int M, int D, float scalar, float clamp_val, float eps) {
+    
+    int idx = blockIdx.x;  // idx = tidx * M + m
+    int tidx = idx / M;
+    int m = idx % M;
+    if (tidx >= T) return;
+
+    const uint16_t* x_tm = x + (tidx * M + m) * D;
+    const uint16_t* k_tm = k + (tidx * M + m) * D;
+    const uint16_t* wh_m = wh + m * D;
+    const uint16_t* we_m = we + m * D;
+    const uint16_t* v_t = v + tidx * D;
+    uint16_t* out_tm = out + (tidx * M + m) * D;
+
+    int tid = threadIdx.x;
+    extern __shared__ float smem[];
+    float* dot_smem = smem;
+    float* x2_smem = smem + blockDim.x;
+    float* k2_smem = smem + 2 * blockDim.x;
+
+    // Pass 1: partial reductions
+    float partial_dot = 0.f, partial_x2 = 0.f, partial_k2 = 0.f;
+    for (int d = tid; d < D; d += blockDim.x) {
+        float xv = bf(x_tm[d]), kv = bf(k_tm[d]);
+        float whv = bf(wh_m[d]), wev = bf(we_m[d]);
+        partial_dot += xv * whv * kv * wev;
+        partial_x2 += xv * xv;
+        partial_k2 += kv * kv;
+    }
+
+    dot_smem[tid] = partial_dot;
+    x2_smem[tid] = partial_x2;
+    k2_smem[tid] = partial_k2;
+    __syncthreads();
+
+    // Reduction
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            dot_smem[tid] += dot_smem[tid + s];
+            x2_smem[tid] += x2_smem[tid + s];
+            k2_smem[tid] += k2_smem[tid + s];
+        }
+        __syncthreads();
+    }
+
+    float raw_dot = dot_smem[0];
+    float rstd_x = rsqrtf(x2_smem[0] / D + eps);
+    float rstd_k = rsqrtf(k2_smem[0] / D + eps);
+    float dot = raw_dot * rstd_x * rstd_k * scalar;
+
+    // Gate
+    float signed_sqrt = copysignf(sqrtf(fmaxf(fabsf(dot), clamp_val)), dot);
+    float gate = 1.f / (1.f + expf(-signed_sqrt));
+
+    // Save intermediates
+    dot_out[idx] = dot;
+    gate_out[idx] = gate;
+    rstd_x_out[idx] = rstd_x;
+    rstd_k_out[idx] = rstd_k;
+
+    // Output
+    for (int d = tid; d < D; d += blockDim.x) {
+        float ov = bf(x_tm[d]) + gate * bf(v_t[d]);
+        out_tm[d] = fb(ov);
+    }
+}
+static void test_tmp_kernel_opt(const uint16_t* x,const uint16_t* k,const uint16_t* v,const uint16_t* wh,const uint16_t* we,
+    uint16_t* out,float* dot_out,float* gate_out,float* rstd_x_out,float* rstd_k_out,
+    int T,int M,int D,float scalar,float clamp_val,float eps,cudaStream_t s){
+    int total = T * M, bs = 256;
+    int shared_mem = 3 * bs * sizeof(float);
+    engram_gate_fwd_kernel_opt<<<total, bs, shared_mem, s>>>(x,k,v,wh,we,out,dot_out,gate_out,rstd_x_out,rstd_k_out,T,M,D,scalar,clamp_val,eps);
+}

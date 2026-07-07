@@ -1,0 +1,26 @@
+{
+  "tag": "baseline",
+  "source": "/home/ailab/maca-vendor-workspace/maca_c_opt/workspace/act_quant_kernel_run/profile-artifacts/act_quant_kernel_v0_baseline",
+  "artifact_dir": "/home/ailab/maca-vendor-workspace/maca_c_opt/workspace/act_quant_kernel_run/profile-artifacts/act_quant_kernel_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_0.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260626115836420.png",
+    "DPC_Computing_cycles_comparison20260626115836538.png",
+    "Dnoc_Read_Latency_Histogram20260626115837037.png",
+    "ISU_stall_cycles_layout20260626115836740.png",
+    "Instructions_Comparison20260626115836633.png",
+    "Memory_Data_Flow_Chart20260626115836846.png",
+    "RoofLine20260626115837339.png",
+    "VL1_partition_stall_cycles_layout20260626115837127.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_0.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_0.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

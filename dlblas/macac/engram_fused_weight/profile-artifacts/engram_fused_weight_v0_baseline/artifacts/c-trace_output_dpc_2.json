@@ -1,0 +1,7953 @@
+{
+	"traceEvents":	[{
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	65535
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	16842751
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	33619967
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	50397183
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	261732671,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	3,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	261744019,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	3,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	261732677,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	6,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	261744069,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	6,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	261732682,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	7,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	261744070,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	7,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	261732668,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	0,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	261746012,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	0,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	262971789,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	11,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	262974703,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	11,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	262971794,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	13,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	262974736,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	13,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	262971799,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	15,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	262974737,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	15,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	262971796,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	14,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	262974738,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	14,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263095859,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	20,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263098359,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	20,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263095856,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	18,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263098360,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	18,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263095865,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	22,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263098361,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	22,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263095870,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	24,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263098362,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	24,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263201365,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	28,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263204359,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	28,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263201370,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	29,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263204384,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	29,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263201375,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	31,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263204385,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	31,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263201372,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	30,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263204386,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	30,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263307047,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	35,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308508,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308512,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308596,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308600,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308604,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308636,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308640,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308644,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308648,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308655,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308659,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308663,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	263308736,
+			"dur":	0,
+			"args":	{
+				"uuid":	35,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263310201,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	35,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263307053,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	37,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308510,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308514,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308598,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308602,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308606,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308638,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308642,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308646,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308650,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308657,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308661,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308665,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	263308738,
+			"dur":	0,
+			"args":	{
+				"uuid":	37,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263310203,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	37,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263307058,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	38,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263307808,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308500,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308504,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308516,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308516,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308517,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308520,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308524,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308528,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308532,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308536,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308556,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308560,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308564,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308588,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308592,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308609,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308609,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308609,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308628,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308632,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308687,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308687,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308687,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308687,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308688,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308688,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308688,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308688,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308689,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308692,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308692,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308696,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308700,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308704,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308708,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308712,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308732,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308740,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308741,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308744,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308748,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308752,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308756,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308760,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308764,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308780,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308784,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Branch",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308790,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38,
+				"addr(44:0)":	17528323638513
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308792,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308828,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308832,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308836,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308840,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Load",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308844,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Load",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263308852,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309724,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309728,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309864,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309868,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309872,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309876,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309880,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Store",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309888,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	263309892,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308511,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308515,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308599,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308603,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308607,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308639,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308643,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308647,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308651,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308658,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308662,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308666,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	263308739,
+			"dur":	0,
+			"args":	{
+				"uuid":	38,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263310204,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	38,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"Branch":	0,
+				"NotBranch":	1,
+				"MTE3 MMA":	0,
+				"Synchronization":	7,
+				"Misc":	0,
+				"GVM Generic":	0,
+				"GVM Load":	2,
+				"GVM Store":	1,
+				"GVM Atomic Operation":	0,
+				"BSM":	0,
+				"Transcendental Function":	0,
+				"MTE":	24,
+				"LDU":	4,
+				"STE":	18,
+				"S_NOP":	8,
+				"NULL":	0,
+				"instruction counter":	65
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263307060,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	39,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308513,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308516,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308601,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308605,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308609,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308641,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308645,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308649,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308652,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308660,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308664,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308667,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	263308740,
+			"dur":	0,
+			"args":	{
+				"uuid":	39,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263310206,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	39,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263410479,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	61,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263412955,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	61,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263410492,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	64,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263412976,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	64,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263410485,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	62,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263412977,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	62,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263410490,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	63,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263412978,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	63,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263516600,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	66,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263519826,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	66,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263516598,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	65,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263519828,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	65,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263516603,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	67,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263519829,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	67,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263516609,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	68,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263519831,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	68,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263619950,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	69,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263622278,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	69,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263619955,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	71,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263622291,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	71,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263619952,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	70,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263622292,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	70,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263619961,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	72,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263622293,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	72,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263724058,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	73,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263727288,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	73,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263724060,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	74,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263727306,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	74,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263724069,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	76,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263727307,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	76,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263724063,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	75,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263727309,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	75,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263829631,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	78,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263832027,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	78,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263829628,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	77,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263832028,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	77,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263829637,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	79,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263832029,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	79,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263829642,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	80,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263832030,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	80,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263934517,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	81,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	263937775,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	81,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263934524,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	84,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	263937802,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	84,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263934522,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	83,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	263937804,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	83,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263934527,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	87,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	263937805,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	87,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264038667,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	90,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264041059,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	90,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264038673,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	92,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264041077,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	92,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264038678,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	94,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264041078,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	94,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264038680,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	96,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264041080,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	96,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264207304,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	100,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264210674,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	100,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264207302,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	98,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264210676,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	98,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264207307,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	102,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264210677,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	102,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264207313,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	104,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264210679,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	104,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264308551,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	110,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264310935,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	110,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264308548,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	108,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264310936,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	108,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264308557,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	112,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264310937,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	112,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264308562,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	113,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264310942,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	113,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264409593,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	116,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264411279,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	116,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264409598,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	118,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264411324,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	118,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264409603,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	121,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264411325,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	121,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264409600,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34275327,
+				"uuid":	120,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264411326,
+			"args":	{
+				"aggr":	34275327,
+				"uuid":	120,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264507667,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	126,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264509299,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	126,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264507664,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	123,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264509304,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	123,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264507673,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	128,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264509309,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	128,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264507678,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34340863,
+				"uuid":	129,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264509310,
+			"args":	{
+				"aggr":	34340863,
+				"uuid":	129,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264611213,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	134,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264612899,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	134,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264611218,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	135,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264612928,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	135,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264611223,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	137,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264612929,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	137,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264611220,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34406399,
+				"uuid":	136,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264612930,
+			"args":	{
+				"aggr":	34406399,
+				"uuid":	136,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264708615,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	142,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709248,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709252,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709336,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709340,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709344,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709376,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709380,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709384,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709388,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709395,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709399,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709403,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	16842751,
+			"ts":	264709476,
+			"dur":	0,
+			"args":	{
+				"uuid":	142,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264710153,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	142,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264708621,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	143,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709250,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709254,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709338,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709342,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709346,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709378,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709382,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709386,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709390,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709397,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709401,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709405,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	50397183,
+			"ts":	264709478,
+			"dur":	0,
+			"args":	{
+				"uuid":	143,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264710179,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	143,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264708626,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	60,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264708948,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709240,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709244,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709256,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709256,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709257,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709260,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709264,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709268,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709272,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709276,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709296,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709300,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709304,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709328,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709332,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709349,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709349,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709349,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709368,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709372,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709427,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709427,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709427,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709427,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709428,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709428,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709428,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709428,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709429,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709432,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709432,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709436,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709440,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709444,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709448,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709452,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709472,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709480,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709481,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709484,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709488,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709492,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709496,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709500,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709504,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"STE",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709520,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709524,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Branch",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709530,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60,
+				"addr(44:0)":	17528323638513
+			}
+		}, {
+			"ph":	"X",
+			"name":	"LDU",
+			"cat":	"LDU",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709532,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709568,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709572,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709576,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709580,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Load",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709584,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Load",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709592,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709944,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709948,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Synchronization",
+			"cat":	"ARRIVE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709956,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709960,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709964,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"MTE",
+			"cat":	"MTE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709968,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709972,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"GVM Store",
+			"cat":	"GLOBAL",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709980,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"S_NOP",
+			"cat":	"STE",
+			"pid":	65535,
+			"tid":	65535,
+			"dur":	4,
+			"ts":	264709984,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709251,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709255,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709339,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709343,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709347,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709379,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709383,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709387,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709391,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709398,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709402,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709406,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	65535,
+			"ts":	264709479,
+			"dur":	0,
+			"args":	{
+				"uuid":	60,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264710180,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	60,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"Branch":	0,
+				"NotBranch":	1,
+				"MTE3 MMA":	0,
+				"Synchronization":	7,
+				"Misc":	0,
+				"GVM Generic":	0,
+				"GVM Load":	2,
+				"GVM Store":	1,
+				"GVM Atomic Operation":	0,
+				"BSM":	0,
+				"Transcendental Function":	0,
+				"MTE":	24,
+				"LDU":	4,
+				"STE":	18,
+				"S_NOP":	8,
+				"NULL":	0,
+				"instruction counter":	65
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264708628,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33619967,
+				"uuid":	144,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709253,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1685088048
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709256,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709341,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1464291411
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709345,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709349,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	536871936
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709381,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1196573779
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709385,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709389,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	536875008
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709392,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709400,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1685088052
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709404,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	201860808
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709407,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	32649
+			}
+		}, {
+			"ph":	"X",
+			"name":	"User Data",
+			"cat":	"USER_DATA",
+			"pid":	65535,
+			"tid":	33619967,
+			"ts":	264709480,
+			"dur":	0,
+			"args":	{
+				"uuid":	144,
+				"aggr":	33619967,
+				"user_data":	1685088053
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264710182,
+			"args":	{
+				"aggr":	33619967,
+				"uuid":	144,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264809295,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	165,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264810831,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	165,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264809301,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	166,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264810857,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	166,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264809306,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	167,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264810858,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	167,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264809308,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33685503,
+				"uuid":	168,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264810860,
+			"args":	{
+				"aggr":	33685503,
+				"uuid":	168,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264908484,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	170,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	264910030,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	170,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264908482,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	169,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	264910036,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	169,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264908487,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	171,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	264910041,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	171,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264908493,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33751039,
+				"uuid":	172,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	264910051,
+			"args":	{
+				"aggr":	33751039,
+				"uuid":	172,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265008766,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	173,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265010498,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	173,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265008768,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	174,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265010548,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	174,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265008777,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	176,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265010549,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	176,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265008771,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33816575,
+				"uuid":	175,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265010551,
+			"args":	{
+				"aggr":	33816575,
+				"uuid":	175,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265109786,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	177,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265111360,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	177,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265109791,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	179,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265111389,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	179,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265109788,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	178,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265111390,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	178,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265109797,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33882111,
+				"uuid":	180,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265111391,
+			"args":	{
+				"aggr":	33882111,
+				"uuid":	180,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265207735,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	182,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265209327,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	182,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265207732,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	181,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265209328,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	181,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265207741,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	183,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265209329,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	183,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265207746,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	33947647,
+				"uuid":	185,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265209338,
+			"args":	{
+				"aggr":	33947647,
+				"uuid":	185,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265306913,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	186,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265308483,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	186,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265306918,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	188,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265308516,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	188,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265306920,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	190,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265308518,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	190,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265306923,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34013183,
+				"uuid":	193,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265308521,
+			"args":	{
+				"aggr":	34013183,
+				"uuid":	193,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265407059,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	198,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265408647,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	198,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265407065,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	199,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265408673,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	199,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265407070,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	200,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265408674,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	200,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265407072,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34078719,
+				"uuid":	202,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265408676,
+			"args":	{
+				"aggr":	34078719,
+				"uuid":	202,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265506774,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	206,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265508368,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	206,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265506779,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	208,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265508389,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	208,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265506776,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	207,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265508390,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	207,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265506785,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34144255,
+				"uuid":	210,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265508391,
+			"args":	{
+				"aggr":	34144255,
+				"uuid":	210,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265606020,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	214,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	265607696,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	214,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265606023,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	215,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	265607723,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	215,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265606029,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	220,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	265607725,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	220,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265606034,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	34209791,
+				"uuid":	221,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	265607726,
+			"args":	{
+				"aggr":	34209791,
+				"uuid":	221,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ts":	261732668,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	261732671,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	261732677,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	261732682,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	261744019,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	261744069,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	261744070,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	261746012,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	262971789,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	262971794,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	262971796,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	262971799,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	262974703,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	262974736,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	262974737,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	262974738,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263095856,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263095859,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263095865,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263095870,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263098359,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263098360,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263098361,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263098362,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263201365,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263201370,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263201372,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263201375,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263204359,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263204384,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263204385,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263204386,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263307047,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263307053,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263307058,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263307060,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263310201,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263310203,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263310204,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263310206,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263410479,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263410485,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263410490,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263410492,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263412955,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263412976,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263412977,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263412978,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263516598,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263516600,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263516603,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263516609,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263519826,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263519828,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263519829,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263519831,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263619950,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263619952,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263619955,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263619961,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263622278,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263622291,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263622292,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263622293,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263724058,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263724060,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263724063,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263724069,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263727288,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263727306,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263727307,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263727309,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263829628,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263829631,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263829637,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263829642,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263832027,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263832028,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263832029,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263832030,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	263934517,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263934522,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263934524,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263934527,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	263937775,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	263937802,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	263937804,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	263937805,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264038667,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264038673,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264038678,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264038680,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264041059,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264041077,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264041078,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264041080,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264207302,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264207304,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264207307,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264207313,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264210674,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264210676,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264210677,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264210679,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264308548,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264308551,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264308557,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264308562,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264310935,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264310936,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264310937,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264310942,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264409593,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264409598,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264409600,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264409603,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264411279,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264411324,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264411325,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264411326,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264507664,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264507667,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264507673,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264507678,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264509299,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264509304,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264509309,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264509310,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264611213,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264611218,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264611220,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264611223,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264612899,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264612928,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264612929,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264612930,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264708615,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264708621,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264708626,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264708628,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264710153,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264710179,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264710180,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264710182,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264809295,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264809301,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264809306,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264809308,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264810831,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264810857,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264810858,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264810860,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	264908482,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264908484,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264908487,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264908493,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	264910030,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	264910036,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	264910041,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	264910051,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265008766,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265008768,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265008771,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265008777,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265010498,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265010548,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265010549,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265010551,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265109786,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265109788,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265109791,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265109797,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265111360,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265111389,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265111390,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265111391,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265207732,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265207735,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265207741,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265207746,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265209327,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265209328,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265209329,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265209338,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265306913,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265306918,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265306920,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265306923,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265308483,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265308516,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265308518,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265308521,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265407059,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265407065,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265407070,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265407072,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265408647,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265408673,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265408674,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265408676,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265506774,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265506776,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265506779,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265506785,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265508368,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265508389,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265508390,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265508391,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	265606020,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265606023,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265606029,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265606034,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	265607696,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	265607723,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	265607725,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	265607726,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}]
+}

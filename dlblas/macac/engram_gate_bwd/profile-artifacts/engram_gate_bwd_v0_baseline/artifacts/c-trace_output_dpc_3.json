@@ -1,0 +1,1603 @@
+{
+	"traceEvents":	[{
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	65535
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	16842751
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	33619967
+		}, {
+			"args":	{
+				"name":	"PEU"
+			},
+			"cat":	"__metadata",
+			"ph":	"M",
+			"name":	"thread_name",
+			"pid":	65535,
+			"tid":	50397183
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171429712,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50397183,
+				"uuid":	0,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171442958,
+			"args":	{
+				"aggr":	50397183,
+				"uuid":	0,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171429717,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50397183,
+				"uuid":	2,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171443031,
+			"args":	{
+				"aggr":	50397183,
+				"uuid":	2,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171429714,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50397183,
+				"uuid":	1,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171443036,
+			"args":	{
+				"aggr":	50397183,
+				"uuid":	1,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171429723,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50397183,
+				"uuid":	3,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171443097,
+			"args":	{
+				"aggr":	50397183,
+				"uuid":	3,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171514063,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50462719,
+				"uuid":	7,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171525463,
+			"args":	{
+				"aggr":	50462719,
+				"uuid":	7,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171514052,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50462719,
+				"uuid":	4,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171525536,
+			"args":	{
+				"aggr":	50462719,
+				"uuid":	4,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171514057,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50462719,
+				"uuid":	6,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171525537,
+			"args":	{
+				"aggr":	50462719,
+				"uuid":	6,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171514054,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50462719,
+				"uuid":	5,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171525598,
+			"args":	{
+				"aggr":	50462719,
+				"uuid":	5,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171637241,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50528255,
+				"uuid":	9,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171649543,
+			"args":	{
+				"aggr":	50528255,
+				"uuid":	9,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171637238,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50528255,
+				"uuid":	8,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171649576,
+			"args":	{
+				"aggr":	50528255,
+				"uuid":	8,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171637247,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50528255,
+				"uuid":	10,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171649581,
+			"args":	{
+				"aggr":	50528255,
+				"uuid":	10,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171637252,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50528255,
+				"uuid":	11,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171649594,
+			"args":	{
+				"aggr":	50528255,
+				"uuid":	11,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171731709,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50593791,
+				"uuid":	14,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171740897,
+			"args":	{
+				"aggr":	50593791,
+				"uuid":	14,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171731715,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50593791,
+				"uuid":	15,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171740899,
+			"args":	{
+				"aggr":	50593791,
+				"uuid":	15,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171731706,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50593791,
+				"uuid":	13,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171742794,
+			"args":	{
+				"aggr":	50593791,
+				"uuid":	13,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171731704,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50593791,
+				"uuid":	12,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171742828,
+			"args":	{
+				"aggr":	50593791,
+				"uuid":	12,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171822636,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50659327,
+				"uuid":	16,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	171835298,
+			"args":	{
+				"aggr":	50659327,
+				"uuid":	16,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171822641,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50659327,
+				"uuid":	18,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	171835299,
+			"args":	{
+				"aggr":	50659327,
+				"uuid":	18,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171822638,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50659327,
+				"uuid":	17,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	171835360,
+			"args":	{
+				"aggr":	50659327,
+				"uuid":	17,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171822647,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50659327,
+				"uuid":	19,
+				"workgroup id":	0,
+				"queue id":	10
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	171835369,
+			"args":	{
+				"aggr":	50659327,
+				"uuid":	19,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173288503,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50790399,
+				"uuid":	22,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173298401,
+			"args":	{
+				"aggr":	50790399,
+				"uuid":	22,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288512,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50790399,
+				"uuid":	23,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173298402,
+			"args":	{
+				"aggr":	50790399,
+				"uuid":	23,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288492,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50724863,
+				"uuid":	20,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173298408,
+			"args":	{
+				"aggr":	50724863,
+				"uuid":	20,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173288494,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50724863,
+				"uuid":	21,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173298410,
+			"args":	{
+				"aggr":	50724863,
+				"uuid":	21,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173288534,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50855935,
+				"uuid":	25,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173298418,
+			"args":	{
+				"aggr":	50855935,
+				"uuid":	25,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288532,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50855935,
+				"uuid":	24,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173298420,
+			"args":	{
+				"aggr":	50855935,
+				"uuid":	24,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173288554,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50921471,
+				"uuid":	27,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	33619967,
+			"ts":	173298776,
+			"args":	{
+				"aggr":	50921471,
+				"uuid":	27,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288552,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50921471,
+				"uuid":	26,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173298794,
+			"args":	{
+				"aggr":	50921471,
+				"uuid":	26,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288572,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50987007,
+				"uuid":	29,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173299164,
+			"args":	{
+				"aggr":	50987007,
+				"uuid":	29,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173288559,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	50987007,
+				"uuid":	28,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173299179,
+			"args":	{
+				"aggr":	50987007,
+				"uuid":	28,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173288604,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	51052543,
+				"uuid":	32,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	65535,
+			"ts":	173299282,
+			"args":	{
+				"aggr":	51052543,
+				"uuid":	32,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173288615,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	51118079,
+				"uuid":	33,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173299299,
+			"args":	{
+				"aggr":	51118079,
+				"uuid":	33,
+				"last":	1,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173288599,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	51052543,
+				"uuid":	31,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	50397183,
+			"ts":	173299301,
+			"args":	{
+				"aggr":	51052543,
+				"uuid":	31,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave start",
+			"cat":	"MISC_WAVE_START",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	173288593,
+			"args":	{
+				"pipe id":	1,
+				"entry pc":	0,
+				"aggr":	51118079,
+				"uuid":	30,
+				"workgroup id":	0,
+				"queue id":	6
+			}
+		}, {
+			"ph":	"X",
+			"name":	"Wave end",
+			"cat":	"MISC_WAVE_END",
+			"pid":	65535,
+			"dur":	0,
+			"tid":	16842751,
+			"ts":	173299317,
+			"args":	{
+				"aggr":	51118079,
+				"uuid":	30,
+				"last":	0,
+				"vf":	0,
+				"xpid":	10,
+				"rm busy":	1,
+				"shader type":	0,
+				"instruction counter":	0
+			}
+		}, {
+			"ts":	171429712,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171429714,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171429717,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171429723,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	171442958,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171443031,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171443036,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171443097,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	171514052,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171514054,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171514057,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171514063,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	171525463,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171525536,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171525537,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171525598,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	171637238,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171637241,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171637247,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171637252,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	171649543,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171649576,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171649581,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171649594,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	171731704,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171731706,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171731709,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171731715,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	171740897,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171740899,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171742794,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171742828,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	171822636,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171822638,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171822641,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171822647,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	171835298,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	171835299,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	171835360,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	171835369,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}, {
+			"ts":	173288492,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	173288494,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	173288503,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	173288512,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	173288532,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	5
+			}
+		}, {
+			"ts":	173288534,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	6
+			}
+		}, {
+			"ts":	173288552,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	7
+			}
+		}, {
+			"ts":	173288554,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	8
+			}
+		}, {
+			"ts":	173288559,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	9
+			}
+		}, {
+			"ts":	173288572,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	10
+			}
+		}, {
+			"ts":	173288593,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	11
+			}
+		}, {
+			"ts":	173288599,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	12
+			}
+		}, {
+			"ts":	173288604,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	13
+			}
+		}, {
+			"ts":	173288615,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	14
+			}
+		}, {
+			"ts":	173298401,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	13
+			}
+		}, {
+			"ts":	173298402,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	12
+			}
+		}, {
+			"ts":	173298408,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	11
+			}
+		}, {
+			"ts":	173298410,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	10
+			}
+		}, {
+			"ts":	173298418,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	9
+			}
+		}, {
+			"ts":	173298420,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	8
+			}
+		}, {
+			"ts":	173298776,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	7
+			}
+		}, {
+			"ts":	173298794,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	6
+			}
+		}, {
+			"ts":	173299164,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	5
+			}
+		}, {
+			"ts":	173299179,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	4
+			}
+		}, {
+			"ts":	173299282,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	3
+			}
+		}, {
+			"ts":	173299299,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	2
+			}
+		}, {
+			"ts":	173299301,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	1
+			}
+		}, {
+			"ts":	173299317,
+			"ph":	"C",
+			"args":	{
+				"wave in flight":	0
+			}
+		}]
+}

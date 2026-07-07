@@ -1,0 +1,3 @@
+Operator expand_kenel_bwd requires manual kernel implementation.
+Origin: /datapool/zmz/04kernelagent/waic/origin/expand_kenel_bwd.py
+Forward params: ['o_grad']

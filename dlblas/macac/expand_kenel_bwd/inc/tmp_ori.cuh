@@ -1,0 +1,13 @@
+#pragma once
+#include "helpers.cuh"
+__global__ void expand_kenel_bwd_kernel_ori(const float* __restrict__ x, float* __restrict__ out, int N0, int N1, int M, int H){
+    int row=blockIdx.x*blockDim.x+threadIdx.x; int total=N0*N1*H; if(row>=total)return;
+    int n0i=row/(N1*H), rem=row%(N1*H), n1j=rem/H, hi=rem%H;
+    float sum=0.f;
+    for(int m=0;m<M;m++) sum+=x[((n0i*N1+n1j)*M+m)*H+hi];
+    out[row]=sum;
+}
+static void test_tmp_kernel_ori(const float* x,float* out,int N0,int N1,int M,int H,cudaStream_t s){
+    int total=N0*N1*H, bs=256, g=(total+bs-1)/bs;
+    expand_kenel_bwd_kernel_ori<<<g,bs,0,s>>>(x,out,N0,N1,M,H);
+}

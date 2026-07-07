@@ -1,0 +1,26 @@
+{
+  "tag": "baseline",
+  "source": "/home/ailab/opt_test/mhc_post_run/profile-artifacts/mhc_post_v0_baseline",
+  "artifact_dir": "/home/ailab/opt_test/mhc_post_run/profile-artifacts/mhc_post_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_0.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260626181240282.png",
+    "DPC_Computing_cycles_comparison20260626181240399.png",
+    "Dnoc_Read_Latency_Histogram20260626181240899.png",
+    "ISU_stall_cycles_layout20260626181240602.png",
+    "Instructions_Comparison20260626181240497.png",
+    "Memory_Data_Flow_Chart20260626181240704.png",
+    "RoofLine20260626181241246.png",
+    "VL1_partition_stall_cycles_layout20260626181241005.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_0.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_0.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

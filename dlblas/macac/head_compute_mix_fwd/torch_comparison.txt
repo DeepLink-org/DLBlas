@@ -1,0 +1,26 @@
+=============================================================
+head_compute_mix_fwd MACA vs Torch 性能比较
+=============================================================
+
+算子: output = sigmoid(input_mix * mhc_scale + mhc_base) + mhc_pre_eps
+Shape: input_mix=[16, 16384, 4] (1,048,576 elements)
+dtype: float32
+设备: MetaX C500
+测试迭代: 500 次 (warmup 10 次)
+
+-------------------------------------------------------------
+结果:
+-------------------------------------------------------------
+MACA baseline (scalar):        0.032542 ms
+MACA optimized (float4+b256):  0.019766 ms
+Torch (torch.sigmoid):          0.038323 ms
+
+加速比:
+  MACA opt vs MACA baseline:   1.65x
+  MACA opt vs Torch:           1.94x
+
+-------------------------------------------------------------
+Torch 信息:
+  torch.__version__: 2.8.0+metax3.3.0.2
+  torch.cuda.is_available(): True
+-------------------------------------------------------------

@@ -1,0 +1,26 @@
+{
+  "tag": "baseline",
+  "source": "/mnt/opt_test/expand_kenel_fwd_run/profile-artifacts/expand_kenel_fwd_v0_baseline",
+  "artifact_dir": "/mnt/opt_test/expand_kenel_fwd_run/profile-artifacts/expand_kenel_fwd_v0_baseline/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_0.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260629163048775.png",
+    "DPC_Computing_cycles_comparison20260629163048896.png",
+    "Dnoc_Read_Latency_Histogram20260629163049393.png",
+    "ISU_stall_cycles_layout20260629163049098.png",
+    "Instructions_Comparison20260629163048992.png",
+    "Memory_Data_Flow_Chart20260629163049201.png",
+    "RoofLine20260629163049785.png",
+    "VL1_partition_stall_cycles_layout20260629163049488.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_0.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_0.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

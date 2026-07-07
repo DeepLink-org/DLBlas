@@ -1,0 +1,103 @@
+User options:
+default = -o, profile-artifacts/expand_kenel_fwd_v20_final, --, ./test_maca, 0, 1, 2, 
+--sample-mode = A
+--filename = c-trace_output
+--target-ap = 0
+--target-peu = 1
+--pwr-mode = false
+--dpc-id = 2, 3, 
+--target-device = 0
+--token-msk = 
+--dpg-page-num = 32
+--pack-timeout = 0
+--format = pftrace
+--kernel-probe = false
+--filter = 
+--sample-data-file = 
+--sample-data-interval = 200
+--sample-data-compressed = linear
+--sample-data-dump = false
+Error: open file  failed!
+sample config size:0
+the full path of maca lib: /opt/maca/lib/libmxc-runtime64.so.1
+MACA_PATH:/opt/maca/
+-o: No such file or directory
+terminate called without an active exception
+start copy thread
+Dispatch ttrace dump start packet
+Start Application:-o
+start copy thread
+EXIT DPG KILL
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+addr2line: '/opt/maca-20250727/bin/cycle-trace-ng': No such file
+*** SIGABRT DETECT! ***
+============== Dump stack ==================
+#0: /opt/maca-20250727/bin/cycle-trace-ng(+0x1703e4) [0x55a2a77703e4]
+#   pyÈ
+#1: /opt/maca-20250727/bin/cycle-trace-ng(+0x17060d) [0x55a2a777060d]
+#   pyÈ
+#2: /opt/maca-20250727/bin/cycle-trace-ng(+0x170692) [0x55a2a7770692]
+#   pyÈ
+#3: /lib/x86_64-linux-gnu/libc.so.6(+0x42520) [0x7f1cc7906520]
+#   pyÈ
+#4: /lib/x86_64-linux-gnu/libc.so.6(pthread_kill+0x12c) [0x7f1cc795a9fc]
+#   pyÈ
+#5: /lib/x86_64-linux-gnu/libc.so.6(raise+0x16) [0x7f1cc7906476]
+#   pyÈ
+#6: /lib/x86_64-linux-gnu/libc.so.6(abort+0xd3) [0x7f1cc78ec7f3]
+#   pyÈ
+#7: /lib/x86_64-linux-gnu/libstdc++.so.6(+0xa2b9e) [0x7f1cc7c76b9e]
+#   pyÈ
+#8: /lib/x86_64-linux-gnu/libstdc++.so.6(+0xae20c) [0x7f1cc7c8220c]
+#   pyÈ
+#9: /lib/x86_64-linux-gnu/libstdc++.so.6(+0xae277) [0x7f1cc7c82277]
+#   pyÈ
+#10: /opt/maca-20250727/bin/cycle-trace-ng(+0xb1bdd) [0x55a2a76b1bdd]
+#   pyÈ
+#11: /opt/maca-20250727/bin/cycle-trace-ng(+0xe3238) [0x55a2a76e3238]
+#   pyÈ
+#12: /opt/maca-20250727/bin/cycle-trace-ng(+0xde365) [0x55a2a76de365]
+#   pyÈ
+#13: /opt/maca-20250727/bin/cycle-trace-ng(+0xd6910) [0x55a2a76d6910]
+#   pyÈ
+#14: /opt/maca-20250727/bin/cycle-trace-ng(+0xceae9) [0x55a2a76ceae9]
+#   pyÈ
+#15: /opt/maca-20250727/bin/cycle-trace-ng(+0xc6be1) [0x55a2a76c6be1]
+#   pyÈ
+#16: /opt/maca-20250727/bin/cycle-trace-ng(+0xb0527) [0x55a2a76b0527]
+#   pyÈ
+#17: /lib/x86_64-linux-gnu/libc.so.6(+0x29d90) [0x7f1cc78edd90]
+#   pyÈ
+#18: /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x80) [0x7f1cc78ede40]
+#   pyÈ
+#19: /opt/maca-20250727/bin/cycle-trace-ng(+0xabf8a) [0x55a2a76abf8a]
+#   pyÈ
+============================================
+Abort thread is 2277348
+start copy thread
+Dispatch ttrace dump start packet
+Start Application:-o
+start copy thread
+Send stop packet first...
+dpc2 has stopped
+dpc3 has stopped
+dpc2 copy tokens has done
+dpc3 copy tokens has done

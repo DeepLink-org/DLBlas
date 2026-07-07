@@ -1,0 +1,14 @@
+expand_kenel_fwd Performance Comparison
+============================================================
+Date: 2026-06-29
+Container: metax_gemm_opt
+Torch version: 2.8.0+metax3.3.0.2
+Input shape: [1, 1024, 1280] -> Output shape: [1, 1024, 4, 1280]
+
+Torch GPU (MACA backend): 0.061174 ms
+Torch CPU: 0.056635 ms
+MACA opt kernel: 0.030694 ms
+MACA ori kernel: 0.099453 ms
+
+MACA opt vs Torch GPU: 1.99x
+MACA opt vs MACA ori: 3.24x faster

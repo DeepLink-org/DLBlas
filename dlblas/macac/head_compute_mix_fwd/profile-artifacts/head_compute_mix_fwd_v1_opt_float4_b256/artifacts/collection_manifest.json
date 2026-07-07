@@ -1,0 +1,28 @@
+{
+  "tag": "opt_float4_b256",
+  "source": "/mnt/opt_test/head_compute_mix_fwd_run/profile-artifacts/head_compute_mix_fwd_v1_opt_float4_b256",
+  "artifact_dir": "/mnt/opt_test/head_compute_mix_fwd_run/profile-artifacts/head_compute_mix_fwd_v1_opt_float4_b256/artifacts",
+  "copied_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json",
+    "tracer_out.json",
+    "mcprofiler_report_dumped.json",
+    "mcprofiler_report.txt.json",
+    "Compute_Instructions_Cycles_Rate20260629170014440.png",
+    "DPC_Computing_cycles_comparison20260629170014568.png",
+    "Dnoc_Read_Latency_Histogram20260629170015065.png",
+    "ISU_stall_cycles_layout20260629170014767.png",
+    "Instructions_Comparison20260629170014664.png",
+    "Memory_Data_Flow_Chart20260629170014871.png",
+    "RoofLine20260629170015363.png",
+    "VL1_partition_stall_cycles_layout20260629170015149.png"
+  ],
+  "cycle_trace_primary": "c-trace_output_dpc_2.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json"
+  ],
+  "missing_required": [],
+  "missing_optional": [],
+  "invalid_required": []
+}

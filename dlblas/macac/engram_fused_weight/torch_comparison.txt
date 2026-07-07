@@ -1,0 +1,27 @@
+=== engram_fused_weight Performance Comparison ===
+
+## MACA C500 Optimized Kernel
+- Average time: ~0.0119 ms (avg of 3x200 iter runs)
+- Best time: 0.0110 ms
+- Launch config: 2 blocks x 256 threads
+- Kernel: direct element-wise access, implicit bf16->f32 conversion
+- Precision: True (matches PyTorch reference)
+
+## PyTorch (MetaX backend)
+- Version: 2.8.0+metax3.3.0.2
+- Average time: 0.0240 ms (1000 iterations)
+- Operation: wh.float() * we.float()
+- Device: cuda (MetaX C500)
+
+## Speedup
+- MACA vs Torch: ~2.02x faster
+- MACA baseline (Round 0): ~0.020 ms
+- MACA optimized: ~0.012 ms
+- MACA self-improvement: ~1.67x
+
+## Operator Details
+- Name: engram_fused_weight
+- Operation: Y = wh_data.float() * we_data.float()
+- Input: two bfloat16 tensors [4, 128]
+- Output: float32 tensor [4, 128]
+- Num elements: 512

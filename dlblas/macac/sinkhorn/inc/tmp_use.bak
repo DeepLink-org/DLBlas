@@ -1,0 +1,46 @@
+#pragma once
+#include "helpers.cuh"
+
+__global__ void sinkhorn_kernel_opt(const float* __restrict__ x, float* __restrict__ out, int N0, int N1, int M, int repeat, float eps) {
+    int row = blockIdx.x;
+    int total = N0 * N1;
+    if (row >= total) return;
+
+    const float* in_row = x + row * M * M;
+    float* out_row = out + row * M * M;
+
+    // Step 1: softmax along last dim
+    float maxv = -1e30f;
+    for (int i = 0; i < M * M; i++) maxv = fmaxf(maxv, in_row[i]);
+    float sum = 0.f;
+    float tmp[16];  // M*M max = 4*4 = 16
+    for (int i = 0; i < M * M; i++) {
+        tmp[i] = expf(in_row[i] - maxv);
+        sum += tmp[i];
+    }
+    for (int i = 0; i < M * M; i++) tmp[i] = tmp[i] / sum + eps;
+
+    // Step 2: iterative row/col normalize
+    for (int r = 0; r < repeat - 1; r++) {
+        // Row normalize
+        for (int i = 0; i < M; i++) {
+            float rsum = 0.f;
+            for (int j = 0; j < M; j++) rsum += tmp[i * M + j];
+            float inv = 1.f / (rsum + eps);
+            for (int j = 0; j < M; j++) tmp[i * M + j] *= inv;
+        }
+        // Col normalize
+        for (int j = 0; j < M; j++) {
+            float csum = 0.f;
+            for (int i = 0; i < M; i++) csum += tmp[i * M + j];
+            float inv = 1.f / (csum + eps);
+            for (int i = 0; i < M; i++) tmp[i * M + j] *= inv;
+        }
+    }
+
+    for (int i = 0; i < M * M; i++) out_row[i] = tmp[i];
+}
+static void test_tmp_kernel_opt(const float* x, float* out, int N0, int N1, int M, int repeat, float eps, cudaStream_t s) {
+    int total = N0 * N1;
+    sinkhorn_kernel_opt<<<total, 1, 0, s>>>(x, out, N0, N1, M, repeat, eps);
+}

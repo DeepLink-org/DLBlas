@@ -1,0 +1,15 @@
+CONTAINER_NAME: metax_gemm_opt
+SERVER_USER: ""
+SERVER_HOST: ""
+LOCAL_WORKDIR: /home/ailab/opt_test/mhc_post_run
+REMOTE_WORKDIR: /home/ailab/opt_test/mhc_post_run
+OP_EXEC_CMD: ./test_maca
+BOUND_MODE: coarse
+MACA_VISIBLE_DEVICES: "0"
+CYCLE_TRACE_TARGET_PEU: "1"
+CYCLE_TRACE_DPG_PAGE_NUM: "32"
+CYCLE_TRACE_TARGET_AP: "0"
+CYCLE_TRACE_DPC_ID: "2,3"
+MC_TRACER_BIN: /opt/maca/bin/mcTracer
+CYCLE_TRACE_BIN: /opt/maca-20250727/bin/cycle-trace-ng
+MC_PROFILER_BIN: /opt/mcProfiler-linux/mcProfiler

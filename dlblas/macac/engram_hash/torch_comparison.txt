@@ -1,0 +1,6 @@
+Torch version: 2.8.0+metax3.3.0.2
+Torch (CPU) time: 0.940335 ms
+MACA C500 time: 0.019377 ms
+MACA speedup: 48.53x vs Torch CPU
+Output shape: torch.Size([2, 4096, 16])
+Parameters: num_tokens=4096, max_ngram_size=3, num_ngram_layers=2, num_embed_table_per_ngram=8

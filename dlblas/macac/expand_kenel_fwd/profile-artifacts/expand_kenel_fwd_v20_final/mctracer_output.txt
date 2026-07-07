@@ -1,0 +1,17 @@
+(Tracer): 16:08:17 [INFO ] Tracer startup
+(Tracer): 16:08:17 [INFO ] Rpc connection established!
+(Tracer): 16:08:20 [INFO ] Output file: 	/mnt/opt_test/expand_kenel_fwd_run/tracer_out_20260626160817/tracer_out-2277318.json
+<warm_up_count>0</warm_up_count>
+<test_count>1</test_count>
+<exec_mode>2</exec_mode>
+Input shape: [1, 1024, 1280] -> Output shape: [1, 1024, 4, 1280]
+Input elements: 1310720, Output elements: 5242880
+mctxAutoStart called! 
+mcToolsExtPid_UsedPort:2277318-44715
+opt fprop average time: 1.026048 ms
+<time_before_opt>0.000000 ms</time_before_opt>
+<time_after_opt>1.026048 ms</time_after_opt>
+<runtime_ratio> 0.000000</runtime_ratio>
+<precision>True</precision>
+(Tracer): 16:08:21 [INFO ] User process ends execution.
+(Tracer): 16:08:21 [INFO ] Tracer ends execution.

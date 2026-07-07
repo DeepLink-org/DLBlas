@@ -1,0 +1,17 @@
+usage: mcProfiler [-h] [--cmdline CMDLINE] [--kernelname KERNELNAME]
+                  [--casename CASENAME] [--cwd CWD]
+                  [--metrics METRICS [METRICS ...]]
+                  [--headnames HEADNAMES [HEADNAMES ...]]
+                  [--remote_ip REMOTE_IP] [--remote_port REMOTE_PORT]
+                  [--remote_user REMOTE_USER] [--remote_pwd REMOTE_PWD]
+                  [--identity_file IDENTITY_FILE]
+                  [--container_id CONTAINER_ID] [--per-kernel]
+                  [--profile-from-start PROFILE_FROM_START] [--custom]
+                  [--counts COUNTS] [--exclude]
+                  [--kernelnames KERNELNAMES [KERNELNAMES ...]]
+                  [--single-pass] [--multi-device] [--exec_id EXEC_ID]
+                  [--status {init,init_failed,executing,execute_failed,profiling,profiler_failed,done}]
+                  [--items ITEMS [ITEMS ...]] [--output OUTPUT]
+                  [--interval INTERVAL] [--host HOST] [--port PORT]
+                  {show_metrics,perf_exec,version,help}
+mcProfiler: error: argument operation: invalid choice: './test_maca' (choose from 'show_metrics', 'perf_exec', 'version', 'help')

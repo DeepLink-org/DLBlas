@@ -1,0 +1,808 @@
+{
+  "tag": "baseline",
+  "artifact_dir": "/mnt/opt_test/engram_fused_weight_run/profile-artifacts/engram_fused_weight_v0_baseline/artifacts",
+  "cycle_dpc_id": "2,3",
+  "cycle_dpc_primary": "2",
+  "cycle_trace_file": "c-trace_output_dpc_2.json",
+  "cycle_trace_files": [
+    "c-trace_output_dpc_2.json",
+    "c-trace_output_dpc_3.json"
+  ],
+  "kernel": {
+    "name": "_Z30engram_fused_weight_kernel_optPKDF16_S0_Pfi",
+    "grid": [
+      2,
+      1,
+      1
+    ],
+    "block": [
+      256,
+      1,
+      1
+    ],
+    "span_cycles": 3875058
+  },
+  "launch": {
+    "source": "/mnt/opt_test/engram_fused_weight_run/profile-artifacts/engram_fused_weight_v0_baseline/artifacts/tracer_out.json",
+    "kernel_name": "_Z30engram_fused_weight_kernel_optPKDF16_S0_Pfi",
+    "mangled_name": "_Z30engram_fused_weight_kernel_optPKDF16_S0_Pfi",
+    "grid": [
+      2,
+      1,
+      1
+    ],
+    "block": [
+      256,
+      1,
+      1
+    ],
+    "registers_per_thread": 6,
+    "static_shared_bytes": 0,
+    "dynamic_shared_bytes": 0,
+    "private_per_thread": 0,
+    "private_total": 0,
+    "mtreg_occupancy_pct": 1.0,
+    "shared_memory_occupancy_pct": 0.0,
+    "effective_occupancy_pct": 1.0,
+    "kernel_event_duration": 11776,
+    "top_api_calls_by_duration": [
+      {
+        "name": "mcStreamDestroy",
+        "dur": 11593087
+      },
+      {
+        "name": "mcStreamCreate",
+        "dur": 1555721
+      },
+      {
+        "name": "mcLaunchKernel",
+        "dur": 889018
+      },
+      {
+        "name": "mcMalloc",
+        "dur": 774262
+      },
+      {
+        "name": "mcDeviceSynchronize",
+        "dur": 124345
+      },
+      {
+        "name": "mcMemcpy",
+        "dur": 65347
+      },
+      {
+        "name": "mcMalloc",
+        "dur": 48440
+      },
+      {
+        "name": "mcMalloc",
+        "dur": 46546
+      },
+      {
+        "name": "mcMalloc",
+        "dur": 44508
+      },
+      {
+        "name": "mcEventSynchronize",
+        "dur": 35889
+      }
+    ],
+    "notes": {
+      "effective_occupancy_pct": "Computed only from mcTracer mtreg/shared-memory fields. streg limiter is not available in this JSON."
+    }
+  },
+  "cycle": {
+    "source": "/mnt/opt_test/engram_fused_weight_run/profile-artifacts/engram_fused_weight_v0_baseline/artifacts/c-trace_output_dpc_2.json",
+    "event_count": 670,
+    "raw_name_counts": {
+      "thread_name": 4,
+      "Wave start": 108,
+      "Wave end": 108,
+      "User Data": 104,
+      "LDU": 8,
+      "Synchronization": 14,
+      "STE": 36,
+      "MTE": 48,
+      "S_NOP": 16,
+      "Branch": 2,
+      "GVM Load": 4,
+      "GVM Store": 2,
+      "": 216
+    },
+    "raw_cat_counts": {
+      "__metadata": 4,
+      "MISC_WAVE_START": 108,
+      "MISC_WAVE_END": 108,
+      "USER_DATA": 104,
+      "LDU": 8,
+      "ARRIVE": 14,
+      "STE": 54,
+      "MTE": 48,
+      "GLOBAL": 6,
+      "": 216
+    },
+    "total_instructions": 130,
+    "category_counts": {
+      "MTE": 48,
+      "STE": 54,
+      "MMA": 0,
+      "BSM": 0,
+      "GLOBAL": 6,
+      "ARRIVE": 14,
+      "LDU": 8
+    },
+    "category_pcts": {
+      "MTE": 36.9231,
+      "STE": 41.5385,
+      "MMA": 0.0,
+      "BSM": 0.0,
+      "GLOBAL": 4.6154,
+      "ARRIVE": 10.7692,
+      "LDU": 6.1538
+    },
+    "category_notes": {
+      "basis": "CycleTrace `cat` is the primary instruction-distribution key because it identifies the C500 hardware category where the event executes.",
+      "STE": "`STE` category includes scalar STE events plus STE-category S_NOP and Branch event names.",
+      "GLOBAL": "`GLOBAL` category covers GVM Load and GVM Store event names.",
+      "ARRIVE": "`ARRIVE` category covers Synchronization event names."
+    },
+    "mte": 48,
+    "ste": 54,
+    "s_nop": 16,
+    "branch": 2,
+    "mma": 0,
+    "bsm": 0,
+    "gvm_load": 4,
+    "gvm_store": 2,
+    "gvm_total": 6,
+    "arrive": 14,
+    "ldu": 8,
+    "wave_start": 108,
+    "wave_end": 108,
+    "mma_pct": 0.0,
+    "mte_pct": 36.9231,
+    "ste_pct": 41.5385,
+    "bsm_pct": 0.0,
+    "gvm_pct": 4.6154,
+    "arrive_pct": 10.7692,
+    "ldu_pct": 6.1538,
+    "nop_pct": 12.3077,
+    "branch_pct": 1.5385,
+    "sync_count": 14,
+    "span_cycles": 3875058,
+    "issue_density_inst_per_cycle": 3.4e-05,
+    "wif_mean": 2.0,
+    "wif_max": 4,
+    "wif_p25": 1.0,
+    "wif_p50": 2.0,
+    "wif_p75": 3.0,
+    "gvm_600cy_peak": 3,
+    "notes": {
+      "cycletrace_duration": "Instruction dur=4 is treated as issue slot width, not real execution latency.",
+      "gvm_600cy_peak": "Max GVM load/store issue count in a 600-cycle sliding window; pressure proxy, not exact buffer occupancy.",
+      "wif_scope": "Raw CycleTrace wave count distribution. Confirm counter scope before converting to waves/AP."
+    }
+  },
+  "profiler": {
+    "available": true,
+    "source_dumped": "/mnt/opt_test/engram_fused_weight_run/profile-artifacts/engram_fused_weight_v0_baseline/artifacts/mcprofiler_report_dumped.json",
+    "source_txt": "/mnt/opt_test/engram_fused_weight_run/profile-artifacts/engram_fused_weight_v0_baseline/artifacts/mcprofiler_report.txt.json",
+    "total_instructions": 51120.0,
+    "compute_instructions": 45210.0,
+    "memory_instructions": 5910.0,
+    "total_cycles": 3435669.439,
+    "average_ap_busy_cycles": 4045.8446601941746,
+    "ap_busy_duty_pct": 0.0003202869250192728,
+    "compute_inst_busy_duty_pct": 5.400722784014283,
+    "workgroups": 214.0,
+    "waves": 856.0,
+    "average_wave_life_cycles": 608.9147196261682,
+    "ap_active_cycles": 416722.0,
+    "ap_mte_duty_pct": 5.308575021237179,
+    "ap_ste_duty_pct": 3.7190261133321494,
+    "ap_mma_duty_pct": 0.0,
+    "vls_duty_pct": 0.0,
+    "l2c_duty_pct": 0.0012274813323745065,
+    "real_ipc": 4.645583424209378,
+    "instruction_throughput": 0.044669071386628637,
+    "instruction_throughput_efficiency_pct": 1.1167267846657158,
+    "instructions_per_ap": 491.53846153846155,
+    "avg_cycles_per_instruction": 0.0,
+    "avg_latency_all_stages_per_instruction": 0.0,
+    "avg_latency_per_load_instruction": 0.0,
+    "avg_latency_per_store_instruction": 0.0,
+    "avg_latency_per_atomic_instruction": 0.0,
+    "avg_cycles_per_atomic_instruction": 0.0,
+    "vl1_hit_rate_pct": 96.82254196642685,
+    "l2c_hit_rate_pct": 29.795194958645137,
+    "sl1_hit_rate_pct": 93.78531073446328,
+    "dnoc_read_average_latency": 147.5228445099484,
+    "dnoc_read_req": 5428.0,
+    "dnoc_write_req": 2924.0,
+    "memory_access_per_second": 54137.91735533669,
+    "global_memory_read_bytes": 440768.0,
+    "global_memory_write_bytes": 253312.0,
+    "global_read_instructions": 1664.0,
+    "global_write_instructions": 838.0,
+    "vl1_read_instructions": 1664.0,
+    "vl1_write_instructions": 838.0,
+    "l2c_read_instructions": 8333.0,
+    "l2c_write_instructions": 4707.0,
+    "constant_read_instructions": 3408.0,
+    "constant_read_sl1_instructions": 2128.0,
+    "constant_read_l2_instructions": 136.0,
+    "shared_memory_load_instructions": 0.0,
+    "shared_memory_store_instructions": 0.0,
+    "shared_memory_efficiency_pct": 0.0,
+    "avg_conflict_cycles_per_inst": 0.0,
+    "avg_cycles_per_load": 0.0,
+    "avg_cycles_per_store": 0.0,
+    "achieved_waves": 848.0,
+    "dispatched_waves": 856.0,
+    "hardware_instruction_counts": {
+      "MTE": 22026.0,
+      "MMA": 0.0,
+      "STE": 15498.0,
+      "GVM": 2502.0,
+      "BSM": 0.0,
+      "LDU": 3408.0,
+      "MISC": 7686.0
+    },
+    "hardware_instruction_total": 51120.0,
+    "dpc_compute_cycles": {
+      "0": 12632.0,
+      "1": 12632.0,
+      "2": 9984.0,
+      "3": 9984.0,
+      "4": 9984.0,
+      "5": 9600.0,
+      "6": 12796.0,
+      "7": 12412.0
+    },
+    "dpc_compute_summary": {
+      "min": 9600.0,
+      "avg": 11253.0,
+      "max": 12796.0,
+      "spread_pct": 28.4013
+    },
+    "dpc_compute_imbalance_pct": 28.4013,
+    "dnoc_latency_histogram": {
+      "0-255": 4184.0,
+      "256-511": 968.0,
+      "512-1k": 637.0,
+      "1k-2k": 0.0,
+      "2k-": 0.0
+    },
+    "dnoc_latency_histogram_pct": {
+      "0-255": 72.275,
+      "256-511": 16.7214,
+      "512-1k": 11.0036,
+      "1k-2k": 0.0,
+      "2k-": 0.0
+    },
+    "vl1_partition_stalls": {
+      "pt0": 0.0,
+      "pt1": 0.0,
+      "pt2": 0.0,
+      "pt3": 0.0
+    },
+    "vl1_partition_stall_summary": {
+      "min": 0.0,
+      "avg": 0.0,
+      "max": 0.0,
+      "spread_pct": 0.0
+    },
+    "memory_data_flow": {
+      "vl1c": 96.82254196642685,
+      "l2c": 29.795194958645137,
+      "sl1": 93.78531073446328,
+      "global_kernel_rd": 1664,
+      "global_kernel_wr": 838,
+      "private_kernel_rd": 0,
+      "private_kernel_wr": 0,
+      "generic_kernel_rd": 0,
+      "generic_kernel_wr": 0,
+      "const_kernel_rd": 3408,
+      "shared_kernel_rd": 0,
+      "shared_kernel_wr": 0,
+      "Ggeneric_vl1c_rd": 1664,
+      "Ggeneric_vl1c_wr": 838,
+      "const_sl1c_rd": 2128,
+      "sl1_l2c_rd": 136,
+      "vl1c_l2c_rd": 8333,
+      "vl1c_l2c_wr": 4707,
+      "l2c_Gmemory_rd": null,
+      "l2c_Gmemory_wr": null
+    },
+    "compute_instruction_cycles_rate": {
+      "MTE_4CYCLES": 87976.0,
+      "MTE_16CYCLES": 8192.0,
+      "MMA_16CYCLES": 0.0,
+      "MMA_32CYCLES": 0.0
+    },
+    "compute_instruction_cycles_summary": {
+      "total": 96168.0,
+      "mte_cycles": 96168.0,
+      "mma_cycles": 0.0,
+      "mte_cycles_pct": 100.0,
+      "mma_cycles_pct": 0.0,
+      "shares_pct": {
+        "MTE_4CYCLES": 91.4816,
+        "MTE_16CYCLES": 8.5184,
+        "MMA_16CYCLES": 0.0,
+        "MMA_32CYCLES": 0.0
+      }
+    },
+    "isu_stall_cycles": {
+      "wsm_stall": 0.0,
+      "vls_pipeline_stall": 3756.0,
+      "vls_wdata_stall": 3424.0,
+      "valu_stall": 0.0
+    },
+    "isu_stall_summary": {
+      "total": 7180.0,
+      "top": "vls_pipeline_stall",
+      "top_cycles": 3756.0,
+      "top_pct": 52.312,
+      "shares_pct": {
+        "wsm_stall": 0.0,
+        "vls_pipeline_stall": 52.312,
+        "vls_wdata_stall": 47.688,
+        "valu_stall": 0.0
+      }
+    },
+    "roofline": {
+      "all_ops": 1403520.0,
+      "all_memacs": 694080.0,
+      "during": 11004.0,
+      "block_num": 104.0,
+      "vl1_memacs": 640512.0,
+      "l2c_memacs": 212992.0,
+      "core_clk": 1.125,
+      "MAX_Flops_base": 0.117,
+      "case_flops": 0.14348964013086152,
+      "MAX_Bandwith": 1843.2,
+      "MAX_I": 260.0,
+      "case_I": 2.0221300138312586,
+      "case_bandwith": 70.95965103598691,
+      "case_VL1_I": 2.1912470023980815,
+      "case_L2C_I": 6.589543269230769,
+      "mc_clk": 0.9,
+      "peak_trans_tflops": 1.872,
+      "peak_fma_tflops": 14.976,
+      "peak_mma_fp16_tflops": 239.616,
+      "peak_int8_tflops": 479.232,
+      "hbm_usage_pct": 3.8498,
+      "vl1_peak_bandwidth_gbs": 14976.0,
+      "l2c_peak_bandwidth_gbs": 4608.0,
+      "vl1_usage_pct": 0.4373,
+      "l2c_usage_pct": 0.4726,
+      "derivation_note": "Roofline peak lines use mcProfiler MAX_Flops_base. HBM usage uses MAX_Bandwith. VL1/L2C usage uses C500 architecture bandwidth constants and core_clk to match the mcProfiler RoofLine chart context."
+    },
+    "all_scalars": {
+      "Total Instructions": 51120.0,
+      "Compute Instructions": 45210.0,
+      "Memory Instructions": 5910.0,
+      "Total Cycles": 3435669.439,
+      "Memory Access per Second": 54137.91735533669,
+      "Average AP busy cycles": 4045.8446601941746,
+      "AP busy Duty": 0.0003202869250192728,
+      "Compute Instructions busy Duty": 5.400722784014283,
+      "WORKGROUPS": 214.0,
+      "WAVES": 856.0,
+      "Average Wave life cycles": 608.9147196261682,
+      "Global Read Instructions": 1664.0,
+      "Global Write Instructions": 838.0,
+      "Global Atomic Instructions": 0.0,
+      "Private Read Instructions": 0.0,
+      "Private Write Instructions": 0.0,
+      "Constant Read Instructions": 3408.0,
+      "Constant Read SL1 Instructions": 2128.0,
+      "Constant Read L2 Instructions": 136.0,
+      "Constant SL1 Hit Rate": 93.78531073446328,
+      "VL1 Read Instructions": 1664.0,
+      "VL1 Write Instructions": 838.0,
+      "VL1 Atomic Instructions": 0.0,
+      "VL1 Hit Rate": 96.82254196642685,
+      "L2C Read Instructions": 8333.0,
+      "L2C Write Instructions": 4707.0,
+      "L2C Atomic Instructions": 0.0,
+      "L2C Hit Rate": 29.795194958645137,
+      "Total Atomic Instructions": 0.0,
+      "Dnoc Read Req": 5428.0,
+      "Dnoc Write Req": 2924.0,
+      "Global Memory Read bytes": 440768.0,
+      "Global Memory Write bytes": 253312.0,
+      "Dnoc Read Average Latency": 147.5228445099484,
+      "load instructions": 0.0,
+      "store instructions": 0.0,
+      "atomic instructions": 0.0,
+      "total instructions": 0.0,
+      "average latency per load instruction": 0.0,
+      "average latency per store instruction": 0.0,
+      "average latency per atomic instruction": 0.0,
+      "average latency of all stages per instruction": 0.0,
+      "average cycles per load instruction": 0.0,
+      "average cycles per store instruction": 0.0,
+      "average cycles per atomic instruction": 0.0,
+      "average conflict cycles per instruction": 0.0,
+      "average cycles per instruction": 0.0,
+      "shared memory access efficiency": 0.0,
+      "Achieved waves": 848.0,
+      "Dispatched waves": 856.0,
+      "AP active cycles": 416722.0,
+      "AP MTE Duty ratio": 5.308575021237179,
+      "AP STE Duty ratio": 3.7190261133321494,
+      "AP MMA Duty ratio": 0.0,
+      "VLS Duty ratio": 0.0,
+      "L2C Duty ratio": 0.0012274813323745065,
+      "instruction per cycle": 4.645583424209378,
+      "instruction throughput": 0.044669071386628637,
+      "instruction throughput efficiency": 1.1167267846657158,
+      "instruction number": 51120.0,
+      "instructions per AP": 491.53846153846155,
+      "RoofLine": "N/A"
+    },
+    "all_charts": {
+      "Compute Instructions Cycles Rate": {
+        "MTE_4CYCLES": 87976.0,
+        "MTE_16CYCLES": 8192.0,
+        "MMA_16CYCLES": 0.0,
+        "MMA_32CYCLES": 0.0
+      },
+      "DPC Computing cycles comparison": {
+        "0": 12632.0,
+        "1": 12632.0,
+        "2": 9984.0,
+        "3": 9984.0,
+        "4": 9984.0,
+        "5": 9600.0,
+        "6": 12796.0,
+        "7": 12412.0
+      },
+      "ISU stall cycles layout": {
+        "wsm_stall": 0.0,
+        "vls_pipeline_stall": 3756.0,
+        "vls_wdata_stall": 3424.0,
+        "valu_stall": 0.0
+      },
+      "Instructions Comparison": {
+        "MTE": 22026.0,
+        "MMA": 0.0,
+        "STE": 15498.0,
+        "GVM": 2502.0,
+        "BSM": 0.0,
+        "LDU": 3408.0,
+        "MISC": 7686.0
+      },
+      "Memory Data Flow Chart": {
+        "vl1c": 96.82254196642685,
+        "l2c": 29.795194958645137,
+        "sl1": 93.78531073446328,
+        "global_kernel_rd": 1664,
+        "global_kernel_wr": 838,
+        "private_kernel_rd": 0,
+        "private_kernel_wr": 0,
+        "generic_kernel_rd": 0,
+        "generic_kernel_wr": 0,
+        "const_kernel_rd": 3408,
+        "shared_kernel_rd": 0,
+        "shared_kernel_wr": 0,
+        "Ggeneric_vl1c_rd": 1664,
+        "Ggeneric_vl1c_wr": 838,
+        "const_sl1c_rd": 2128,
+        "sl1_l2c_rd": 136,
+        "vl1c_l2c_rd": 8333,
+        "vl1c_l2c_wr": 4707,
+        "l2c_Gmemory_rd": null,
+        "l2c_Gmemory_wr": null
+      },
+      "Dnoc Read Latency Histogram": {
+        "0-255": 4184.0,
+        "256-511": 968.0,
+        "512-1k": 637.0,
+        "1k-2k": 0.0,
+        "2k-": 0.0
+      },
+      "VL1 partition stall cycles layout": {
+        "pt0": 0.0,
+        "pt1": 0.0,
+        "pt2": 0.0,
+        "pt3": 0.0
+      }
+    },
+    "hw_mte_pct": 43.0869,
+    "hw_mma_pct": 0.0,
+    "hw_ste_pct": 30.3169,
+    "hw_gvm_pct": 4.8944,
+    "hw_bsm_pct": 0.0,
+    "hw_ldu_pct": 6.6667,
+    "hw_misc_pct": 15.0352,
+    "achieved_flops_tflops": 0.14348964013086152,
+    "achieved_bandwidth_gbs": 70.95965103598691,
+    "achieved_intensity_flop_per_byte": 2.0221300138312586
+  },
+  "bound": {
+    "mode": "coarse",
+    "type": "compute",
+    "primary": "compute",
+    "evidence": {
+      "cycle_mma_pct": 0.0,
+      "cycle_mte_pct": 36.9231,
+      "cycle_gvm_pct": 4.6154,
+      "cycle_arrive_pct": 10.7692,
+      "cycle_ldu_pct": 6.1538,
+      "cycle_nop_pct": 12.3077,
+      "ap_mte_duty_pct": 5.308575021237179,
+      "ap_ste_duty_pct": 3.7190261133321494,
+      "ap_mma_duty_pct": 0.0,
+      "vls_duty_pct": 0.0,
+      "l2c_duty_pct": 0.0012274813323745065,
+      "vl1_hit_rate_pct": 96.82254196642685,
+      "l2c_hit_rate_pct": 29.795194958645137,
+      "dnoc_read_average_latency": 147.5228445099484,
+      "dnoc_read_req": 5428.0,
+      "dnoc_write_req": 2924.0,
+      "global_memory_read_bytes": 440768.0,
+      "global_memory_write_bytes": 253312.0,
+      "shared_memory_efficiency_pct": 0.0,
+      "avg_conflict_cycles_per_inst": 0.0,
+      "effective_occupancy_pct": 1.0,
+      "mtreg_occupancy_pct": 1.0,
+      "shared_memory_occupancy_pct": 0.0,
+      "real_ipc": 4.645583424209378,
+      "achieved_bandwidth_gbs": 70.95965103598691,
+      "roofline_hbm_usage_pct": 3.8498,
+      "roofline_vl1_usage_pct": 0.4373,
+      "roofline_l2c_usage_pct": 0.4726,
+      "top_isu_stall": "vls_pipeline_stall",
+      "top_isu_stall_pct": 52.312,
+      "tensor_path_expected": false,
+      "wsm_activity": false
+    },
+    "rationale": [
+      "MTE instruction share / duty dominates the executed compute path.",
+      "mcTracer occupancy bound is below 25%; streg is unavailable in current JSON.",
+      "L2C hit rate and achieved bandwidth do not indicate global-memory bandwidth saturation.",
+      "NOP/IPC thresholds indicate latency or pipeline-bubble pressure.",
+      "ISU stall layout has a dominant stall bucket; use it as supporting issue-side evidence, not an NCU-style warp stall reason."
+    ],
+    "thresholds": {
+      "tensor_underuse": "tensor-like kernel and cycle_mma_pct < 1 and ap_mma_duty_pct < 3",
+      "mte_path": "cycle_mte_pct > 30 or ap_mte_duty_pct > 15",
+      "bank_conflict": "avg_conflict_cycles_per_inst > 0.5, or WSM activity with 0 < shared_memory_efficiency_pct < 80",
+      "low_occupancy": "0 < effective_occupancy_pct < 25",
+      "memory_pressure": "gvm_pct > 25, vls/l2c duty > 50, or l2c_hit_rate_pct < 80 with supporting GVM/VLS/L2C activity",
+      "latency_signal": "nop_pct > 10 or real_ipc < 10 when memory pressure is absent"
+    }
+  },
+  "diagnosis": [
+    {
+      "severity": "medium",
+      "title": "Low launch occupancy bound",
+      "evidence": "mtreg=1.00%, smem=0.00%",
+      "next": "For this non-tensor kernel, inspect grid/block coverage and only then reduce resource footprint if mcTracer shows a real limiter. streg limit still needs compiler/assembly evidence."
+    },
+    {
+      "severity": "medium",
+      "title": "Pipeline bubble signal",
+      "evidence": "NOP share=12.31%",
+      "next": "Correlate with barriers, load-use distance, and mcProfiler IPC."
+    }
+  ],
+  "metric_coverage": {
+    "summary": {
+      "reported_metric_groups": 9,
+      "parsed_not_promoted_groups": 8,
+      "unavailable_dimensions": 5
+    },
+    "reported_metric_groups": [
+      {
+        "group": "kernel_identity",
+        "status": "reported",
+        "fields": [
+          "kernel.name",
+          "kernel.grid",
+          "kernel.block",
+          "artifact_dir"
+        ],
+        "role": "Reproducibility and target-kernel confirmation."
+      },
+      {
+        "group": "bound_classification",
+        "status": "reported",
+        "fields": [
+          "bound.mode",
+          "bound.type",
+          "bound.primary",
+          "bound.evidence",
+          "bound.rationale"
+        ],
+        "role": "Headline diagnosis and machine-readable decision evidence."
+      },
+      {
+        "group": "cycletrace_instruction_mix",
+        "status": "reported",
+        "fields": [
+          "cycle.category_counts",
+          "cycle.category_pcts",
+          "cycle.mte_pct",
+          "cycle.ste_pct",
+          "cycle.mma_pct",
+          "cycle.bsm_pct",
+          "cycle.gvm_pct",
+          "cycle.arrive_pct",
+          "cycle.ldu_pct",
+          "cycle.sync_count"
+        ],
+        "role": "Hardware-category instruction mix from CycleTrace `cat`; name-level NOP/Branch/GVM load-store are subevent context."
+      },
+      {
+        "group": "launch_resources",
+        "status": "reported",
+        "fields": [
+          "launch.registers_per_thread",
+          "launch.static_shared_bytes",
+          "launch.dynamic_shared_bytes",
+          "launch.private_per_thread",
+          "launch.mtreg_occupancy_pct",
+          "launch.shared_memory_occupancy_pct"
+        ],
+        "role": "Occupancy and resource-limit diagnosis."
+      },
+      {
+        "group": "tail_and_balance",
+        "status": "reported",
+        "fields": [
+          "cycle.wif_p25",
+          "cycle.wif_p50",
+          "cycle.wif_p75",
+          "cycle.wif_max",
+          "profiler.dpc_compute_imbalance_pct",
+          "profiler.achieved_waves",
+          "profiler.dispatched_waves"
+        ],
+        "role": "Aggregate tail-effect and DPC balance proxy."
+      },
+      {
+        "group": "hardware_duty",
+        "status": "reported",
+        "fields": [
+          "profiler.ap_mte_duty_pct",
+          "profiler.ap_ste_duty_pct",
+          "profiler.ap_mma_duty_pct",
+          "profiler.real_ipc",
+          "profiler.instruction_throughput",
+          "profiler.instruction_throughput_efficiency_pct",
+          "profiler.compute_instruction_cycles_summary",
+          "profiler.isu_stall_summary"
+        ],
+        "role": "Hardware utilization, instruction efficiency, compute-cycle split, and issue-side stall context."
+      },
+      {
+        "group": "memory_hierarchy",
+        "status": "reported",
+        "fields": [
+          "profiler.vl1_hit_rate_pct",
+          "profiler.l2c_hit_rate_pct",
+          "profiler.sl1_hit_rate_pct",
+          "profiler.dnoc_read_average_latency",
+          "profiler.dnoc_read_req",
+          "profiler.dnoc_write_req",
+          "profiler.global_memory_read_bytes",
+          "profiler.global_memory_write_bytes",
+          "profiler.memory_data_flow",
+          "profiler.dnoc_latency_histogram_pct",
+          "profiler.vl1_partition_stall_summary"
+        ],
+        "role": "Memory-bound, traffic volume, latency-tail, and cache-pressure checks."
+      },
+      {
+        "group": "bank_conflict_private_atomic",
+        "status": "reported",
+        "fields": [
+          "profiler.shared_memory_efficiency_pct",
+          "profiler.avg_conflict_cycles_per_inst",
+          "profiler.avg_cycles_per_load",
+          "profiler.avg_cycles_per_store",
+          "launch.private_per_thread",
+          "profiler.memory_data_flow.private_kernel_rd"
+        ],
+        "role": "WSM bank-conflict, spill/private-memory, and serialization context."
+      },
+      {
+        "group": "roofline",
+        "status": "reported",
+        "fields": [
+          "profiler.achieved_flops_tflops",
+          "profiler.achieved_bandwidth_gbs",
+          "profiler.achieved_intensity_flop_per_byte",
+          "profiler.roofline.case_VL1_I",
+          "profiler.roofline.case_L2C_I",
+          "profiler.roofline.hbm_usage_pct",
+          "profiler.roofline.vl1_usage_pct",
+          "profiler.roofline.l2c_usage_pct",
+          "profiler.roofline.peak_fma_tflops",
+          "profiler.roofline.peak_mma_fp16_tflops"
+        ],
+        "role": "Empirical compute/memory placement plus mcProfiler RoofLine chart peak and usage context."
+      }
+    ],
+    "parsed_not_promoted": [
+      {
+        "field": "cycle.raw_name_counts / cycle.raw_cat_counts",
+        "role": "Raw event audit.",
+        "reason": "Duplicates summarized hardware-category and subevent counts; mainly useful for parser validation."
+      },
+      {
+        "field": "cycle.issue_density_inst_per_cycle",
+        "role": "CycleTrace issue-density sanity check.",
+        "reason": "Wave lifecycle span is not equivalent to real IPC; mcProfiler IPC is more diagnostic."
+      },
+      {
+        "field": "launch.kernel_event_duration",
+        "role": "Host trace duration context.",
+        "reason": "Device-kernel report prioritizes CycleTrace span and mcProfiler cycles.",
+        "value": 11776
+      },
+      {
+        "field": "launch.top_api_calls_by_duration",
+        "role": "Runtime/API overhead context.",
+        "reason": "Not part of the current device-kernel bottleneck diagnosis.",
+        "available_count": 10
+      },
+      {
+        "field": "profiler.all_scalars / profiler.all_charts",
+        "role": "Lossless mcProfiler raw evidence.",
+        "reason": "Too verbose for the report body; retained for audit and future parser expansion.",
+        "available_scalars": 62,
+        "available_charts": 7
+      },
+      {
+        "field": "profiler.memory_data_flow raw entries",
+        "role": "Detailed path-level memory flow.",
+        "reason": "Report shows recognized read/write groups; raw entries remain available for path-specific investigations.",
+        "available_count": 20
+      },
+      {
+        "field": "profiler.roofline raw entries",
+        "role": "Raw mcProfiler RoofLine chart inputs.",
+        "reason": "Report promotes peak, usage, and intensity context; raw fields remain available for audit.",
+        "available_count": 26
+      },
+      {
+        "field": "atomic-related mcProfiler scalar fields",
+        "role": "Atomic/serialization pressure.",
+        "reason": "Report summarizes total atomic pressure; individual counters are retained in metrics_all.",
+        "available_count": 7
+      }
+    ],
+    "unavailable_dimensions": [
+      {
+        "dimension": "source-line/PC/SASS/PTX attribution",
+        "impact": "Cannot name exact source-line hotspots or confirm instruction mnemonics.",
+        "required_artifact": "Compiler/source instrumentation or disassembly."
+      },
+      {
+        "dimension": "PM-sampling or per-AP timeline",
+        "impact": "Cannot prove timeline shape, alternating idle phases, or late low occupancy.",
+        "required_artifact": "PM sampling or richer CycleTrace timeline export."
+      },
+      {
+        "dimension": "sector/request and useful-bytes/sector counters",
+        "impact": "Cannot claim global-memory coalescing quality.",
+        "required_artifact": "C500 equivalent of sector/request or byte-utilization counters."
+      },
+      {
+        "dimension": "complete occupancy limiter decomposition",
+        "impact": "streg and block-limit causes cannot be separated from current mtreg/shared-memory fields.",
+        "required_artifact": "Compiler/assembly resource report or richer mcTracer occupancy fields."
+      },
+      {
+        "dimension": "exact GVM/BSM buffer occupancy over time",
+        "impact": "GVM 600-cycle peak remains a pressure proxy, not precise buffer occupancy.",
+        "required_artifact": "CycleTrace Web UI derived views or richer trace export."
+      }
+    ]
+  }
+}

@@ -1,0 +1,117 @@
+#pragma once
+#include "helpers.cuh"
+
+__global__ void engram_gate_bwd_kernel_opt(
+    const uint16_t* __restrict__ grad_out, const uint16_t* __restrict__ x_data,
+    const uint16_t* __restrict__ k_data, const uint16_t* __restrict__ v_data,
+    const uint16_t* __restrict__ wh_data, const uint16_t* __restrict__ we_data,
+    uint16_t* __restrict__ grad_x, uint16_t* __restrict__ grad_k,
+    float* __restrict__ grad_v, float* __restrict__ grad_wh, float* __restrict__ grad_we,
+    int T, int H, int D, float scalar, float eps) {
+
+    int idx = blockIdx.x;  // token t * H + head h
+    int t = idx / H;
+    int h = idx % H;
+    if (t >= T) return;
+
+    int tid = threadIdx.x;
+    extern __shared__ float smem[];
+
+    const uint16_t* go_th = grad_out + (t * H + h) * D;
+    const uint16_t* x_th  = x_data   + (t * H + h) * D;
+    const uint16_t* k_th  = k_data   + (t * H + h) * D;
+    const uint16_t* v_t   = v_data   + t * D;
+    const uint16_t* wh_h  = wh_data  + h * D;
+    const uint16_t* we_h  = we_data  + h * D;
+    uint16_t* gx_th = grad_x + (t * H + h) * D;
+    uint16_t* gk_th = grad_k + (t * H + h) * D;
+
+    // === Forward pass (recompute intermediates) ===
+    // RMSNorm: sum_x2, sum_k2
+    float sum_x2 = 0.f, sum_k2 = 0.f;
+    float raw_dot_partial = 0.f;
+    if (tid < D) {
+        float xv = bf(x_th[tid]), kv = bf(k_th[tid]);
+        float whv = bf(wh_h[tid]), wev = bf(we_h[tid]);
+        sum_x2 += xv * xv;
+        sum_k2 += kv * kv;
+        raw_dot_partial += xv * whv * kv * wev;
+    }
+    smem[tid] = sum_x2;
+    smem[tid + 128] = sum_k2;
+    smem[tid + 256] = raw_dot_partial;
+    __syncthreads();
+    for (int s = 64; s > 0; s >>= 1) {
+        if (tid < s) {
+            smem[tid] += smem[tid + s];
+            smem[tid + 128] += smem[tid + 128 + s];
+            smem[tid + 256] += smem[tid + 256 + s];
+        }
+        __syncthreads();
+    }
+    float rstd_x = rsqrtf(smem[0] / D + eps);
+    float rstd_k = rsqrtf(smem[128] / D + eps);
+    float raw_dot = smem[256];
+    float dot = raw_dot * rstd_x * rstd_k * scalar;
+
+    // Gate: signed_sqrt + sigmoid
+    float abs_dot = fabsf(dot);
+    float signed_sqrt = copysignf(sqrtf(fmaxf(abs_dot, 1e-6f)), dot);
+    float gate = 1.f / (1.f + expf(-signed_sqrt));
+
+    // === Backward pass ===
+    // grad_gate = sum_d go[t,h,d] * v[t,d]
+    float grad_gate_partial = 0.f;
+    if (tid < D) grad_gate_partial = bf(go_th[tid]) * bf(v_t[tid]);
+    smem[tid] = grad_gate_partial;
+    __syncthreads();
+    for (int s = 64; s > 0; s >>= 1) { if (tid < s) smem[tid] += smem[tid + s]; __syncthreads(); }
+    float grad_gate = smem[0];
+
+    // grad_s_sqrt
+    float grad_s_sqrt = grad_gate * gate * (1.f - gate);
+    // grad_dot
+    float mask = (abs_dot >= 1e-6f) ? 1.f : 0.f;
+    float grad_dot = grad_s_sqrt * mask * 0.5f / sqrtf(fmaxf(abs_dot, 1e-6f));
+    // grad_raw_dot
+    float grad_raw_dot = grad_dot * rstd_x * rstd_k * scalar;
+    float grad_rstd_x = grad_dot * raw_dot * rstd_k * scalar;
+    float grad_rstd_k = grad_dot * raw_dot * rstd_x * scalar;
+
+    // grad_x[t,h,d] = go + grad_raw_dot*wh*k*we + grad_rstd_x*(-x/D)*rstd_x^3
+    // grad_k[t,h,d] = grad_raw_dot*we*x*wh + grad_rstd_k*(-k/D)*rstd_k^3
+    float rx3 = rstd_x * rstd_x * rstd_x;
+    float rk3 = rstd_k * rstd_k * rstd_k;
+    if (tid < D) {
+        float xv = bf(x_th[tid]), kv = bf(k_th[tid]);
+        float whv = bf(wh_h[tid]), wev = bf(we_h[tid]);
+        float gov = bf(go_th[tid]);
+        float gx = gov + grad_raw_dot * whv * kv * wev + grad_rstd_x * (-xv / D) * rx3;
+        float gk = grad_raw_dot * wev * xv * whv + grad_rstd_k * (-kv / D) * rk3;
+        gx_th[tid] = fb(gx);
+        gk_th[tid] = fb(gk);
+    }
+
+    // grad_v[t,d] = sum_h go[t,h,d] * gate  (atomic across heads)
+    if (tid < D) {
+        float gv = bf(go_th[tid]) * gate;
+        atomicAdd(&grad_v[t * D + tid], gv);
+    }
+
+    // grad_wh[h,d] = sum_t grad_raw_dot[t,h] * k[t,h,d] * we[h,d] * x[t,h,d]
+    // grad_we[h,d] = sum_t grad_raw_dot[t,h] * x[t,h,d] * wh[h,d] * k[t,h,d]
+    if (tid < D) {
+        float xv = bf(x_th[tid]), kv = bf(k_th[tid]);
+        float whv = bf(wh_h[tid]), wev = bf(we_h[tid]);
+        atomicAdd(&grad_wh[h * D + tid], grad_raw_dot * kv * wev * xv);
+        atomicAdd(&grad_we[h * D + tid], grad_raw_dot * xv * whv * kv);
+    }
+}
+static void test_tmp_kernel_opt(
+    const uint16_t* go,const uint16_t* xd,const uint16_t* kd,const uint16_t* vd,
+    const uint16_t* wh,const uint16_t* we,
+    uint16_t* gx,uint16_t* gk,float* gv,float* gwh,float* gwe,
+    int T,int H,int D,float scalar,float eps,cudaStream_t s){
+    int total = T * H, bs = 128;
+    engram_gate_bwd_kernel_opt<<<total, bs, 3*bs*sizeof(float), s>>>(go,xd,kd,vd,wh,we,gx,gk,gv,gwh,gwe,T,H,D,scalar,eps);
+}

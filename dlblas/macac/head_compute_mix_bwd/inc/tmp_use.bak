@@ -1,0 +1,63 @@
+#pragma once
+#include "helpers.cuh"
+
+__global__ void head_compute_mix_bwd_kernel_opt(const float* __restrict__ grad_out, const float* __restrict__ input_mix,
+    const float* __restrict__ mhc_scale, const float* __restrict__ mhc_base,
+    float* __restrict__ grad_input, float* __restrict__ grad_scale, float* __restrict__ grad_base,
+    int B, int N, int M, float eps) {
+    
+    __shared__ float smem_scale[256];
+    __shared__ float smem_base[256];  // max M=4, but pad to avoid bank conflicts
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = B * N * M;
+    int tid = threadIdx.x;
+    int c = idx % M;
+
+    // Init shared memory
+    if (tid < 1) smem_scale[tid] = 0.f;
+    if (tid < M) smem_base[tid] = 0.f;
+    __syncthreads();
+
+    float gs_partial = 0.f;
+    float gb_partial[8] = {0.f};  // max M=4
+
+    if (idx < total) {
+        float x = input_mix[idx];
+        float v = x * mhc_scale[0] + mhc_base[c];
+        float sig = 1.f / (1.f + expf(-v));
+        float grad = grad_out[idx] * sig * (1.f - sig);
+        grad_input[idx] = grad * mhc_scale[0];
+        gs_partial = grad * x;
+        if(c < 8) gb_partial[c] = grad;
+    }
+
+    // Block-level reduction for scale
+    smem_scale[tid] = gs_partial;
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) smem_scale[tid] += smem_scale[tid + s];
+        __syncthreads();
+    }
+
+    // Block-level reduction for base (per channel)
+    if (tid < M) smem_base[tid] = gb_partial[tid];
+    __syncthreads();
+    if (tid < M) {
+        for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+            if (tid < s && (tid+s) < M) smem_base[tid] += smem_base[tid + s];
+            __syncthreads();
+        }
+    }
+
+    // Atomic add block results (only one thread per block)
+    if (tid == 0) atomicAdd(grad_scale, smem_scale[0]);
+    if (tid < M && tid == 0) {
+        for (int i = 0; i < M; i++) atomicAdd(&grad_base[i], smem_base[i]);
+    }
+}
+static void test_tmp_kernel_opt(const float* go,const float* im,const float* sc,const float* ba,
+    float* gi,float* gs,float* gb,int B,int N,int M,float eps,cudaStream_t s){
+    int total=B*N*M, bs=256, g=(total+bs-1)/bs;
+    head_compute_mix_bwd_kernel_opt<<<g,bs,0,s>>>(go,im,sc,ba,gi,gs,gb,B,N,M,eps);
+}

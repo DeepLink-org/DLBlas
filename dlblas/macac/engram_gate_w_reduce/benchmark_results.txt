@@ -1,0 +1,12 @@
+engram_gate_w_reduce: Torch vs MACAC Performance Comparison
+Torch version: 2.8.0+metax3.3.0.2
+Device: MetaX C500
+Shape: grad_w_partial[108,4,4096], weights[4,4096]
+Warmup: 10, Iterations: 100
+
+Torch time: 0.063656 ms
+MACAC original (baseline) time: 0.037120 ms
+MACAC optimized time: 0.032223 ms
+MACAC runtime_ratio (opt/ori): 0.8681
+MACAC precision: True
+Torch vs MACAC-opt ratio: 1.9755
