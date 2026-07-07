@@ -1,0 +1,40 @@
+{
+  "op": "engram_fused_weight",
+  "geomean_speedup": 23.696,
+  "total": 3,
+  "passed": 3,
+  "shapes": [
+    {
+      "label": "small",
+      "shape": [
+        16,
+        128
+      ],
+      "t_us": 14.4,
+      "a_us": 150.47,
+      "sp": 0.0957
+    },
+    {
+      "label": "default",
+      "shape": [
+        64,
+        1280
+      ],
+      "t_us": 79052.27,
+      "a_us": 189.48,
+      "sp": 417.2051
+    },
+    {
+      "label": "medium",
+      "shape": [
+        128,
+        1280
+      ],
+      "t_us": 84937.07,
+      "a_us": 254.88,
+      "sp": 333.2445
+    }
+  ],
+  "elapsed_s": 32.4,
+  "returncode": 0
+}

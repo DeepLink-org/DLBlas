@@ -1,0 +1,32 @@
+{
+  "op": "mhc_post",
+  "geomean_speedup": 0,
+  "total": 2,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "shape": [
+        1,
+        1024,
+        4,
+        1280
+      ],
+      "error": "too many values to unpack (expected 4)",
+      "status": "FAIL"
+    },
+    {
+      "label": "small",
+      "shape": [
+        1,
+        64,
+        2,
+        640
+      ],
+      "error": "too many values to unpack (expected 4)",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 45.4,
+  "returncode": 0
+}

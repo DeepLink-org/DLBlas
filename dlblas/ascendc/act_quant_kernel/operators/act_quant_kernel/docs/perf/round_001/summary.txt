@@ -1,0 +1,32 @@
+# act_quant_kernel 性能采集 (Round 001)
+
+## 测试配置
+- 芯片: Ascend910B2 (DAV_2201)
+- 输入: 65536 elements, bf16, group_size=128
+- 分组数: 512 groups
+- 使用核数: 47 VectorCores
+- 每核分组: 11, 每tile分组: 11
+
+## 关键指标
+| 指标 | 值 |
+|------|-----|
+| Task Duration | 66.921 us |
+| Total Cycles | 5,259,858 |
+| Scalar Time | 53.266 us (85.7%) |
+| Vector Time | 1.469 us (2.4%) |
+| MTE2 Time | 0.889 us (1.4%) |
+| MTE3 Time | 0.516 us (0.8%) |
+
+## 瓶颈分析
+- **主要瓶颈: Scalar 计算 (85.7%)**
+  - 根本原因: fp32→fp8_e4m3fn 转换使用逐元素标量循环 (GetValue/SetValue)
+  - 每元素需要多次标量操作（位提取、指数计算、舍入、打包）
+
+## 优化方向
+1. **向量化 fp8 转换**: 若 CANN 后续版本支持 DAV_2201 上的 fp8 Cast，可直接替换
+2. **查表法**: 用预计算的 256 项查找表替代逐元素转换，利用 Gather 指令加速
+3. **融合 Abs+ReduceMax**: 减少一次数据遍历
+
+## 结论
+当前性能可接受（~67us for 65K elements）。Scalar 瓶颈是 DAV_2201 不支持硬件 fp8 Cast 的固有限制，
+没有可行的纯软件向量化方案。建议在 DAV_3510 平台上重新评估性能。

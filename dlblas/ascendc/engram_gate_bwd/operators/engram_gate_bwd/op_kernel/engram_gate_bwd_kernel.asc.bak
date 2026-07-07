@@ -1,0 +1,152 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * EngramGateBwd AscendC Kernel
+ * bf16 in → fp32 compute → bf16 out. T-tiling. Multi-core. AtomicAdd cross-core.
+ */
+#include "kernel_operator.h"
+#include "engram_gate_bwd_tiling.h"
+using namespace AscendC;
+
+class KernelEngramGateBwd {
+    static constexpr uint32_t H_=4, D_=128, HD_=512, M_=64;
+public:
+    __aicore__ inline KernelEngramGateBwd(TPipe* p):pipe_(p){}
+    __aicore__ inline void Init(
+        GM_ADDR go,GM_ADDR x,GM_ADDR k,GM_ADDR v,GM_ADDR wh,GM_ADDR we,
+        GM_ADDR gx,GM_ADDR gk,GM_ADDR gv,GM_ADDR gwh,GM_ADDR gwe,
+        const __gm__ EngramGateBwdTilingData* tl)
+    {
+        tiling_=tl; uint32_t bi=GetBlockIdx();
+        T0_=bi*tl->T_per_core; T1_=(T0_+tl->T_per_core)<tl->T_total?(T0_+tl->T_per_core):tl->T_total;
+        Tm_=tl->T_TILE;
+        goGm_.SetGlobalBuffer((__gm__ bfloat16_t*)go,tl->T_total*HD_);
+        xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)x,tl->T_total*HD_);
+        kGm_.SetGlobalBuffer((__gm__ bfloat16_t*)k,tl->T_total*HD_);
+        vGm_.SetGlobalBuffer((__gm__ bfloat16_t*)v,tl->T_total*D_);
+        whGm_.SetGlobalBuffer((__gm__ bfloat16_t*)wh,HD_);
+        weGm_.SetGlobalBuffer((__gm__ bfloat16_t*)we,HD_);
+        gxGm_.SetGlobalBuffer((__gm__ bfloat16_t*)gx,tl->T_total*HD_);
+        gkGm_.SetGlobalBuffer((__gm__ bfloat16_t*)gk,tl->T_total*HD_);
+        gvGm_.SetGlobalBuffer((__gm__ bfloat16_t*)gv,tl->T_total*D_);
+        gwhGm_.SetGlobalBuffer((__gm__ bfloat16_t*)gwh,HD_);
+        gweGm_.SetGlobalBuffer((__gm__ bfloat16_t*)gwe,HD_);
+        uint32_t Tt=Tm_,s3=Tt*HD_*4,s2=Tt*D_*4,sC=HD_*4,sS=Tt*H_*4,sB=Tt*HD_*2,sM=Tt*H_*2;
+        pipe_->InitBuffer(xB_,s3);pipe_->InitBuffer(kB_,s3);pipe_->InitBuffer(goB_,s3);
+        pipe_->InitBuffer(vB_,s2);pipe_->InitBuffer(whB_,sC);pipe_->InitBuffer(weB_,sC);
+        pipe_->InitBuffer(tA_,s3);pipe_->InitBuffer(tB_,s3);pipe_->InitBuffer(tC_,s3);
+        pipe_->InitBuffer(gvB_,s2);pipe_->InitBuffer(bfB_,sB);pipe_->InitBuffer(rtB_,32768);
+        pipe_->InitBuffer(s0_,sS);pipe_->InitBuffer(s1_,sS);pipe_->InitBuffer(s2_,sS);
+        pipe_->InitBuffer(s3_,sS);pipe_->InitBuffer(s4_,sS);pipe_->InitBuffer(s5_,sS);
+        pipe_->InitBuffer(mkB_,sM);
+        pipe_->InitBuffer(gwA_,sC);pipe_->InitBuffer(geA_,sC);
+        {auto a=gwA_.Get<float>(),b=geA_.Get<float>();Duplicate<float>(a,0,HD_);Duplicate<float>(b,0,HD_);}
+    }
+    __aicore__ inline void Process(){
+        LdC(whGm_,whB_);LdC(weGm_,weB_);
+        for(uint32_t t=T0_;t<T1_;t+=Tm_){uint32_t Tt=(t+Tm_<=T1_)?Tm_:(T1_-t);CI(t,Tt);Cpt(Tt);CO(t,Tt);}
+        AWr();
+    }
+private:
+    typedef GlobalTensor<bfloat16_t> GB; typedef TBuf<TPosition::VECIN> TB;
+    // helpers
+    __aicore__ inline void LdC(GB&g,TB&u){auto b=bfB_.Get<bfloat16_t>();DataCopyPad(b,g,{1,(uint16_t)(HD_*2),0,0},{false,0,0,0});Cast<float,bfloat16_t>(u.Get<float>(),b,RoundMode::CAST_NONE,HD_);}
+    __aicore__ inline void L3(GB&g,TB&u,uint32_t ts,uint32_t Tt){uint32_t n=Tt*HD_;auto b=bfB_.Get<bfloat16_t>();DataCopyPad(b,g[ts*HD_],{1,(uint16_t)(n*2),0,0},{false,0,0,0});Cast<float,bfloat16_t>(u.Get<float>(),b,RoundMode::CAST_NONE,n);}
+    __aicore__ inline void L2(GB&g,TB&u,uint32_t ts,uint32_t Tt){uint32_t n=Tt*D_;auto b=bfB_.Get<bfloat16_t>();DataCopyPad(b,g[ts*D_],{1,(uint16_t)(n*2),0,0},{false,0,0,0});Cast<float,bfloat16_t>(u.Get<float>(),b,RoundMode::CAST_NONE,n);}
+    __aicore__ inline void CI(uint32_t ts,uint32_t Tt){L3(goGm_,goB_,ts,Tt);L3(xGm_,xB_,ts,Tt);L3(kGm_,kB_,ts,Tt);L2(vGm_,vB_,ts,Tt);}
+    __aicore__ inline void CO(uint32_t ts,uint32_t Tt){auto b=bfB_.Get<bfloat16_t>();uint32_t n3=Tt*HD_,n2=Tt*D_;Cast<bfloat16_t,float>(b,xB_.Get<float>(),RoundMode::CAST_ROUND,n3);DataCopyPad(gxGm_[ts*HD_],b,{1,(uint16_t)(n3*2),0,0});Cast<bfloat16_t,float>(b,kB_.Get<float>(),RoundMode::CAST_ROUND,n3);DataCopyPad(gkGm_[ts*HD_],b,{1,(uint16_t)(n3*2),0,0});Cast<bfloat16_t,float>(b,gvB_.Get<float>(),RoundMode::CAST_ROUND,n2);DataCopyPad(gvGm_[ts*D_],b,{1,(uint16_t)(n2*2),0,0});}
+    __aicore__ inline void AWr(){auto b=bfB_.Get<bfloat16_t>();Cast<bfloat16_t,float>(b,gwA_.Get<float>(),RoundMode::CAST_ROUND,HD_);SetAtomicAdd<bfloat16_t>();DataCopyPad(gwhGm_,b,{1,(uint16_t)(HD_*2),0,0});SetAtomicNone();Cast<bfloat16_t,float>(b,geA_.Get<float>(),RoundMode::CAST_ROUND,HD_);SetAtomicAdd<bfloat16_t>();DataCopyPad(gweGm_,b,{1,(uint16_t)(HD_*2),0,0});SetAtomicNone();}
+
+    // 3D ops
+    __aicore__ inline void VMul(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&b,uint32_t Tt){uint32_t n=Tt*HD_;for(uint32_t o=0;o<n;o+=M_){uint32_t c=(o+M_<=n)?M_:(n-o);Mul<float>(d[o],a[o],b[o],c);}}
+    __aicore__ inline void VAdd(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&b,uint32_t Tt){uint32_t n=Tt*HD_;for(uint32_t o=0;o<n;o+=M_){uint32_t c=(o+M_<=n)?M_:(n-o);Add<float>(d[o],a[o],b[o],c);}}
+    __aicore__ inline void VMuls(LocalTensor<float>&d,LocalTensor<float>&a,float v,uint32_t Tt){uint32_t n=Tt*HD_;for(uint32_t o=0;o<n;o+=M_){uint32_t c=(o+M_<=n)?M_:(n-o);Muls<float>(d[o],a[o],v,c);}}
+    __aicore__ inline void VAdd2(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&b){for(uint32_t o=0;o<HD_;o+=M_){uint32_t c=(o+M_<=HD_)?M_:(HD_-o);Add<float>(d[o],a[o],b[o],c);}}
+    __aicore__ inline void VBMulC(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&c,uint32_t Tt){for(uint32_t t=0;t<Tt;t++)for(uint32_t h=0;h<H_;h++){uint32_t ro=(t*H_+h)*D_,co=h*D_;for(uint32_t dd=0;dd<D_;dd+=M_)Mul<float>(d[ro+dd],a[ro+dd],c[co+dd],M_);}}
+    __aicore__ inline void VBMulS(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&s,uint32_t Tt){for(uint32_t t=0;t<Tt;t++)for(uint32_t h=0;h<H_;h++){uint32_t ro=(t*H_+h)*D_;float v=s.GetValue(t*H_+h);for(uint32_t dd=0;dd<D_;dd+=M_)Muls<float>(d[ro+dd],a[ro+dd],v,M_);}}
+    __aicore__ inline void VBMulV(LocalTensor<float>&d,LocalTensor<float>&a,LocalTensor<float>&v,uint32_t Tt){for(uint32_t t=0;t<Tt;t++)for(uint32_t h=0;h<H_;h++){uint32_t ro=(t*H_+h)*D_,vo=t*D_;for(uint32_t dd=0;dd<D_;dd+=M_)Mul<float>(d[ro+dd],a[ro+dd],v[vo+dd],M_);}}
+    __aicore__ inline void VSav(LocalTensor<float>&d,LocalTensor<float>&s,uint32_t n){for(uint32_t i=0;i<n;i++)d.SetValue(i,s.GetValue(i));}
+    // uint16 mask → float
+    __aicore__ inline void M2F(LocalTensor<float>&d,LocalTensor<uint16_t>&m,uint32_t n){for(uint32_t i=0;i<n;i++)d.SetValue(i,(m.GetValue(i)&1)?1.0f:0.0f);}
+
+    // reduce
+    __aicore__ inline void RSD(LocalTensor<float>&d,LocalTensor<float>&s,uint32_t Tt){auto rt=rtB_.Get<float>();for(uint32_t t=0;t<Tt;t++)for(uint32_t h=0;h<H_;h++)ReduceSum<float,true>(d[t*H_+h],s[(t*H_+h)*D_],rt,(int32_t)D_);}
+    __aicore__ inline void RSH(LocalTensor<float>&d,LocalTensor<float>&s,uint32_t Tt){auto rt=rtB_.Get<uint8_t>();uint32_t sh[]={H_,D_};for(uint32_t t=0;t<Tt;t++)ReduceSum<float,Pattern::Reduce::RA,true>(d[t*D_],s[t*HD_],rt,sh,true);}
+    __aicore__ inline void RST(LocalTensor<float>&d,LocalTensor<float>&s,uint32_t Tt){auto rt=rtB_.Get<uint8_t>();uint32_t sh[]={Tt,HD_};ReduceSum<float,Pattern::Reduce::RA,true>(d,s,rt,sh,true);}
+
+    // ============ Core Compute ============
+    __aicore__ inline void Cpt(uint32_t Tt){
+        float sc=tiling_->scalar,cv=ENG_CLAMP_VALUE,ep=ENG_EPS,iD=1.0f/128.0f;uint32_t TR=Tt*H_;
+        auto X=xB_.Get<float>(),K=kB_.Get<float>(),GO=goB_.Get<float>(),V=vB_.Get<float>(),WH=whB_.Get<float>(),WE=weB_.Get<float>();
+        auto TA=tA_.Get<float>(),TB=tB_.Get<float>(),TC=tC_.Get<float>(),GV=gvB_.Get<float>();
+        auto S0=s0_.Get<float>(),S1=s1_.Get<float>(),S2=s2_.Get<float>(),S3=s3_.Get<float>(),S4=s4_.Get<float>(),S5=s5_.Get<float>();
+        auto MK=mkB_.Get<uint16_t>(); auto GWA=gwA_.Get<float>(); auto GWE=geA_.Get<float>();
+
+        // === Phase 1: Forward ===
+        // rstd_x(S0), rstd_k(S1)
+        VMul(TA,X,X,Tt);RSD(S0,TA,Tt);Muls<float>(S0,S0,iD,TR);Adds<float>(S0,S0,ep,TR);Rsqrt<float>(S0,S0,TR);
+        VMul(TA,K,K,Tt);RSD(S1,TA,Tt);Muls<float>(S1,S1,iD,TR);Adds<float>(S1,S1,ep,TR);Rsqrt<float>(S1,S1,TR);
+        // raw_dot(S2)
+        VBMulC(TA,X,WH,Tt);VBMulC(TB,K,WE,Tt);VMul(TA,TA,TB,Tt);RSD(S2,TA,Tt);
+        // dot(S3),|dot|(S4)
+        Mul<float>(S3,S2,S0,TR);Mul<float>(S3,S3,S1,TR);Muls<float>(S3,S3,sc,TR);Abs<float>(S4,S3,TR);
+        // s_sqrt(S5) = sqrt(max(|dot|,cv)) * sign(dot)
+        // use dot/max(|dot|,cv) as sign(dot): for |dot|≥cv→±1, dot=0→0, else small (grad zeroed by mask)
+        Duplicate<float>(TA,cv,TR);Max<float>(TA,S4,TA,TR);             // TA=clamped=max(|dot|,cv)
+        Sqrt<float>(TB,TA,TR);
+        Div<float>(TC,S3,TA,TR);                // TC=dot/clamped≈sign(dot)
+        Mul<float>(S5,TB,TC,TR);
+        // gate(S3)=sigmoid(s_sqrt)
+        Muls<float>(S3,S5,-1.0f,TR);Exp<float>(S3,S3,TR);Adds<float>(S3,S3,1.0f,TR);Duplicate<float>(TA,1.0f,TR);Div<float>(S3,TA,S3,TR);
+
+        // === Phase 2: Backward ===
+        // grad_v=sum(go*gate,dim=1)→GV
+        VBMulS(TB,GO,S3,Tt);RSH(GV,TB,Tt);
+        // grad_gate=sum(go*v,dim=-1)→TC[:TR]
+        VBMulV(TB,GO,V,Tt);RSD(TC,TB,Tt);
+        // grad_s_sqrt=grad_gate*gate*(1-gate)→S5
+        Duplicate<float>(TA,1.0f,TR);Sub<float>(TA,TA,S3,TR);Mul<float>(S5,TC,S3,TR);Mul<float>(S5,S5,TA,TR);
+        // mask=(|dot|>=cv)→TA[:TR], sqrt_clamped→TB[:TR]
+        Compares<float,uint16_t>(MK,S4,cv,CMPMODE::GE,TR);M2F(TA,MK,TR);
+        Duplicate<float>(TB,cv,TR);Max<float>(TB,S4,TB,TR);Sqrt<float>(TB,TB,TR);
+        // grad_dot=grad_s_sqrt*mask*0.5/sqrt_clamped→TC[:TR]
+        Mul<float>(TC,S5,TA,TR);Muls<float>(TC,TC,0.5f,TR);Div<float>(TC,TC,TB,TR);
+        // grad_raw_dot→S5, grad_rstd_x→TA[:TR], grad_rstd_k→TB[:TR]
+        Mul<float>(S5,TC,S0,TR);Mul<float>(S5,S5,S1,TR);Muls<float>(S5,S5,sc,TR);
+        Mul<float>(TA,TC,S2,TR);Mul<float>(TA,TA,S1,TR);Muls<float>(TA,TA,sc,TR);
+        Mul<float>(TB,TC,S2,TR);Mul<float>(TB,TB,S0,TR);Muls<float>(TB,TB,sc,TR);
+        VSav(S2,TA,TR);VSav(S4,TB,TR);  // save grad_rstd_x→S2, grad_rstd_k→S4
+        // rstd^3: S3=rstd_x^3, TC[:TR]=rstd_k^3
+        Mul<float>(S3,S0,S0,TR);Mul<float>(S3,S3,S0,TR);
+        Mul<float>(TC,S1,S1,TR);Mul<float>(TC,TC,S1,TR);
+
+        // Shared 3D terms (before overwriting X,K)
+        VBMulC(TA,X,WH,Tt);VBMulC(TA,TA,WE,Tt);  // TA=X*WH*WE (for grad_k)
+        VBMulC(TB,K,WE,Tt);VBMulC(TB,TB,WH,Tt);  // TB=K*WE*WH (for grad_x)
+
+        // Accumulate grad_wh/grad_we tile partial
+        {   VBMulC(TC,K,WE,Tt);VMul(TC,TC,X,Tt);VBMulS(TC,TC,S5,Tt);RST(TA,TC,Tt);VAdd2(GWA,GWA,TA);
+            VBMulC(TC,X,WH,Tt);VMul(TC,TC,K,Tt);VBMulS(TC,TC,S5,Tt);RST(TB,TC,Tt);VAdd2(GWE,GWE,TB);}
+
+        // grad_k=S5_bcast*TA + S4_bcast*(-K/D)*TC_bcast → KB
+        {   VBMulS(TA,TA,S5,Tt);
+            Mul<float>(S1,S4,TC,TR);VMuls(TC,K,-iD,Tt);VBMulS(TC,TC,S1,Tt);
+            VAdd(K,TA,TC,Tt);}
+
+        // grad_x=GO + S5_bcast*TB + S2_bcast*(-X/D)*S3_bcast → XB
+        {   VBMulS(TB,TB,S5,Tt);
+            Mul<float>(S0,S2,S3,TR);VMuls(TC,X,-iD,Tt);VBMulS(TC,TC,S0,Tt);
+            VAdd(X,GO,TB,Tt);VAdd(X,X,TC,Tt);}
+    }
+
+    TPipe* pipe_;const __gm__ EngramGateBwdTilingData* tiling_;uint32_t T0_,T1_,Tm_;
+    GB goGm_,xGm_,kGm_,vGm_,whGm_,weGm_,gxGm_,gkGm_,gvGm_,gwhGm_,gweGm_;
+    TB xB_,kB_,goB_,vB_,whB_,weB_,tA_,tB_,tC_,gvB_,bfB_,rtB_,s0_,s1_,s2_,s3_,s4_,s5_,mkB_,gwA_,geA_;
+};
+
+extern "C" __global__ __vector__ void engram_gate_bwd_kernel(
+    GM_ADDR go,GM_ADDR x,GM_ADDR k,GM_ADDR v,GM_ADDR wh,GM_ADDR we,
+    GM_ADDR gx,GM_ADDR gk,GM_ADDR gv,GM_ADDR gwh,GM_ADDR gwe,GM_ADDR tl){
+    TPipe p;KernelEngramGateBwd op(&p);
+    op.Init(go,x,k,v,wh,we,gx,gk,gv,gwh,gwe,(__gm__ EngramGateBwdTilingData*)tl);
+    op.Process();
+}

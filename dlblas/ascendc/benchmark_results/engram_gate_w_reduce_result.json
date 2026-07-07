@@ -1,0 +1,26 @@
+{
+  "op": "engram_gate_w_reduce",
+  "geomean_speedup": 0,
+  "total": 2,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "shape": [
+        128
+      ],
+      "error": "Model.forward() missing 2 required positional arguments: 'grad_weight_hidden' and 'grad_weight_embed'",
+      "status": "FAIL"
+    },
+    {
+      "label": "small",
+      "shape": [
+        64
+      ],
+      "error": "Model.forward() missing 2 required positional arguments: 'grad_weight_hidden' and 'grad_weight_embed'",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 15.2,
+  "returncode": 0
+}

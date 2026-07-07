@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build_reviewer/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

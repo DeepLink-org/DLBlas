@@ -1,0 +1,142 @@
+/**
+ * MTPBlock K5: moe_block Kernel (Functional Implementation)
+ *
+ * Gate: x @ gate_w^T → softplus_sqrt → bias → topk
+ * Shared Expert: w1→SiLU * w3→w2
+ * Output: shared_expert(x) [simplified: no routed expert dispatch for demo]
+ *
+ * Demo: b=1,s=8,d=512,n_experts=8,topk=2,inter_dim=512
+ */
+
+#include "kernel_operator.h"
+#include "mtpblock_tiling.h"
+
+using namespace AscendC;
+
+class KernelMoeBlock {
+public:
+    __aicore__ inline KernelMoeBlock(TPipe* p) : pipe_(p) {}
+    __aicore__ inline void Init(
+        GM_ADDR x_gm, GM_ADDR gate_w_gm, GM_ADDR gate_b_gm,
+        GM_ADDR e_w1_gm, GM_ADDR e_w2_gm, GM_ADDR e_w3_gm,
+        GM_ADDR s_w1_gm, GM_ADDR s_w2_gm, GM_ADDR s_w3_gm,
+        GM_ADDR out_gm, GM_ADDR ws_gm, const __gm__ K5MoeBlockTiling* tiling)
+    {
+        this->tiling = tiling;
+        bs_=tiling->base.b*tiling->base.s; d_=tiling->base.d;
+        ne_=tiling->base.n_experts; tk_=tiling->base.topk; id_=tiling->inter_dim;
+
+        xGm.SetGlobalBuffer((__gm__ half*)x_gm,bs_*d_);
+        gwGm.SetGlobalBuffer((__gm__ half*)gate_w_gm,ne_*d_);
+        gbGm.SetGlobalBuffer((__gm__ float*)gate_b_gm,ne_);
+        sw1Gm.SetGlobalBuffer((__gm__ half*)s_w1_gm,id_*d_);
+        sw2Gm.SetGlobalBuffer((__gm__ half*)s_w2_gm,d_*id_);
+        sw3Gm.SetGlobalBuffer((__gm__ half*)s_w3_gm,id_*d_);
+        otGm.SetGlobalBuffer((__gm__ half*)out_gm,bs_*d_);
+
+        pipe_->InitBuffer(qx,  1,bs_*d_*2);
+        pipe_->InitBuffer(qwh, 1,d_*2);
+        pipe_->InitBuffer(qwf, 1,bs_*id_*4);
+        pipe_->InitBuffer(qwg, 1,bs_*id_*4);
+        pipe_->InitBuffer(qwu, 1,bs_*id_*4);
+        pipe_->InitBuffer(qwo, 1,bs_*d_*4);
+        pipe_->InitBuffer(qo,  1,bs_*d_*2);
+    }
+    __aicore__ inline void Process() { Compute(); }
+
+private:
+    __aicore__ inline void Compute()
+    {
+        auto x  = qx.AllocTensor<half>();
+        auto wh = qwh.AllocTensor<half>();
+        auto gf = qwf.AllocTensor<float>();  // gate intermediate (SwiGLU gate)
+        auto gg = qwg.AllocTensor<float>();  // gate output after SiLU
+        auto gu = qwu.AllocTensor<float>();  // up projection
+        auto go = qwo.AllocTensor<float>();  // output accumulator
+        auto o  = qo.AllocTensor<half>();
+
+        DataCopyPad(x,xGm,{1,(uint16_t)(bs_*d_*2),0,0},{0,0,0,0});
+
+        // ============================================================
+        // Shared Expert: SwiGLU(w1(x)) * w3(x) → w2
+        // gate = SiLU(w1 @ x)
+        // up = w3 @ x
+        // out = w2 @ (gate * up)
+        // ============================================================
+
+        // w1: gate projection [bs, d] × [d, id] → [bs, id]
+        for(uint32_t n=0; n<id_; n++){
+            DataCopyPad(wh, sw1Gm[n*d_], {1,(uint16_t)(d_*2),0,0},{0,0,0,0});
+            for(uint32_t m=0; m<bs_; m++){
+                float dot=0;
+                for(uint32_t k=0; k<d_; k++) dot += (float)x.GetValue(m*d_+k)*(float)wh.GetValue(k);
+                gf.SetValue(m*id_+n, dot);
+            }
+        }
+
+        // SiLU: gate = x * sigmoid(x) using AscendC::Exp (vector)
+        // gg = -gf; gg = exp(gg); gg = gf / (1 + gg)
+        {
+            uint32_t n_total = bs_ * id_;
+            for(uint32_t i=0; i<n_total; i++) gg.SetValue(i, -gf.GetValue(i));
+            AscendC::Exp(gg, gg, n_total);
+            for(uint32_t i=0; i<n_total; i++){
+                float ev = gg.GetValue(i);
+                gg.SetValue(i, gf.GetValue(i) / (1.0f + ev));
+            }
+        }
+
+        // w3: up projection [bs, d] × [d, id] → [bs, id]
+        for(uint32_t n=0; n<id_; n++){
+            DataCopyPad(wh, sw3Gm[n*d_], {1,(uint16_t)(d_*2),0,0},{0,0,0,0});
+            for(uint32_t m=0; m<bs_; m++){
+                float dot=0;
+                for(uint32_t k=0; k<d_; k++) dot += (float)x.GetValue(m*d_+k)*(float)wh.GetValue(k);
+                gu.SetValue(m*id_+n, dot);
+            }
+        }
+
+        // gate * up elementwise (vector Mul)
+        AscendC::Mul(gu, gg, gu, bs_ * id_);
+
+        // w2: down projection [bs, id] × [id, d] → [bs, d]
+        // [TODO: Replace scalar dot product with MatmulImpl]
+        {
+            uint32_t n_total = bs_ * d_;
+            for(uint32_t i=0; i<n_total; i++) go.SetValue(i, 0.0f);
+        }
+
+        for(uint32_t n=0; n<d_; n++){
+            DataCopyPad(wh, sw2Gm[n*id_], {1,(uint16_t)(id_*2),0,0},{0,0,0,0});
+            for(uint32_t m=0; m<bs_; m++){
+                float dot=0;
+                for(uint32_t k=0; k<id_; k++) dot += gu.GetValue(m*id_+k)*(float)wh.GetValue(k);
+                go.SetValue(m*d_+n, go.GetValue(m*d_+n)+dot);
+            }
+        }
+
+        // Copy fp32 output to half buffer
+        for(uint32_t i=0; i<bs_*d_; i++)
+            o.SetValue(i, (half)go.GetValue(i));
+
+        DataCopyPad(otGm, o, {1,(uint16_t)(bs_*d_*2),0,0});
+
+        qx.FreeTensor(x); qwh.FreeTensor(wh); qwf.FreeTensor(gf);
+        qwg.FreeTensor(gg); qwu.FreeTensor(gu); qwo.FreeTensor(go); qo.FreeTensor(o);
+    }
+
+    TPipe* pipe_; const __gm__ K5MoeBlockTiling* tiling;
+    GlobalTensor<half> xGm,gwGm,sw1Gm,sw2Gm,sw3Gm,otGm;
+    GlobalTensor<float> gbGm;
+    TQue<TPosition::VECIN,1> qx,qwh,qwf,qwg,qwu,qwo; TQue<TPosition::VECOUT,1> qo;
+    uint32_t bs_,d_,ne_,tk_,id_;
+};
+
+extern "C" __global__ __vector__ void k5_moe_block_kernel(
+    GM_ADDR x,GM_ADDR gw,GM_ADDR gb,GM_ADDR ew1,GM_ADDR ew2,GM_ADDR ew3,
+    GM_ADDR sw1,GM_ADDR sw2,GM_ADDR sw3,GM_ADDR out,GM_ADDR ws,GM_ADDR tl)
+{
+    TPipe p; KernelMoeBlock op(&p);
+    op.Init(x,gw,gb,ew1,ew2,ew3,sw1,sw2,sw3,out,ws,(__gm__ K5MoeBlockTiling*)tl);
+    op.Process();
+}

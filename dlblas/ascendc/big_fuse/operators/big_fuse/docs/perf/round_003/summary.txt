@@ -1,0 +1,46 @@
+=== 上板性能统计摘要 (msprof) ===
+Op: big_fuse_k1_kernel
+Type: big_fuse_k1_kernel | TaskType: AI_CORE | Duration: 100.262us | BlockDim: 8 (mix=0)
+
+[注] msprof 的 op_summary 是 per-op 聚合值（不含逐核 min/avg/max）；
+     如需逐核数据请改用 msprof op (需要 msopprof 二进制)。
+
+--- Pipe ratios (主导核 = aic) ---
+  aicore_time: 98.066us | aiv_time: 0.000us
+  aic: mac= 12.30% | mte1= 12.50% | mte2= 90.40% | fixpipe=  0.70% | scalar= 50.30% | icache_miss=  0.50%
+  cube_utilization: 32.60%
+
+--- 头开销 ---
+  Task Duration: 100.262us | 核最长耗时: 98.066us | 头开销: 2.196us (2.2%)
+
+--- Memory 带宽 (aic-metrics=Memory) ---
+  aic main_mem read: 1.11 GB/s
+  aic main_mem write: 0.00 GB/s
+  aic L1 read: 38.64 GB/s
+  aic L1 write: 8.86 GB/s
+
+--- MemoryL0 ---
+  L0A read: 13.38 GB/s
+  L0A write: 26.76 GB/s
+  L0B read: 53.52 GB/s
+  L0B write: 13.38 GB/s
+  L0C read (cube): 26.68 GB/s
+  L0C write (cube): 26.76 GB/s
+
+--- ArithmeticUtilization ---
+  mac_fp16= 16.80% | cube_fops=1855504384
+
+--- 原始数据位置 ---
+  归档 CSV : /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/operators/big_fuse/docs/perf/round_003/
+  原始 PROF: /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/
+  按 aic-metrics 拆分的 op_summary_<Metric>.csv 均已复制到归档目录，
+  如需逐列查看可直接 Read。
+
+--- Metric 来源 ---
+  PipeUtilization        <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_PipeUtilization/PROF_000001_20260701030513645_00156641CEELHGPQ/mindstudio_profiler_output/op_summary_20260701030517.csv
+  ArithmeticUtilization  <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_ArithmeticUtilization/PROF_000001_20260701030518676_00157745ICQKGQBI/mindstudio_profiler_output/op_summary_20260701030523.csv
+  Memory                 <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_Memory/PROF_000001_20260701030524707_00158699NCKGRGHJ/mindstudio_profiler_output/op_summary_20260701030528.csv
+  MemoryL0               <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_MemoryL0/PROF_000001_20260701030529759_00159635RORCBEHI/mindstudio_profiler_output/op_summary_20260701030534.csv
+  MemoryUB               <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_MemoryUB/PROF_000001_20260701030535792_00160624OGLHICFJ/mindstudio_profiler_output/op_summary_20260701030540.csv
+  L2Cache                <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_L2Cache/PROF_000001_20260701030541826_00161719DGKEAAMC/mindstudio_profiler_output/op_summary_20260701030546.csv
+  ResourceConflictRatio  <- /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/build/msprof_output/PROF_GROUP_20260701_030507/PROF_ResourceConflictRatio/PROF_000001_20260701030547859_00162648HRQIIOIA/mindstudio_profiler_output/op_summary_20260701030552.csv

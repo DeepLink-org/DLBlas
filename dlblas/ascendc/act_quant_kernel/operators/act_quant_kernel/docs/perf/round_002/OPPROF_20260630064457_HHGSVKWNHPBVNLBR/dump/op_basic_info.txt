@@ -1,0 +1,10 @@
+Op Name=act_quant_kernel_kernel
+Block Dim=47
+Run Soc Version=Ascend910B2
+Device Id=6
+Pid=3324191
+Current Freq=1800
+Rated Freq=1800
+Is MC2=0
+Is Lccl=0
+Has Simt=0

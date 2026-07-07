@@ -1,0 +1,16 @@
+{
+  "op": "head_compute_mix_bwd",
+  "geomean_speedup": 0.6621,
+  "total": 1,
+  "passed": 1,
+  "shapes": [
+    {
+      "label": "default",
+      "t_us": 159.9,
+      "a_us": 241.51,
+      "sp": 0.6621
+    }
+  ],
+  "elapsed_s": 15.2,
+  "returncode": 0
+}

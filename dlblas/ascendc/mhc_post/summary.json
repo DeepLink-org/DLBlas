@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "op_name": "mhc_post",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0625,
+    "total_cases": 12,
+    "passed_cases": 12
+  },
+  "perf_data": {
+    "ascend_us": 8691.0,
+    "torch_us": 173437.5,
+    "speedup_vs_torch": 19.9560
+  },
+  "review_score": 78,
+  "gen_iterations": 1
+}

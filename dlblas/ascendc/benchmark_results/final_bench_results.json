@@ -1,0 +1,606 @@
+{
+  "timestamp": "2026-07-07 03:29:41",
+  "results": {
+    "sinkhorn": {
+      "speedup": 26.1206,
+      "ascendc_us": 475.81,
+      "torch_us": 12428.32,
+      "method": "torch.ops NPU实测"
+    },
+    "hc_split_sinkhorn": {
+      "speedup": 10.1184,
+      "ascendc_us": 275.78,
+      "torch_us": 2685.98,
+      "method": "torch.ops NPU实测"
+    },
+    "act_quant_kernel": {
+      "speedup": 1.3426,
+      "ascendc_us": 132.09,
+      "torch_us": 174.36,
+      "method": "torch.ops NPU实测"
+    },
+    "expand_kenel_fwd": {
+      "speedup": 6.1246,
+      "ascendc_us": 124.94,
+      "torch_us": 10772.95,
+      "method": "torch.ops NPU实测"
+    },
+    "apply_mix": {
+      "speedup": 0.4045,
+      "ascendc_us": 733.89,
+      "torch_us": 324.51,
+      "method": "torch.ops NPU实测"
+    },
+    "head_compute_mix_fwd": {
+      "speedup": 5.7687,
+      "ascendc_us": 213.78,
+      "torch_us": 18292.26,
+      "method": "torch.ops NPU实测"
+    },
+    "engram_fused_weight": {
+      "speedup": 3.7513,
+      "ascendc_us": 187.34,
+      "torch_us": 3147.99,
+      "method": "torch.ops NPU实测"
+    },
+    "engram_hash": {
+      "speedup": 5.7199,
+      "ascendc_us": 207.21,
+      "torch_us": 909.37,
+      "method": "torch.ops NPU实测"
+    },
+    "head_compute_mix_bwd": {
+      "speedup": 0.6753,
+      "ascendc_us": 242.91,
+      "torch_us": 164.04,
+      "method": "torch.ops NPU实测"
+    },
+    "engram_gate_bwd": {
+      "speedup": 8.6033,
+      "torch_us": 486.26,
+      "ascendc_us": 56.52,
+      "method": "独立二进制实测"
+    },
+    "big_fuse": {
+      "speedup": 28.55,
+      "torch_us": 53270.0,
+      "ascendc_us": 1866.12,
+      "method": "summary.json"
+    },
+    "engram_gate_fwd": {
+      "speedup": 35.09,
+      "torch_us": 579.66,
+      "ascendc_us": 16.52,
+      "method": "summary.json"
+    },
+    "engram_gate_w_reduce": {
+      "speedup": 0.4984,
+      "torch_us": 90.43,
+      "ascendc_us": 181.44,
+      "method": "summary.json"
+    },
+    "mhc_post": {
+      "speedup": 19.956,
+      "torch_us": 173437.5,
+      "ascendc_us": 8691.0,
+      "method": "summary.json"
+    },
+    "norm_fn": {
+      "speedup": 90.16,
+      "torch_us": 31664.1,
+      "ascendc_us": 351.2,
+      "method": "summary.json"
+    },
+    "pre_split_mixes": {
+      "speedup": 5.8994,
+      "torch_us": 306.79,
+      "ascendc_us": 49.17,
+      "method": "summary.json"
+    },
+    "MTPBlock": {
+      "speedup": 0.6442,
+      "torch_us": 239912.0,
+      "ascendc_us": 372409.718,
+      "method": "summary.json"
+    },
+    "sparse_attn": {
+      "speedup": 0.1417,
+      "torch_us": 246545.7,
+      "ascendc_us": 1739544.99,
+      "method": "summary.json"
+    },
+    "expand_kenel_bwd": {
+      "speedup": 0.3393,
+      "torch_us": 30.09,
+      "ascendc_us": 0.0,
+      "method": "summary.json"
+    },
+    "indexer": {
+      "speedup": 0.7411,
+      "torch_us": 1327.0,
+      "ascendc_us": 1755.2,
+      "method": "summary.json"
+    }
+  },
+  "details": {
+    "sinkhorn": {
+      "speedup": 26.1206,
+      "ascendc_us": 475.81,
+      "torch_us": 12428.32,
+      "shapes": [
+        {
+          "label": "default",
+          "t_us": 12428.32,
+          "a_us": 475.81,
+          "sp": 26.1206
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "hc_split_sinkhorn": {
+      "speedup": 10.1184,
+      "ascendc_us": 275.78,
+      "torch_us": 2685.98,
+      "shapes": [
+        {
+          "label": "b2s8hc4",
+          "shape": [
+            2,
+            8,
+            4
+          ],
+          "t_us": 2513.85,
+          "a_us": 207.96,
+          "sp": 12.0879
+        },
+        {
+          "label": "b1s1hc4",
+          "shape": [
+            1,
+            1,
+            4
+          ],
+          "t_us": 2499.93,
+          "a_us": 209.18,
+          "sp": 11.9513
+        },
+        {
+          "label": "b64s8hc4",
+          "shape": [
+            64,
+            8,
+            4
+          ],
+          "t_us": 2798.17,
+          "a_us": 435.66,
+          "sp": 6.4228
+        },
+        {
+          "label": "b4s16hc4",
+          "shape": [
+            4,
+            16,
+            4
+          ],
+          "t_us": 2894.15,
+          "a_us": 247.99,
+          "sp": 11.6704
+        },
+        {
+          "label": "b8s4hc8",
+          "shape": [
+            8,
+            4,
+            8
+          ],
+          "t_us": 2723.8,
+          "a_us": 278.09,
+          "sp": 9.7946
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "act_quant_kernel": {
+      "speedup": 1.3426,
+      "ascendc_us": 132.09,
+      "torch_us": 174.36,
+      "shapes": [
+        {
+          "label": "1K",
+          "n": 1024,
+          "g": 128,
+          "t_us": 174.97,
+          "a_us": 125.46,
+          "sp": 1.3947
+        },
+        {
+          "label": "4K",
+          "n": 4096,
+          "g": 128,
+          "t_us": 178.09,
+          "a_us": 113.74,
+          "sp": 1.5659
+        },
+        {
+          "label": "16K",
+          "n": 16384,
+          "g": 128,
+          "t_us": 176.54,
+          "a_us": 113.74,
+          "sp": 1.5521
+        },
+        {
+          "label": "65K",
+          "n": 65536,
+          "g": 128,
+          "t_us": 172.03,
+          "a_us": 123.82,
+          "sp": 1.3893
+        },
+        {
+          "label": "256K",
+          "n": 262144,
+          "g": 128,
+          "t_us": 170.15,
+          "a_us": 183.71,
+          "sp": 0.9262
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "expand_kenel_fwd": {
+      "speedup": 6.1246,
+      "ascendc_us": 124.94,
+      "torch_us": 10772.95,
+      "shapes": [
+        {
+          "label": "typical",
+          "shape": [
+            1,
+            1024,
+            1280,
+            4
+          ],
+          "t_us": 25408.92,
+          "a_us": 145.1,
+          "sp": 175.1078
+        },
+        {
+          "label": "min",
+          "shape": [
+            1,
+            1,
+            128,
+            2
+          ],
+          "t_us": 70.94,
+          "a_us": 128.47,
+          "sp": 0.5522
+        },
+        {
+          "label": "multi",
+          "shape": [
+            4,
+            256,
+            256,
+            2
+          ],
+          "t_us": 28242.29,
+          "a_us": 124.43,
+          "sp": 226.9762
+        },
+        {
+          "label": "largeM",
+          "shape": [
+            1,
+            1,
+            1280,
+            16
+          ],
+          "t_us": 83.64,
+          "a_us": 130.25,
+          "sp": 0.6422
+        },
+        {
+          "label": "M1",
+          "shape": [
+            1,
+            1,
+            1280,
+            1
+          ],
+          "t_us": 58.96,
+          "a_us": 96.43,
+          "sp": 0.6114
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "apply_mix": {
+      "speedup": 0.4045,
+      "ascendc_us": 733.89,
+      "torch_us": 324.51,
+      "shapes": [
+        {
+          "label": "default",
+          "shape": [
+            2,
+            1024,
+            4,
+            1280
+          ],
+          "t_us": 92.98,
+          "a_us": 284.06,
+          "sp": 0.3273
+        },
+        {
+          "label": "small",
+          "shape": [
+            1,
+            128,
+            2,
+            640
+          ],
+          "t_us": 65.91,
+          "a_us": 169.7,
+          "sp": 0.3884
+        },
+        {
+          "label": "large_b",
+          "shape": [
+            8,
+            1024,
+            4,
+            1280
+          ],
+          "t_us": 568.87,
+          "a_us": 1236.68,
+          "sp": 0.46
+        },
+        {
+          "label": "large_s",
+          "shape": [
+            2,
+            4096,
+            4,
+            1280
+          ],
+          "t_us": 570.29,
+          "a_us": 1245.14,
+          "sp": 0.458
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "head_compute_mix_fwd": {
+      "speedup": 5.7687,
+      "ascendc_us": 213.78,
+      "torch_us": 18292.26,
+      "shapes": [
+        {
+          "label": "default",
+          "shape": [
+            16,
+            16384
+          ],
+          "t_us": 41386.13,
+          "a_us": 218.57,
+          "sp": 189.3455
+        },
+        {
+          "label": "1K",
+          "shape": [
+            1,
+            256
+          ],
+          "t_us": 47.9,
+          "a_us": 205.75,
+          "sp": 0.2328
+        },
+        {
+          "label": "small",
+          "shape": [
+            2,
+            1
+          ],
+          "t_us": 36.75,
+          "a_us": 211.51,
+          "sp": 0.1738
+        },
+        {
+          "label": "4M",
+          "shape": [
+            32,
+            32768
+          ],
+          "t_us": 31698.26,
+          "a_us": 219.28,
+          "sp": 144.5562
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "engram_fused_weight": {
+      "speedup": 3.7513,
+      "ascendc_us": 187.34,
+      "torch_us": 3147.99,
+      "shapes": [
+        {
+          "label": "small",
+          "shape": [
+            16,
+            128
+          ],
+          "t_us": 14.85,
+          "a_us": 145.58,
+          "sp": 0.102
+        },
+        {
+          "label": "default",
+          "shape": [
+            64,
+            1280
+          ],
+          "t_us": 4775.16,
+          "a_us": 187.79,
+          "sp": 25.4276
+        },
+        {
+          "label": "medium",
+          "shape": [
+            128,
+            1280
+          ],
+          "t_us": 4653.97,
+          "a_us": 228.66,
+          "sp": 20.3534
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "engram_hash": {
+      "speedup": 5.7199,
+      "ascendc_us": 207.21,
+      "torch_us": 909.37,
+      "shapes": [
+        {
+          "label": "32x3x2x8",
+          "shape": [
+            32,
+            3,
+            2,
+            8
+          ],
+          "t_us": 615.26,
+          "a_us": 87.54,
+          "sp": 7.0285
+        },
+        {
+          "label": "256x3x2x8",
+          "shape": [
+            256,
+            3,
+            2,
+            8
+          ],
+          "t_us": 621.21,
+          "a_us": 89.32,
+          "sp": 6.9546
+        },
+        {
+          "label": "1024x3x2x8",
+          "shape": [
+            1024,
+            3,
+            2,
+            8
+          ],
+          "t_us": 601.67,
+          "a_us": 87.6,
+          "sp": 6.8685
+        },
+        {
+          "label": "4096x5x4x16",
+          "shape": [
+            4096,
+            5,
+            4,
+            16
+          ],
+          "t_us": 1799.32,
+          "a_us": 564.37,
+          "sp": 3.1882
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "head_compute_mix_bwd": {
+      "speedup": 0.6753,
+      "ascendc_us": 242.91,
+      "torch_us": 164.04,
+      "shapes": [
+        {
+          "label": "default",
+          "t_us": 164.04,
+          "a_us": 242.91,
+          "sp": 0.6753
+        }
+      ],
+      "method": "torch.ops NPU实测"
+    },
+    "engram_gate_bwd": {
+      "speedup": 8.6033,
+      "torch_us": 486.26,
+      "ascendc_us": 56.52,
+      "method": "独立二进制实测",
+      "shapes": [
+        {
+          "label": "T14H4D128",
+          "t_us": 486.26,
+          "a_us": 56.52,
+          "sp": 8.6033
+        }
+      ]
+    },
+    "big_fuse": {
+      "speedup": 28.55,
+      "torch_us": 53270.0,
+      "ascendc_us": 1866.12,
+      "method": "summary.json"
+    },
+    "engram_gate_fwd": {
+      "speedup": 35.09,
+      "torch_us": 579.66,
+      "ascendc_us": 16.52,
+      "method": "summary.json"
+    },
+    "engram_gate_w_reduce": {
+      "speedup": 0.4984,
+      "torch_us": 90.43,
+      "ascendc_us": 181.44,
+      "method": "summary.json"
+    },
+    "mhc_post": {
+      "speedup": 19.956,
+      "torch_us": 173437.5,
+      "ascendc_us": 8691.0,
+      "method": "summary.json"
+    },
+    "norm_fn": {
+      "speedup": 90.16,
+      "torch_us": 31664.1,
+      "ascendc_us": 351.2,
+      "method": "summary.json"
+    },
+    "pre_split_mixes": {
+      "speedup": 5.8994,
+      "torch_us": 306.79,
+      "ascendc_us": 49.17,
+      "method": "summary.json"
+    },
+    "MTPBlock": {
+      "speedup": 0.6442,
+      "torch_us": 239912.0,
+      "ascendc_us": 372409.718,
+      "method": "summary.json"
+    },
+    "sparse_attn": {
+      "speedup": 0.1417,
+      "torch_us": 246545.7,
+      "ascendc_us": 1739544.99,
+      "method": "summary.json"
+    },
+    "expand_kenel_bwd": {
+      "speedup": 0.3393,
+      "torch_us": 30.09,
+      "ascendc_us": 0.0,
+      "method": "summary.json"
+    },
+    "indexer": {
+      "speedup": 0.7411,
+      "torch_us": 1327.0,
+      "ascendc_us": 1755.2,
+      "method": "summary.json"
+    }
+  }
+}

@@ -1,0 +1,407 @@
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [export_manager.cpp:123] Start to load data!
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [data_processor.cpp:31] HASH_INIT Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963053] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/ge_logic_stream_info.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [hash_init_processor.cpp:59] Init Hash data, dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/ge_hash.db and GeHashInfo success.
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963053] [db_runner.h:90] Query data success: SELECT hash_key, hash_value FROM GeHashInfo
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] ACC_PMU Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.cpp:31] AICORE_FREQ Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [data_processor.cpp:31] API Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.cpp:31] COMMUNICATION Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.cpp:31] COMMUNICATION_STATISTIC Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.cpp:31] COMPUTE_TASK_INFO Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccl_single_device.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.h:80] Save COMMUNICATION_STATISTIC data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.h:82] COMMUNICATION_STATISTIC no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.cpp:31] DEVICE_MSTX Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963062] [data_processor.cpp:31] CPU_USAGE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [data_processor.cpp:31] DDR Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963062] [host_usage_processor.cpp:27] Start process CPU_USAGE.
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.cpp:31] DISK_USAGE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [host_usage_processor.cpp:27] Start process DISK_USAGE.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] FUSION_OP Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/ge_model_info.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] HBM Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/acc_pmu.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save ACC_PMU data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/api_event.db and ApiData success.
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] ACC_PMU no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccl_single_device.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] HCCS Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccl_single_device.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:68] There are 0 records before COMMUNICATION_TASK_INFO data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:73] There are 0 records after COMMUNICATION_TASK_INFO data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:68] There are 0 records before COMMUNICATION_TASK_INFO data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:73] There are 0 records after COMMUNICATION_TASK_INFO data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save COMMUNICATION_TASK_INFO data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] COMMUNICATION_TASK_INFO no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save COMMUNICATION_OP data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] COMMUNICATION_OP no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.cpp:31] HOST_TASK Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/ge_info.db and TaskInfo success.
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/host_disk_usage.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.cpp:31] KFC_COMM Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/host_cpu_usage.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963062] [data_processor.cpp:31] KFC_TASK Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccs.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save HCCS data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] HCCS no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save HCCS data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] HCCS no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] LLC Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [db_runner.h:90] Query data success: SELECT struct_type, id, level, thread_id, item_id, start, end, connection_id FROM ApiData
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hbm.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:80] Save HBM data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [db_runner.h:90] Query data success: SELECT hashid, model_id, op_name, stream_id, task_id, block_num, mix_block_num, task_type, op_type, op_flag, batch_id, IFNULL(input_formats, 'NULL'), IFNULL(input_data_types, 'NULL'), IFNULL(input_shapes, 'NULL'), IFNULL(output_formats, 'NULL'), IFNULL(output_data_types, 'NULL'), IFNULL(output_shapes, 'NULL'), device_id, context_id, (case when op_state is 'N/A' then 'N/A' when op_state is '1' then 'dynamic' when op_state is '0' then 'static' end) FROM TaskInfo
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.h:82] HBM no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:80] Save HBM data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.h:82] HBM no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] MC2_COMM_INFO Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/mc2_comm_info.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963055] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/freq.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] MEMCPY_INFO Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963055] [aicore_freq_processor.cpp:93] Original data is empty. DBPath is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/freq.db
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.h:80] Save COMPUTE_TASK_INFO data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccl_single_device.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [aicore_freq_processor.cpp:119] AicoreFreqProcessor FormatData.
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.cpp:31] MEM_USAGE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/hccl_single_device.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [host_usage_processor.cpp:27] Start process MEM_USAGE.
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.h:80] Save KFC_COMM data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.h:82] KFC_COMM no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.h:80] Save KFC_COMM data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.h:82] KFC_COMM no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.cpp:31] MODEL_NAME Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/ge_model_info.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.cpp:31] MSTX Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [db_runner.h:90] Query data success: SELECT stream_id, request_id, batch_id, task_id, context_ids, model_id, task_type, kernel_name, connection_id, device_id FROM HostTask
+2026-07-03 04:46:37 [WARN] [1963053] [1963059] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/ddr.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [data_processor.h:80] Save DDR data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save HOST_TASK data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963059] [data_processor.h:82] DDR no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.cpp:31] NETDEV_STATS Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [data_processor.cpp:31] NETWORK_USAGE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [host_usage_processor.cpp:27] Start process NETWORK_USAGE.
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.cpp:54] Check StepTrace not exists
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.h:80] Save TASK data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.h:82] TASK no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.cpp:31] NIC Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963055] [aicore_freq_processor.cpp:126] freq original data is empty, it will use default freq.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:80] Save AICORE_FREQ data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963054] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/host_mem_usage.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.cpp:31] NPU_MEM Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.cpp:31] NPU_MODULE_MEM Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/llc.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save LLC data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] LLC no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save LLC data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] LLC no data to inject to dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963061] [data_processor.cpp:54] Check MemcpyInfo not exists
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] NPU_OP_MEM Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] OP_STATISTIC Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/task_memory.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] OSRT_API Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [host_usage_processor.cpp:27] Start process OSRT_API.
+2026-07-03 04:46:37 [WARN] [1963053] [1963059] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/host_network_usage.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [data_processor.cpp:31] PCIE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [pcie_processor.cpp:51] PCIeProcessor Process, dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/netdev_stats.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save NETDEV_STATS data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] NETDEV_STATS no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.cpp:31] PMU Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/kfc_info.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/nic.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/kfc_info.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/nic.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963062] [data_processor.h:80] Save KFC_TASK data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.cpp:31] QOS Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/msproftx.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/op_counter.db and op_report success.
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.h:82] KFC_TASK no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/msproftx.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963062] [data_processor.cpp:31] ROCE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/host/sqlite/host_runtime_api.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [msproftx_host_processor.cpp:83] msprofTx in /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR is not exists, return
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.cpp:31] SIO Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.cpp:31] SOC Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [metric_processor.cpp:80] Metric mode is not task_based, the metric summary will not processed.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [db_runner.h:90] Query data success: SELECT op_type, core_type, occurrences,  round(total_time/1000.0, 3), round(min/1000.0, 3), round(avg/1000.0, 3), round(max/1000.0, 3), round(ratio, 3) FROM op_report WHERE op_type != 'N/A' and core_type not in ('WRITE_BACK', 'INVALID')
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.cpp:31] STEP_TRACE Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:80] Save OP_STATISTIC data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963054] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/npu_module_mem.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963055] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/npu_mem.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963054] [data_processor.h:80] Save NPU_MODULE_MEM data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:80] Save NPU_MEM data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:31] TASK Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/qos.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963055] [data_processor.h:82] NPU_MEM no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963060] [data_processor.h:80] Save QOS data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963054] [data_processor.h:82] NPU_MODULE_MEM no data to inject to dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963060] [data_processor.h:82] QOS no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.cpp:31] UNIFIED_PMU Run. Dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/sio.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963058] [data_processor.h:80] Save SIO data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963058] [data_processor.h:82] SIO no data to inject to dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/soc_profiler.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963063] [data_processor.h:80] Save SOC data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963063] [data_processor.h:82] SOC no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [data_processor.h:68] There are 68 records before API data filtering, filterTime is 1783053993707185000.
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/roce.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [data_processor.h:73] There are 68 records after API data filtering.
+2026-07-03 04:46:37 [WARN] [1963053] [1963062] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/roce.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963056] [data_processor.h:80] Save API data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/ascend_task.db and AscendTask success.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:266] SampleBasedProcess, dir is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/trace.db.
+2026-07-03 04:46:37 [WARN] [1963053] [1963059] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/pcie.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:68] There are 0 records before STEP_TRACE data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963059] [data_processor.h:80] Save PCIE data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:73] There are 0 records after STEP_TRACE data filtering.
+2026-07-03 04:46:37 [WARN] [1963053] [1963059] [data_processor.h:82] PCIE no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/trace.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:68] There are 0 records before STEP_TRACE data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:73] There are 0 records after STEP_TRACE data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [db_runner.h:90] Query data success: SELECT a.start_time, a.duration, a.model_id, a.index_id, a.stream_id, a.task_id, a.context_id,a.batch_id, a.connection_id, a.host_task_type, a.device_task_type FROM AscendTask a WHERE a.device_task_type != 'UNKNOWN'
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.cpp:42] Can't find the db, the path is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/trace.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:68] There are 0 records before STEP_TRACE data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:73] There are 0 records after STEP_TRACE data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save STEP_TRACE data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] STEP_TRACE no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save STEP_TRACE data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] STEP_TRACE no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/ai_vector_core.db and AICoreOriginalData success.
+2026-07-03 04:46:37 [INFO] [1963053] [1963057] [data_processor.h:80] Save STEP_TRACE data into dataInventory
+2026-07-03 04:46:37 [WARN] [1963053] [1963057] [data_processor.h:82] STEP_TRACE no data to inject to dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:68] There are 4 records before TASK data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:73] There are 4 records after TASK data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963061] [data_processor.h:80] Save TASK data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.cpp:58] Check /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/aicore.db and AICoreOriginalData success.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:319] SampleBasedTimeline
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:359] GetSampleBasedTimelineData, dbPath is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/aicore.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:90] Query data success: SELECT timestamp, task_cyc, coreid FROM AICoreOriginalData;
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:380] FormatSampleBasedTimelineData.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:68] There are 240 records before SAMPLE_PMU_TIMELINE data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:73] There are 240 records after SAMPLE_PMU_TIMELINE data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:359] GetSampleBasedTimelineData, dbPath is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/ai_vector_core.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:90] Query data success: SELECT timestamp, task_cyc, coreid FROM AICoreOriginalData;
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:380] FormatSampleBasedTimelineData.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:68] There are 720 records before SAMPLE_PMU_TIMELINE data filtering, filterTime is 1783053993710760000.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:73] There are 720 records after SAMPLE_PMU_TIMELINE data filtering.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:80] Save SAMPLE_PMU_TIMELINE data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:425] SampleBasedSummary
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:449] GetSampleBasedSummaryData, dbPath is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/aicore.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:90] Query data success: SELECT metric, value, coreid FROM MetricSummary WHERE value IS NOT NULL;
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:469] FormatSampleBasedSummaryData.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:449] GetSampleBasedSummaryData, dbPath is /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/device_1/sqlite/ai_vector_core.db.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:79] Start query data
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [db_runner.h:90] Query data success: SELECT metric, value, coreid FROM MetricSummary WHERE value IS NOT NULL;
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [unified_pmu_processor.cpp:469] FormatSampleBasedSummaryData.
+2026-07-03 04:46:37 [INFO] [1963053] [1963055] [data_processor.h:80] Save SAMPLE_PMU_SUMMARY data into dataInventory
+2026-07-03 04:46:37 [INFO] [1963053] [1963066] [summary_manager.cpp:58] Start exporting summary!
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_assembler.cpp:1235] Start exporting db!
+2026-07-03 04:46:37 [INFO] [1963053] [1963072] [summary_assembler.h:37] Begin to Assemble OP_SUMMARY data
+2026-07-03 04:46:37 [INFO] [1963053] [1963071] [summary_assembler.h:37] Begin to Assemble COMMUNICATION_STATISTIC data
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [summary_assembler.h:37] Begin to Assemble NPU_MEM data
+2026-07-03 04:46:37 [INFO] [1963053] [1963067] [summary_assembler.h:37] Begin to Assemble OP_STATISTIC data
+2026-07-03 04:46:37 [WARN] [1963053] [1963068] [npu_memory_assembler.cpp:36] No data to export npu memory summary
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [summary_assembler.h:37] Begin to Assemble NPU_MODULE_MEM data
+2026-07-03 04:46:37 [WARN] [1963053] [1963068] [summary_assembler.h:43] No need to Export NPU_MEM data
+2026-07-03 04:46:37 [WARN] [1963053] [1963069] [npu_module_mem_assembler.cpp:45] No data to export npu module memory summary
+2026-07-03 04:46:37 [WARN] [1963053] [1963069] [summary_assembler.h:43] No need to Export NPU_MODULE_MEM data
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [summary_assembler.h:37] Begin to Assemble API data
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [summary_assembler.h:37] Begin to Assemble FUSION_OP data
+2026-07-03 04:46:37 [WARN] [1963053] [1963069] [fusion_op_assembler.cpp:72] fusion op data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963069] [summary_assembler.h:43] No need to Export FUSION_OP data
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [summary_assembler.h:37] Begin to Assemble TASK_TIME_SUMMARY data
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [csv_writer.cpp:81] Start dump /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/task_time.csv, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [file.cpp:399] The file not exists: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/task_time_20260703044637.csv.
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [csv_writer.cpp:81] Start dump /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/api_statistic.csv, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [file.cpp:399] The file not exists: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/api_statistic_20260703044637.csv.
+2026-07-03 04:46:37 [WARN] [1963053] [1963071] [comm_statistic_assembler.cpp:60] Communication Statistic data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963071] [summary_assembler.h:43] No need to Export COMMUNICATION_STATISTIC data
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_assembler.cpp:1249] Begin to save QOS data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save NETWORK_USAGE data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [csv_writer.cpp:88] Generate /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/task_time.csv finished, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963071] [summary_assembler.h:37] Begin to Assemble STEP_TRACE data
+2026-07-03 04:46:37 [INFO] [1963053] [1963069] [summary_assembler.h:40] Assemble and export TASK_TIME_SUMMARY data success
+2026-07-03 04:46:37 [WARN] [1963053] [1963071] [summary_step_trace_assembler.cpp:63] trainTraceData not exists, can't export step trace data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_assembler.cpp:1249] Begin to save MEM_USAGE data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [csv_writer.cpp:88] Generate /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/api_statistic.csv finished, timestamp is 20260703044637.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:1020] Host network usage data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963075] [db_assembler.cpp:982] Host mem usage data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963071] [summary_assembler.h:43] No need to Export STEP_TRACE data
+2026-07-03 04:46:37 [WARN] [1963053] [1963070] [db_assembler.cpp:1058] QOS data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963067] [csv_writer.cpp:81] Start dump /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_statistic.csv, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_assembler.cpp:1249] Begin to save TASK_PMU_INFO data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963068] [summary_assembler.h:40] Assemble and export API data success
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_assembler.cpp:1249] Begin to save TASK data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:1249] Begin to save ROCE data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_assembler.cpp:1249] Begin to save SAMPLE_PMU_SUMMARY data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_assembler.cpp:1249] Begin to save NIC data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963075] [db_assembler.cpp:877] unifiedTaskPmuData data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_assembler.cpp:1249] Begin to save SESSION_TIME_INFO data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963067] [file.cpp:399] The file not exists: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_statistic_20260703044637.csv.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save SAMPLE_PMU_TIMELINE data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963078] [db_assembler.cpp:833] SysIO ROCE data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_assembler.cpp:1249] Begin to save COMPUTE_TASK_INFO data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963080] [db_assembler.cpp:833] SysIO NIC data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.h:44] DBAssembler Save SAMPLE_PMU_TIMELINE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_assembler.cpp:1249] Begin to save SOC data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save NPU_MODULE_MEM data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:1249] Begin to save MSTX data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_assembler.cpp:1249] Begin to save NPU_OP_MEM data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_assembler.cpp:1249] Begin to save NPU_INFO data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963072] [csv_writer.cpp:81] Start dump /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_summary.csv, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.cpp:53] Start create SAMPLE_PMU_TIMELINE
+2026-07-03 04:46:37 [WARN] [1963053] [1963075] [db_assembler.cpp:697] Soc data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963078] [db_assembler.cpp:496] MsprofTx data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963067] [csv_writer.cpp:88] Generate /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_statistic.csv finished, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963072] [file.cpp:399] The file not exists: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_summary_20260703044637.csv.
+2026-07-03 04:46:37 [INFO] [1963053] [1963067] [summary_assembler.h:40] Assemble and export OP_STATISTIC data success
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_assembler.h:44] DBAssembler Save SAMPLE_PMU_SUMMARY Data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963073] [db_assembler.cpp:602] NpuOpMem data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_assembler.cpp:1249] Begin to save META_DATA data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_runner.cpp:53] Start create SAMPLE_PMU_SUMMARY
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_assembler.cpp:1249] Begin to save DISK_USAGE data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_assembler.h:44] DBAssembler Save META_DATA Data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963073] [db_assembler.cpp:1000] Host disk usage data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_assembler.h:44] DBAssembler Save COMPUTE_TASK_INFO Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_runner.cpp:53] Start create META_DATA
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_assembler.cpp:1249] Begin to save NETDEV_STATS data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_runner.cpp:53] Start create COMPUTE_TASK_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:1249] Begin to save LLC data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963076] [db_assembler.cpp:629] NpuModuleMem data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963078] [db_assembler.cpp:459] LLC data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963073] [db_assembler.cpp:415] NetDevStats data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save HCCS data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_assembler.cpp:1249] Begin to save HOST_INFO data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:1249] Begin to save HBM data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963076] [db_assembler.cpp:388] HCCS data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963078] [db_assembler.cpp:366] HBM data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save PCIE data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963072] [csv_writer.cpp:88] Generate /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_Sample/PROF_000001_20260703044633464_01962791LMLBIAPR/mindstudio_profiler_output/op_summary.csv finished, timestamp is 20260703044637.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:1249] Begin to save ENUM data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963072] [summary_assembler.h:40] Assemble and export OP_SUMMARY data success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.cpp:352] EnumProcessor Process.
+2026-07-03 04:46:37 [WARN] [1963053] [1963076] [db_assembler.cpp:653] PCIe data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_assembler.h:44] DBAssembler Save TASK Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save NPU_MEM data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_MSTX_EVENT_TYPE Data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963076] [db_assembler.cpp:566] NpuMem data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.cpp:53] Start create TASK
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save DDR data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_MSTX_EVENT_TYPE
+2026-07-03 04:46:37 [WARN] [1963053] [1963076] [db_assembler.cpp:318] DDR data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.cpp:1249] Begin to save AICORE_FREQ data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_assembler.h:44] DBAssembler Save AICORE_FREQ Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_runner.cpp:53] Start create AICORE_FREQ
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_assembler.h:44] DBAssembler Save SESSION_TIME_INFO Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_runner.cpp:53] Start create SESSION_TIME_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_assembler.h:44] DBAssembler Save NPU_INFO Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.cpp:53] Start create NPU_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_assembler.h:44] DBAssembler Save HOST_INFO Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_runner.cpp:53] Start create HOST_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_runner.cpp:66] create META_DATA success
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_runner.h:61] Start insert data to META_DATA
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_MSTX_EVENT_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_MSTX_EVENT_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.cpp:66] create SAMPLE_PMU_TIMELINE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.h:61] Start insert data to SAMPLE_PMU_TIMELINE
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.h:72] insert data to SAMPLE_PMU_TIMELINE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save ACC_PMU data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:277] Acc pmu data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save OSRT_API data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:1038] OS runtime api data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save MEMCPY_INFO data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:163] MemcpyInfo data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save COMMUNICATION data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:199] Communication op data not exist.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:244] Communication task data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save CPU_USAGE data.
+2026-07-03 04:46:37 [WARN] [1963053] [1963081] [db_assembler.cpp:945] Cpu usage data not exist.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.cpp:1249] Begin to save API data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_assembler.h:44] DBAssembler Save CANN_API Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.cpp:53] Start create CANN_API
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.cpp:66] create CANN_API success
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.h:61] Start insert data to CANN_API
+2026-07-03 04:46:37 [INFO] [1963053] [1963081] [db_runner.h:72] insert data to CANN_API success
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_runner.cpp:66] create SAMPLE_PMU_SUMMARY success
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_runner.h:61] Start insert data to SAMPLE_PMU_SUMMARY
+2026-07-03 04:46:37 [INFO] [1963053] [1963074] [db_runner.h:72] insert data to SAMPLE_PMU_SUMMARY success
+2026-07-03 04:46:37 [INFO] [1963053] [1963075] [db_runner.h:72] insert data to META_DATA success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_MSTX_EVENT_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_HCCL_RDMA_TYPE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_HCCL_RDMA_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_HCCL_RDMA_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_HCCL_RDMA_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_HCCL_RDMA_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_HCCL_TRANSPORT_TYPE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_HCCL_TRANSPORT_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_HCCL_TRANSPORT_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_HCCL_TRANSPORT_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_HCCL_TRANSPORT_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_HCCL_LINK_TYPE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_HCCL_LINK_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_HCCL_LINK_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_HCCL_LINK_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_HCCL_LINK_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_MEMCPY_OPERATION Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_MEMCPY_OPERATION
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_MEMCPY_OPERATION success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_MEMCPY_OPERATION
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_MEMCPY_OPERATION success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_HCCL_DATA_TYPE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_HCCL_DATA_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_HCCL_DATA_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_HCCL_DATA_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_HCCL_DATA_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_MODULE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_MODULE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_MODULE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_MODULE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_MODULE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_assembler.h:44] DBAssembler Save ENUM_API_TYPE Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:53] Start create ENUM_API_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.cpp:66] create ENUM_API_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:61] Start insert data to ENUM_API_TYPE
+2026-07-03 04:46:37 [INFO] [1963053] [1963078] [db_runner.h:72] insert data to ENUM_API_TYPE success
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_runner.cpp:66] create SESSION_TIME_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_runner.h:61] Start insert data to SESSION_TIME_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963079] [db_runner.h:72] insert data to SESSION_TIME_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_runner.cpp:66] create HOST_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_runner.h:61] Start insert data to HOST_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963073] [db_runner.h:72] insert data to HOST_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_runner.cpp:66] create AICORE_FREQ success
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_runner.h:61] Start insert data to AICORE_FREQ
+2026-07-03 04:46:37 [INFO] [1963053] [1963076] [db_runner.h:72] insert data to AICORE_FREQ success
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_runner.cpp:66] create COMPUTE_TASK_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_runner.h:61] Start insert data to COMPUTE_TASK_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963070] [db_runner.h:72] insert data to COMPUTE_TASK_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.cpp:66] create NPU_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.h:61] Start insert data to NPU_INFO
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.h:72] insert data to NPU_INFO success
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_assembler.h:44] DBAssembler Save RANK_DEVICE_MAP Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.cpp:53] Start create RANK_DEVICE_MAP
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.cpp:66] create RANK_DEVICE_MAP success
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.h:61] Start insert data to RANK_DEVICE_MAP
+2026-07-03 04:46:37 [INFO] [1963053] [1963080] [db_runner.h:72] insert data to RANK_DEVICE_MAP success
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.cpp:66] create TASK success
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.h:61] Start insert data to TASK
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.h:72] insert data to TASK success
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_assembler.cpp:126] Processor CreateTableIndex, table is TASK , indexName is TaskIndex.
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.cpp:77] Start create TASK index.
+2026-07-03 04:46:37 [INFO] [1963053] [1963077] [db_runner.cpp:90] create TASK index success
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_assembler.h:44] DBAssembler Save STRING_IDS Data.
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_runner.cpp:53] Start create STRING_IDS
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_runner.cpp:66] create STRING_IDS success
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_runner.h:61] Start insert data to STRING_IDS
+2026-07-03 04:46:37 [INFO] [1963053] [1963064] [db_runner.h:72] insert data to STRING_IDS success

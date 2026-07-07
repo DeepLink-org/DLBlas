@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+expand_kenel_bwd_kernel,vector,163.483276,4,NA,5,3885364,1800,1800,

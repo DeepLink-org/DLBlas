@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+6,k3_attn_block_kernel,MIX_AIC,1,72721.153,72721.153,72721.153,72721.153,100

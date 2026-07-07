@@ -1,0 +1,42 @@
+=== 上板性能统计摘要 (msprof) ===
+Op: apply_mix_kernel
+Type: apply_mix_kernel | TaskType: AI_VECTOR_CORE | Duration: 244.265us | BlockDim: 48 (mix=0)
+
+[注] msprof 的 op_summary 是 per-op 聚合值（不含逐核 min/avg/max）；
+     如需逐核数据请改用 msprof op (需要 msopprof 二进制)。
+
+--- Pipe ratios (主导核 = aiv) ---
+  aicore_time: 0.000us | aiv_time: 234.232us
+  aiv: vec=  3.80% | scalar= 94.40% | mte2= 23.90% | mte3=  8.40% | icache_miss=  0.70%
+
+--- 头开销 ---
+  Task Duration: 244.265us | 核最长耗时: 234.232us | 头开销: 10.033us (4.1%)
+
+--- Memory 带宽 (aic-metrics=Memory) ---
+  aiv main_mem read: 0.06 GB/s
+  aiv main_mem write: 0.01 GB/s
+  aiv UB read: 5.03 GB/s
+  aiv UB write: 6.06 GB/s
+
+--- MemoryUB ---
+  UB read (vector): 1.16 GB/s
+  UB write (vector): 0.78 GB/s
+  UB read (scalar): 0.01 GB/s
+
+--- ResourceConflict ---
+  vec_bank_cflt=  0.10% | vec_resc_cflt=  0.00%
+
+--- 原始数据位置 ---
+  归档 CSV : /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/docs/perf/round_004/
+  原始 PROF: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/
+  按 aic-metrics 拆分的 op_summary_<Metric>.csv 均已复制到归档目录，
+  如需逐列查看可直接 Read。
+
+--- Metric 来源 ---
+  PipeUtilization        <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_PipeUtilization/PROF_000001_20260701025457194_00025838OOBMPLGE/mindstudio_profiler_output/op_summary_20260701025500.csv
+  ArithmeticUtilization  <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_ArithmeticUtilization/PROF_000001_20260701025502245_00027714NEBMKHAN/mindstudio_profiler_output/op_summary_20260701025505.csv
+  Memory                 <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_Memory/PROF_000001_20260701025507296_00028926HNKMLRFA/mindstudio_profiler_output/op_summary_20260701025510.csv
+  MemoryL0               <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_MemoryL0/PROF_000001_20260701025512337_00029461PRQEEMLC/mindstudio_profiler_output/op_summary_20260701025515.csv
+  MemoryUB               <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_MemoryUB/PROF_000001_20260701025517356_00031885GMMGKPAI/mindstudio_profiler_output/op_summary_20260701025520.csv
+  L2Cache                <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_L2Cache/PROF_000001_20260701025522390_00034700EBBOPRDR/mindstudio_profiler_output/op_summary_20260701025528.csv
+  ResourceConflictRatio  <- /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/build/msprof_output/PROF_GROUP_20260701_025451/PROF_ResourceConflictRatio/PROF_000001_20260701025530422_00040112CAKACBIP/mindstudio_profiler_output/op_summary_20260701025533.csv

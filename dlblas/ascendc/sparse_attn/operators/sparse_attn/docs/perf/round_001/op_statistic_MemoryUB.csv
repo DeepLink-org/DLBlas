@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+5,sparse_attn_kernel,AI_VECTOR_CORE,1,67.761,67.761,67.761,67.761,100

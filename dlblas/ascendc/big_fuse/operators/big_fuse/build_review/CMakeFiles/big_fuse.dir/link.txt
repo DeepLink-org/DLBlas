@@ -1,0 +1,1 @@
+/usr/local/Ascend/cann-9.0.0/bin/bisheng CMakeFiles/big_fuse.dir/op_host/big_fuse.asc.o -o big_fuse  -ltiling_api -lregister -lplatform -lunified_dlog -ldl -lm -lgraph_base

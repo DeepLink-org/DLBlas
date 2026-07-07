@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "op_name": "engram_fused_weight",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 1,
+    "passed_cases": 1,
+    "mere": 0.0,
+    "mare": 0.0,
+    "mere_threshold": 0.00781,
+    "mare_threshold": 0.0781
+  },
+  "perf_data": {
+    "ascend_us": 5.74,
+    "torch_us": 3.36,
+    "speedup_vs_torch": 0.5846,
+    "ascend_source": "msprof",
+    "note": "AscendC time via msprof (avoids subprocess overhead); PyTorch CPU time via direct timing. Speedup < 1 expected for 512-element kernel where NPU launch overhead dominates.",
+    "dim0": 512,
+    "dtype": "bfloat16",
+    "shape": [
+      4,
+      128
+    ]
+  },
+  "review_score": 92,
+  "gen_iterations": 1
+}

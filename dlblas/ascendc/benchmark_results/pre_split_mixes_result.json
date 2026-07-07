@@ -1,0 +1,15 @@
+{
+  "op": "pre_split_mixes",
+  "geomean_speedup": 0,
+  "total": 1,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "error": "npu::pre_split_mixes() is missing value for argument 'mhc_scale'. Declaration: npu::pre_split_mixes(Tensor input_mixes, Tensor mhc_scale, Tensor mhc_base, int mhc_mult, float mhc_pre_eps, float mhc_post_mult_value) -> (Tensor pre_mix, Tensor post_mix, Tensor comb_mix) | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_pre_split_mixes.py\", line 25, in <module>\n    tu=bench(lambda:m.forward(im)); au=bench(lambda:torch.ops.npu.pre_split_mixes(im_n,*[d.npu() if isinstance(d,torch.Tensor) else d for d",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 15.2,
+  "returncode": 0
+}

@@ -1,0 +1,14 @@
+Device_id,Level,API Name,Time(us),Count,Avg(us),Min(us),Max(us),Variance
+host,acl,aclrtBinaryLoadFromData,66.43,1,66.43,66.43,66.43,0
+host,acl,aclrtCreateStream,1927.39,1,1927.39,1927.39,1927.39,0
+host,acl,aclrtDestroyStream,7211.16,1,7211.16,7211.16,7211.16,0
+host,acl,aclrtFree,18.93,3,6.31,2.8,8.64,6.38
+host,acl,aclrtFreeHost,8.3,2,4.15,1.98,6.32,4.709
+host,acl,aclrtGetDeviceInfo,10.48,1,10.48,10.48,10.48,0
+host,acl,aclrtLaunchKernelWithHostArgs,216.98,1,216.98,216.98,216.98,0
+host,acl,aclrtMalloc,90.04,3,30.013,9.43,44.26,222.265
+host,acl,aclrtMallocHost,36.39,2,18.195,16.15,20.24,4.182
+host,acl,aclrtMemcpy,281.01,3,93.67,22.63,129.61,2523.458
+host,acl,aclrtResetDevice,305634.02,1,305634.02,305634.02,305634.02,0
+host,acl,aclrtSynchronizeStream,24.35,1,24.35,24.35,24.35,0
+host,node,launch,475.14,1,475.14,475.14,475.14,0

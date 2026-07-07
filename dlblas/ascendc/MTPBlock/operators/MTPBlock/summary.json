@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "op_name": "MTPBlock",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0115,
+    "max_mare": 0.0115,
+    "total_cases": 9,
+    "passed_cases": 9,
+    "details": {
+      "k1_feat": {"mare": 6.34e-03, "status": "pass"},
+      "k2_y": {"mare": 1.50e-03, "status": "pass"},
+      "k2_pre": {"mare": 2.50e-04, "status": "pass"},
+      "k2_post": {"mare": 1.48e-04, "status": "pass"},
+      "k2_comb": {"mare": 3.88e-04, "status": "pass"},
+      "k3_out": {"mare": 1.15e-02, "status": "pass"},
+      "k4_out": {"mare": 8.26e-04, "status": "pass"},
+      "k5_out": {"mare": 4.16e-03, "status": "pass"},
+      "k6_logits": {"mare": 1.60e-03, "status": "pass"}
+    }
+  },
+  "perf_data": {
+    "ascend_us": 372409.718,
+    "ascend_ms": 372.41,
+    "torch_us": 239912.0,
+    "torch_ms": 239.912,
+    "speedup_vs_torch": 0.6442,
+    "kernel_breakdown_us": {
+      "k1_embed_fuse": 167862.874,
+      "k2_hc_pre": 6364.567,
+      "k3_attn_block": 72721.152,
+      "k4_hc_post": 2342.006,
+      "k5_moe_block": 113944.476,
+      "k6_mtp_head": 9174.643
+    },
+    "note": "AscendC slower than PyTorch due to scalar MatMul (not MatmulImpl), single-core execution, and lack of double-buffering for K1/K3/K5/K6. M5 (SIMD dot product vectorization) is the highest-priority optimization target."
+  },
+  "review_score": 80,
+  "gen_iterations": 1,
+  "review_rounds": 3,
+  "issues_summary": {
+    "high": 0,
+    "medium": 5,
+    "low": 4,
+    "medium_details": [
+      "M1: ASC host usedCoreNum hardcoded to 1",
+      "M2: Single-core execution (48 VectorCores available)",
+      "M3: K1/K3/K5/K6 missing double buffering",
+      "M4: K3 dense O(s²) attention instead of O(s·win) sparse",
+      "M5: Scalar dot product not vectorized (Mul+ReduceSum)"
+    ],
+    "low_details": [
+      "L1: K3 naming convention (single-char variables)",
+      "L2: K3/K5 FreeTensor stacking",
+      "L3: K5 routed expert path not implemented",
+      "L4: K5 dead code (unused matmul.h)"
+    ]
+  }
+}

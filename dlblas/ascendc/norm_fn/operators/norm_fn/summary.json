@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "op_name": "norm_fn",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 4.086085e-05,
+    "total_cases": 4,
+    "passed_cases": 4
+  },
+  "perf_data": {
+    "ascend_us": 382.15,
+    "torch_us": 352.21,
+    "speedup_vs_torch": 0.9217
+  },
+  "review_score": 98,
+  "gen_iterations": 1,
+  "notes": "Single-core SIMD/Vector API. TILE_K=512. Rsqrt-based RMS norm. All 4 test cases pass with max diff 4.09e-05 (within 1e-4 standard). AscendC 382us vs PyTorch NPU 352us (0.92x) — expected for tiny problem scale (312 outputs, 1.6M MACs) where PyTorch's optimized NPU backend has advantage."
+}

@@ -1,0 +1,34 @@
+=== big_fuse Performance Summary (Round 004) ===
+Date: 2026-07-01
+Arch: DAV_2201 (Ascend910B2)
+CANN: 9.0.0
+
+--- Kernel Timing (single run) ---
+K0 (bf16->fp32, 48 AIV):  402.72 us
+K1 (MatMul, 8 AIC):       337.76 us
+K2 (Post-process, 43 AIV): 1125.64 us
+Total AscendC:             1866.12 us (1.866 ms)
+
+--- Speedup vs PyTorch ---
+PyTorch CPU avg:  53.27 ms
+PyTorch CPU min:  37.09 ms
+AscendC NPU tot:  1.866 ms
+Speedup (avg):    28.55x
+Speedup (min):    19.88x
+
+--- K2 Profile (from round_002, msprof op) ---
+K2 is scalar-bound: 99.8% scalar instructions
+Vector unit utilization: <0.1%
+Primary bottleneck: sqrsum accumulation and Sinkhorn normalization
+Optimization target: BlockReduceSum for sqrsum, ReduceSum for Sinkhorn
+
+--- Precision ---
+All three outputs pass:
+  post_mix:    MERE=3.896e-04 (< 9.766e-04)
+  comb_mix:    MERE=8.553e-04 (< 9.766e-04)
+  layer_input: Max abs err=7.813e-03 (< 1.563e-02 bf16)
+
+--- Known Issues ---
+1. PyTorch TORCH_LIBRARY .so builds but hangs (kernel calling convention)
+2. K2 T=3 not viable (48B DataCopyPad unaligned, requires 32B)
+3. Sinkhorn scalar limits K2 performance (~90% of total)

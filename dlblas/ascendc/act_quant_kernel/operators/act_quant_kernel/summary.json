@@ -1,0 +1,61 @@
+{
+  "success": true,
+  "op_name": "act_quant_kernel",
+  "arch": "ascend910b2",
+  "npu_arch": "dav-2201",
+  "precision": {
+    "status": "pass",
+    "total_cases": 9,
+    "passed_cases": 9,
+    "failed_cases": 0,
+    "x_q_max_ulp": 1,
+    "x_s_max_diff": 0.0,
+    "details": [
+      {"elements": 128, "group_size": 128, "mode": "random", "x_q_ulp": 0, "x_s_max_diff": 0.0},
+      {"elements": 16, "group_size": 2, "mode": "random", "x_q_ulp": 0, "x_s_max_diff": 0.0},
+      {"elements": 512, "group_size": 64, "mode": "random", "x_q_ulp": 0, "x_s_max_diff": 0.0},
+      {"elements": 2048, "group_size": 128, "mode": "random", "x_q_ulp": 1, "x_s_max_diff": 0.0},
+      {"elements": 1024, "group_size": 32, "mode": "random", "x_q_ulp": 0, "x_s_max_diff": 0.0},
+      {"elements": 16384, "group_size": 128, "mode": "random", "x_q_ulp": 1, "x_s_max_diff": 0.0},
+      {"elements": 2048, "group_size": 128, "mode": "zeros", "x_q_ulp": 0, "x_s_max_diff": 0.0},
+      {"elements": 2048, "group_size": 128, "mode": "extreme", "x_q_ulp": 1, "x_s_max_diff": 0.0},
+      {"elements": 65536, "group_size": 128, "mode": "random", "x_q_ulp": 1, "x_s_max_diff": 0.0}
+    ]
+  },
+  "pytorch_tests": {
+    "total_cases": 2,
+    "passed_cases": 2,
+    "failed_cases": 0
+  },
+  "perf_data": {
+    "benchmark": {
+      "total_cases": 5,
+      "passed_cases": 5,
+      "failed_cases": 0,
+      "speedup_vs_torch_geomean": 2.2628,
+      "per_shape_results": [
+        {"case_idx": 1, "shape_desc": "1K, gs=128", "ascend_us": 121.60, "torch_npu_us": 291.52, "speedup": 2.3973, "status": "PASS"},
+        {"case_idx": 2, "shape_desc": "4K, gs=128", "ascend_us": 118.40, "torch_npu_us": 277.10, "speedup": 2.3404, "status": "PASS"},
+        {"case_idx": 3, "shape_desc": "16K, gs=128", "ascend_us": 116.04, "torch_npu_us": 299.14, "speedup": 2.5780, "status": "PASS"},
+        {"case_idx": 4, "shape_desc": "65K, gs=128", "ascend_us": 121.85, "torch_npu_us": 297.98, "speedup": 2.4455, "status": "PASS"},
+        {"case_idx": 5, "shape_desc": "256K, gs=128", "ascend_us": 185.63, "torch_npu_us": 311.31, "speedup": 1.6770, "status": "PASS"}
+      ]
+    },
+    "msprof_op": {
+      "round": "002",
+      "task_duration_us": 49.54,
+      "block_dim": 47,
+      "scalar_ratio_pct": 97.6,
+      "vector_ratio_pct": 3.1,
+      "mte2_ratio_pct": 0.6,
+      "mte3_ratio_pct": 0.5,
+      "bottleneck": "Scalar (fp32->fp8 conversion)"
+    }
+  },
+  "review_score": 92,
+  "known_limits": [
+    "fp32->fp8_e4m3fn conversion uses scalar software path (DAV_2201 limitation), causing 97.6% scalar time and 1-ULP rounding differences",
+    "UE8M0 scale format not fully implemented (code framework reserved)",
+    "fp16 input path not independently tested (kernel template supports it)"
+  ]
+}

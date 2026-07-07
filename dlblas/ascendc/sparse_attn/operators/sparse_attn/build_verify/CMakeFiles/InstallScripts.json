@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/mnt/data01/zmz/workspace/12agent/waic/build/sparse_attn/operators/sparse_attn/build_verify/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

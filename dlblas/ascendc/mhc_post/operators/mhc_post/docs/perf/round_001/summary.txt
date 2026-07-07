@@ -1,0 +1,18 @@
+=== mhc_post 性能采集 Round 001 ===
+采集时间: 2026-07-01
+芯片: Ascend910B2 (DAV_2201)
+数据形状: (2, 4096, 1280) + (2, 4096, 4, 1280)
+核数: 20 AI Vector Cores
+
+=== 性能指标 ===
+总延迟: 7,767 us
+AIV Vector 时间: 4,090 us (52.7%)
+AIV MTE2 (Load): 1,563 us (20.1%)
+AIV MTE3 (Store): 1,263 us (16.3%)
+AIV Scalar: 7,744 us (99.8% - includes Vector time)
+
+=== 分析 ===
+- 算子属于 memory-bound: MTE2+MTE3 占 36.4%
+- Vector 利用率 52.7%，受限于数据搬运
+- 单 buffer 模式，双缓冲可进一步提升
+- 总数据量 ~189 MB，吞吐 ~24.4 GB/s

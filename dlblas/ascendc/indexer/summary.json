@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "op_name": "indexer",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 7,
+    "passed_cases": 7
+  },
+  "perf_data": {
+    "ascend_us": 1755.2,
+    "torch_us": 1327.0,
+    "speedup_vs_torch": 0.7411,
+    "per_shape_results": [
+      {"case": "Prefill B=2 S=64", "ascend_ms": 1.7917, "torch_ms": 1.3209, "speedup_vs_torch": 0.7372},
+      {"case": "Prefill B=2 S=512", "ascend_ms": 1.8312, "torch_ms": 1.3387, "speedup_vs_torch": 0.7311},
+      {"case": "Prefill B=2 S=4096", "ascend_ms": 3.5444, "torch_ms": 2.8649, "speedup_vs_torch": 0.8083},
+      {"case": "Decode B=2 pos=64", "ascend_ms": 1.1258, "torch_ms": 0.8323, "speedup_vs_torch": 0.7393},
+      {"case": "Decode B=2 pos=512", "ascend_ms": 1.1218, "torch_ms": 0.8064, "speedup_vs_torch": 0.7188},
+      {"case": "Decode B=2 pos=4096", "ascend_ms": 1.1161, "torch_ms": 0.7989, "speedup_vs_torch": 0.7158}
+    ]
+  },
+  "review_score": 85,
+  "gen_iterations": 2
+}

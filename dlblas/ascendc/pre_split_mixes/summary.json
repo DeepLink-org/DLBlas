@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "op_name": "pre_split_mixes",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 8,
+    "passed_cases": 8
+  },
+  "perf_data": {
+    "ascend_us": 49.17,
+    "torch_us": 306.79,
+    "speedup_vs_torch": 5.8994,
+    "geometric_mean_speedup": 5.8994,
+    "aggregate_speedup": 4.3316,
+    "total_ascendc_avg_us": 572.07,
+    "total_torch_avg_us": 2477.99,
+    "per_case": [
+      {"case_id": "T1", "batch": 1, "seq_len": 1, "m": 4, "ascendc_us": 15.85, "torch_us": 303.84, "speedup": 19.1696},
+      {"case_id": "T2", "batch": 1, "seq_len": 1024, "m": 4, "ascendc_us": 49.17, "torch_us": 306.79, "speedup": 6.2395},
+      {"case_id": "T3", "batch": 8, "seq_len": 512, "m": 4, "ascendc_us": 82.77, "torch_us": 304.59, "speedup": 3.6799},
+      {"case_id": "T4", "batch": 1, "seq_len": 2048, "m": 4, "ascendc_us": 50.40, "torch_us": 310.15, "speedup": 6.1538},
+      {"case_id": "T5", "batch": 1, "seq_len": 1024, "m": 1, "ascendc_us": 248.56, "torch_us": 305.74, "speedup": 1.2300},
+      {"case_id": "T6", "batch": 1, "seq_len": 1024, "m": 8, "ascendc_us": 44.32, "torch_us": 309.44, "speedup": 6.9820},
+      {"case_id": "T7", "batch": 1, "seq_len": 1024, "m": 16, "ascendc_us": 35.04, "torch_us": 321.41, "speedup": 9.1728},
+      {"case_id": "T8", "batch": 2, "seq_len": 256, "m": 4, "ascendc_us": 45.96, "torch_us": 316.03, "speedup": 6.8762}
+    ]
+  },
+  "review_score": 96,
+  "gen_iterations": 1,
+  "known_issues": [
+    "PyTorch extension path ABI incompatibility (direct invocation path works fine)",
+    "uint16_t overflow risk for m > 128 (current m_max=16, unaffected)",
+    "Sigmoid temp buffer hardcoded 8KB instead of dynamic GetSigmoidMaxMinTmpSize",
+    "rowsPerChunk=1 instead of designed chunk batch mode"
+  ]
+}

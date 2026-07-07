@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "op_name": "head_compute_mix_fwd",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.00244140625,
+    "total_cases": 1,
+    "passed_cases": 1
+  },
+  "perf_data": {
+    "ascend_us": 219.9,
+    "torch_us": 27992.99,
+    "speedup_vs_torch": 127.2995
+  },
+  "review_score": 91,
+  "gen_iterations": 1
+}

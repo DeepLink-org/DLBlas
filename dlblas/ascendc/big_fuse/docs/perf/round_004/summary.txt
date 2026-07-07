@@ -1,0 +1,44 @@
+# big_fuse Performance Summary — Round 004
+# Date: 2026-07-01
+# Chip: Ascend910B2 (DAV_2201)
+# CANN: 9.0.0
+
+=== msprof Task Duration ===
+
+K0 (big_fuse_k0_kernel, AIV):
+  Task Duration: 18.261 us
+  AIV Time: 14.286 us
+  Block Dim: 48
+  Task Wait Time: 0 us
+
+K1 (big_fuse_k1_kernel, AIC):
+  Task Duration: 88.802 us
+  AIC Time: 84.493 us
+  Block Dim: 8
+  Task Wait Time: 188.489 us
+
+K2 (big_fuse_k2_kernel, AIV):
+  Task Duration: 1065.901 us
+  AIV Time: 1052.262 us
+  Block Dim: 43
+  Task Wait Time: 6103.198 us
+
+=== Wall Clock Summary ===
+
+K0: 440 us (26.4%)
+K1: 111 us (6.7%)
+K2: 1112 us (66.9%)
+Total: 1664 us
+
+=== Bottleneck Analysis ===
+
+- K2 (67%): Dominant bottleneck. Scalar sqrsum reduction (5120 elements/token)
+  and Sinkhorn scalar row/col norm (10 iterations) consume most time.
+- K0 (26%): bf16->fp32 DataCopyPad + Cast overhead.
+- K1 (7%): MatMul is efficient (small matrix 512x5120->512x24).
+
+=== Precision ===
+
+post_mix (fp32): MERE=3.90e-4, MaxAbs=1.78e-4, threshold=9.77e-4 -> PASS
+comb_mix (fp32): MERE=8.55e-4, MaxAbs=1.89e-4, threshold=9.77e-4 -> PASS
+layer_input (bf16): MaxAbs=7.81e-3, threshold=1.56e-2 -> PASS

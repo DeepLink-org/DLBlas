@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "op_name": "norm_fn",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 2.4e-08,
+    "total_cases": 4,
+    "passed_cases": 4,
+    "detail": {
+      "direct_no_weight": {"max_diff": 1.86e-08},
+      "direct_with_weight": {"max_diff": 1.49e-08},
+      "torch_no_weight": {"max_diff": 1.58e-08},
+      "torch_with_weight": {"max_diff": 2.05e-08}
+    }
+  },
+  "perf_data": {
+    "ascend_us": 351.2,
+    "torch_us": 31664.1,
+    "speedup_vs_torch": 90.16,
+    "torch_with_weight_us": 39194.4,
+    "torch_no_weight_us": 24133.7,
+    "vector_utilization_pct": 61.7,
+    "mte2_bw_gbs": 78.7,
+    "task_duration_us": 351.2
+  },
+  "review_score": 98,
+  "gen_iterations": 1,
+  "review_findings": {
+    "high": 0,
+    "medium": 1,
+    "low": 2,
+    "medium_detail": "Vec FP32 utilization偏低 (8.1%) — 受限于问题规模过小，单核已足够"
+  }
+}

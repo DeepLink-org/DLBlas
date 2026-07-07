@@ -1,0 +1,38 @@
+[INFO] Start profiling....
+[ERROR]  Open file failed. path = ./input/shape.bin
+Shape: n0=0, n1=0, mhc=0, h=0
+Tiling: A1=0, R=0, A0=0, tileA0Len=64, alignedCols=64, totalTiles=0, tilesPerCore=0, blockNum=0 (coreNum=48)
+[ERROR]  buffer is nullptr
+[ERROR]  buffer is nullptr
+[ERROR] [Bisheng] Launch kernel failure! ret 107000
+[ERROR]  Write file failed. buffer is nullptr
+[INFO] Start export data in PROF_000001_20260701023856323_04110252IBGJNKKC.
+Wed 01 Jul 2026 02:38:58 [WARNING] [MSVP] [4110319] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/host" ...
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: It may take few minutes, please be patient ...
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/host" finished.
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6" ...
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: It may take few minutes, please be patient ...
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6" finished.
+Wed 01 Jul 2026 02:38:58 [INFO] [MSVP] [4110325] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6.
+Wed 01 Jul 2026 02:38:59 [WARNING] [MSVP] [4110494] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/host" has been analyzed. Parsing phase will be skipped.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6" has been analyzed. Parsing phase will be skipped.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/host"
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6"
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_common.py: Start exporting summary output_file.
+Wed 01 Jul 2026 02:38:59 [INFO] [MSVP] [4110499] msprof_common.py: End exporting summary output_file.The file is stored in the /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260701023856323_04110252IBGJNKKC done.
+[INFO] Start query data in PROF_000001_20260701023856323_04110252IBGJNKKC.
+Wed 01 Jul 2026 02:39:00 [WARNING] [MSVP] [4110555] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-07-01 02:38:56.244343	N/A     	N/A             	N/A               	-1     	
+
+NA      	6        	device_6	2026-07-01 02:38:56.247384	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260701023856323_04110252IBGJNKKC done.
+[INFO] Profiling finished.
+[INFO] Process profiling data complete. Data is saved in /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC

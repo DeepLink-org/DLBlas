@@ -1,0 +1,49 @@
+=== big_fuse 上板性能统计摘要 (Round 002) ===
+采集时间: 2026-07-01 02:58
+芯片: Ascend910B2 (DAV_2201) | Freq: 1800/1800 MHz
+
+--- Kernel 1: big_fuse_k1_kernel (MatMul, Cube) ---
+Op Type: cube | Task Duration: 55.621us | BlockDim: 8
+  Pipe Utilization (avg across 8 AIC cores):
+    scalar_ratio:  86.5-87.9% (avg ~86.9%)
+    mte2_ratio:    94.3-95.1% (avg ~94.7%)  ← memory-bound
+    cube_ratio:    19.1-20.6% (avg ~19.3%)
+    mte1_ratio:    22.2-22.6%
+  Scalar breakdown (avg):
+    single: 11.48us | dual: 20.26us | cube_stall: 8.5-9.8us | wait_ib: 3.6-3.8us
+  Memory:
+    MTE3 active BW: 429.2 GB/s
+  Arithmetic:
+    cube_fp16: 19.2% utilization
+  L2Cache:
+    total_hit: avg ~77.8%
+  Resource Conflict:
+    vec_total_cflt: 0.00% | cube_wait: ~95%
+  结论: K1 为 memory-bound，MTE2 利用率约 95%，Cube 利用率仅 19%（小 N=24 限制）。
+        Task duration 55.6us，相比 round_001 (59.2us) 有轻微波动。
+
+--- Kernel 2: big_fuse_k2_kernel (Vector Post-process) ---
+Op Type: vector | Task Duration: 2937.659us | BlockDim: 48
+  Pipe Utilization (avg across 48 AIV cores):
+    aiv_scalar_ratio:  99.79%  ← heavily scalar-bound!
+    aiv_vec_ratio:      0.099% ← vector unit almost idle
+    aiv_mte2_ratio:     0.115%
+    aiv_mte3_ratio:     0.080%
+  Scalar breakdown (avg):
+    single: 237.07us | dual: 636.66us | wait_ib: 1.7us | wait: 6.0us
+  结论: K2 为极端 scalar-bound，Vector 单元利用率 <0.1%。
+        当前实现大量使用 GetValue/SetValue 标量操作（非 SIMD 向量化），
+        导致 scalar 占比 99.8%。这是最大性能瓶颈。
+        每核处理 11 tokens 约需 2937.66us，远超 K1 (55.62us)。
+
+--- 端到端延迟 ---
+K1: 55.62us
+K2: 2937.66us
+Total: ~2993us (~3ms)
+
+--- 优化建议 ---
+1. K2 Vector 化：将 GetValue/SetValue 循环替换为 AscendC SIMD 向量 API
+   (Mul, Adds, Muls, ReduceSum, ReduceMax, Exp, Reciprocal 等)
+2. K2 Double Buffer: residual 搬入与计算流水重叠
+3. K2 Tile 调优：当前 T=2，尝试 T=4（需验证 UB 预算）
+4. K1 多核扩展：N=24 仅 1 个 N-tile，可尝试缩小 singleCoreN

@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+1,head_compute_mix_bwd_kernel,AI_VECTOR_CORE,1,18.96,18.96,18.96,18.96,100

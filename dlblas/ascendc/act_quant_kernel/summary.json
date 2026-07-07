@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "op_name": "act_quant_kernel",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 3.2424e-05,
+    "total_cases": 5,
+    "passed_cases": 5
+  },
+  "perf_data": {
+    "ascend_us": 134.75,
+    "torch_us": 301.69,
+    "speedup_vs_torch": 2.275,
+    "per_shape_results": [
+      {"case_idx": 1, "shape_desc": "1K, gs=128",   "status": "PASS", "ascend_us": 123.69, "torch_us": 300.31, "speedup_vs_torch": 2.428},
+      {"case_idx": 2, "shape_desc": "4K, gs=128",   "status": "PASS", "ascend_us": 113.51, "torch_us": 309.83, "speedup_vs_torch": 2.730},
+      {"case_idx": 3, "shape_desc": "16K, gs=128",  "status": "PASS", "ascend_us": 132.09, "torch_us": 293.38, "speedup_vs_torch": 2.221},
+      {"case_idx": 4, "shape_desc": "65K, gs=128",  "status": "PASS", "ascend_us": 118.96, "torch_us": 290.58, "speedup_vs_torch": 2.443},
+      {"case_idx": 5, "shape_desc": "256K, gs=128", "status": "PASS", "ascend_us": 185.49, "torch_us": 314.35, "speedup_vs_torch": 1.695}
+    ]
+  },
+  "review_score": 92,
+  "gen_iterations": 1
+}

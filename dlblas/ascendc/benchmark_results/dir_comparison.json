@@ -1,0 +1,63 @@
+{
+  "engram_gate_bwd_cannbot": {
+    "torch_us": 453.22,
+    "ascendc_us": 56.59,
+    "speedup": 8.0089
+  },
+  "sinkhorn_merge": {
+    "torch_us": 16787.42,
+    "ascendc_us": 476.43,
+    "speedup": 35.24
+  },
+  "sinkhorn_cannbot": {
+    "torch_us": 14563.1,
+    "ascendc_us": 475.77,
+    "speedup": 30.61
+  },
+  "big_fuse_merge": {
+    "speedup_summary": 28.55,
+    "ascendc_us_summary": 1866.12,
+    "torch_us_summary": 53270.0
+  },
+  "big_fuse_cannbot": {
+    "speedup_summary": 25.44,
+    "ascendc_us_summary": 2302.2,
+    "torch_us_summary": 58562.4
+  },
+  "mhc_post_merge": {
+    "speedup_summary": 19.956,
+    "ascendc_us_summary": 8691.0,
+    "torch_us_summary": 173437.5
+  },
+  "mhc_post_cannbot": {
+    "speedup_summary": 8.86,
+    "ascendc_us_summary": 225.0,
+    "torch_us_summary": 1994.4939762353897
+  },
+  "MTPBlock_merge": {
+    "speedup_summary": 0.6442,
+    "ascendc_us_summary": 372409.718,
+    "torch_us_summary": 239912.0
+  },
+  "MTPBlock_cannbot": {},
+  "sparse_attn_merge": {
+    "speedup_summary": 0.1417,
+    "ascendc_us_summary": 1739544.99,
+    "torch_us_summary": 246545.7
+  },
+  "sparse_attn_cannbot": {
+    "speedup_summary": 0.1417,
+    "ascendc_us_summary": 1739544.99,
+    "torch_us_summary": 246545.7
+  },
+  "indexer_merge": {
+    "speedup_summary": 0.0463,
+    "ascendc_us_summary": 27496.0,
+    "torch_us_summary": 1272.33
+  },
+  "indexer_cannbot": {
+    "speedup_summary": 0.7411,
+    "ascendc_us_summary": 1755.2,
+    "torch_us_summary": 1327.0
+  }
+}

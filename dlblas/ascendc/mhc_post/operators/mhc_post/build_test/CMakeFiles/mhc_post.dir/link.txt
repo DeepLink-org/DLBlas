@@ -1,0 +1,1 @@
+/usr/local/Ascend/cann-9.0.0/bin/bisheng CMakeFiles/mhc_post.dir/op_host/mhc_post.asc.o CMakeFiles/mhc_post.dir/op_kernel/mhc_post_kernel.asc.o -o mhc_post  -ltiling_api -lregister -lplatform -lunified_dlog -ldl -lm -lgraph_base

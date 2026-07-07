@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "op_name": "engram_gate_w_reduce",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 8,
+    "passed_cases": 8
+  },
+  "perf_data": {
+    "ascend_us": 181.44,
+    "torch_npu_us": 87.75,
+    "speedup_vs_torch": 0.4984,
+    "ascend_vs_torch_ratio": 2.07,
+    "torch_us": 90.43
+  },
+  "review_score": 87,
+  "gen_iterations": 1,
+  "notes": "AscendC kernel is memory-bound (83.9% MTE2) with zero DMA/Compute overlap. Double Buffer pipeline (per DESIGN.md) not yet implemented, which would be the primary optimization path (estimated 30-50% improvement). PyTorch NPU benefits from optimized ATB/CANN backend operators."
+}

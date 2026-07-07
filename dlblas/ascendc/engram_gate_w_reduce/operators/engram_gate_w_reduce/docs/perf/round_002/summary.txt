@@ -1,0 +1,38 @@
+=== 上板性能统计摘要 (msprof) ===
+Op: engram_gate_w_reduce_kernel
+Type: engram_gate_w_reduce_kernel | TaskType: AI_VECTOR_CORE | Duration: 186.324us | BlockDim: 48 (mix=0)
+
+[注] msprof 的 op_summary 是 per-op 聚合值（不含逐核 min/avg/max）；
+     如需逐核数据请改用 msprof op (需要 msopprof 二进制)。
+
+--- Pipe ratios (主导核 = aiv) ---
+  aicore_time: 0.000us | aiv_time: 154.735us
+  aiv: vec=  5.10% | scalar=  5.10% | mte2= 83.90% | mte3=  0.60% | icache_miss=  1.00%
+
+--- 头开销 ---
+  Task Duration: 186.324us | 核最长耗时: 154.735us | 头开销: 31.589us (17.0%)
+
+--- Memory 带宽 (aic-metrics=Memory) ---
+  aiv main_mem read: 0.07 GB/s
+  aiv main_mem write: 0.00 GB/s
+  aiv UB read: 1.16 GB/s
+  aiv UB write: 1.73 GB/s
+
+--- MemoryUB ---
+  UB read (vector): 0.28 GB/s
+  UB write (vector): 0.17 GB/s
+
+--- 原始数据位置 ---
+  归档 CSV : /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/docs/perf/round_002/
+  原始 PROF: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/
+  按 aic-metrics 拆分的 op_summary_<Metric>.csv 均已复制到归档目录，
+  如需逐列查看可直接 Read。
+
+--- Metric 来源 ---
+  PipeUtilization        <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_PipeUtilization/PROF_000001_20260702063343879_04045569QNNIILDN/mindstudio_profiler_output/op_summary_20260702063347.csv
+  ArithmeticUtilization  <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_ArithmeticUtilization/PROF_000001_20260702063348911_04046066KKDLFJPH/mindstudio_profiler_output/op_summary_20260702063352.csv
+  Memory                 <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_Memory/PROF_000001_20260702063353942_04046386CPOKAFMM/mindstudio_profiler_output/op_summary_20260702063357.csv
+  MemoryL0               <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_MemoryL0/PROF_000001_20260702063358975_04047312KAAJKGQM/mindstudio_profiler_output/op_summary_20260702063402.csv
+  MemoryUB               <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_MemoryUB/PROF_000001_20260702063404004_04047629ACIBPLAP/mindstudio_profiler_output/op_summary_20260702063407.csv
+  L2Cache                <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_L2Cache/PROF_000001_20260702063409055_04048317PNJHIQNK/mindstudio_profiler_output/op_summary_20260702063412.csv
+  ResourceConflictRatio  <- /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_w_reduce/operators/engram_gate_w_reduce/msprof_output/PROF_GROUP_20260702_063338/PROF_ResourceConflictRatio/PROF_000001_20260702063414107_04048638HMLDAMIA/mindstudio_profiler_output/op_summary_20260702063418.csv

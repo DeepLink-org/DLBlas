@@ -1,0 +1,5 @@
+block_id,sub_block_id,aic_time(us),aic_total_cycles,aic_write_cache_hit,aic_write_cache_miss_allocate,aic_r0_read_cache_hit,aic_r0_read_cache_miss_allocate,aic_r1_read_cache_hit,aic_r1_read_cache_miss_allocate,aic_write_hit_rate(%),aic_read_hit_rate(%),aic_total_hit_rate(%),aiv_time(us),aiv_total_cycles,aiv_write_cache_hit,aiv_write_cache_miss_allocate,aiv_r0_read_cache_hit,aiv_r0_read_cache_miss_allocate,aiv_r1_read_cache_hit,aiv_r1_read_cache_miss_allocate,aiv_write_hit_rate(%),aiv_read_hit_rate(%),aiv_total_hit_rate(%),
+0,vector0,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,162.897781,293216,0,5121,1,40914,0,41009,0.000000,0.001221,0.001149,
+1,vector0,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,162.094452,291770,0,5121,1,41008,2,40913,0.000000,0.003662,0.003446,
+2,vector0,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,162.531113,292556,0,5121,0,40878,3,41043,0.000000,0.003662,0.003446,
+3,vector0,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,162.139999,291852,1,5120,3,41044,0,40877,0.019527,0.003662,0.004595,

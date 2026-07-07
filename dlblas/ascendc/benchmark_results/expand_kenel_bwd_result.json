@@ -1,0 +1,15 @@
+{
+  "op": "expand_kenel_bwd",
+  "geomean_speedup": 0,
+  "total": 1,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "error": "only FP16 supported | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_expand_kenel_bwd.py\", line 29, in <module>\n    tu=bench(lambda:m.forward(o_grad)); au=bench(lambda:torch.ops.npu.expand_kenel_bwd(o_n))\n  File \"/mnt/data01/zmz/workspace/12agent/wai",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 21.5,
+  "returncode": 0
+}

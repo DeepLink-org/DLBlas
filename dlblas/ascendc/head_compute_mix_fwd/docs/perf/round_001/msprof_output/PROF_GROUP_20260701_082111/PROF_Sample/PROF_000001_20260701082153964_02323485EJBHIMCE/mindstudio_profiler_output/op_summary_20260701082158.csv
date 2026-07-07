@@ -1,0 +1,2 @@
+Device_id,Model ID,Task ID,Stream ID,Op Name,OP Type,OP State,Task Type,Task Start Time(us),Task Duration(us),Task Wait Time(us),Block Num,Mix Block Num,HF32 Eligible,Input Shapes,Input Data Types,Input Formats,Output Shapes,Output Data Types,Output Formats,Context ID
+2,4294967295,0,3,head_compute_mix_fwd_kernel,head_compute_mix_fwd_kernel,dynamic,AI_VECTOR_CORE,1782894114305248.321	,56.001,0,48,0,NO,N/A,N/A,N/A,N/A,N/A,N/A,N/A

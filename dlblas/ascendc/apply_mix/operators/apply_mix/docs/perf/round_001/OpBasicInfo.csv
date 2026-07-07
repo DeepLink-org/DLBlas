@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+apply_mix_kernel,vector,501.250031,48,NA,6,3518702,1800,1800,

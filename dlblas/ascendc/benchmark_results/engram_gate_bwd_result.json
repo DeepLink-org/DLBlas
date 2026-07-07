@@ -1,0 +1,8 @@
+{
+  "op": "engram_gate_bwd",
+  "error": "no valid JSON. rc=-11",
+  "stdout": "",
+  "stderr": "Model.forward takes 6 args: ['self', 'grad_out', 'x_data', 'k_data', 'v_data', 'wh_data', 'we_data']\ngenerate_test_data returned 6 items",
+  "status": "ERROR",
+  "elapsed_s": 12.6
+}

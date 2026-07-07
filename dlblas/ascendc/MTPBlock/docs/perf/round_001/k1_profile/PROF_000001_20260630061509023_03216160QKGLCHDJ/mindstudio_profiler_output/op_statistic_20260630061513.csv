@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+6,k1_embed_fuse_kernel,MIX_AIC,1,167862.874,167862.874,167862.874,167862.874,100

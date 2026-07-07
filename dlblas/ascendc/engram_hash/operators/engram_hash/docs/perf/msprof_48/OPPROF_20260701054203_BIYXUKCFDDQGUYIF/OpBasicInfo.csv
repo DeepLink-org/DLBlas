@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+engram_hash_kernel,vector,1191.803833,48,NA,2,1358787,1800,1800,

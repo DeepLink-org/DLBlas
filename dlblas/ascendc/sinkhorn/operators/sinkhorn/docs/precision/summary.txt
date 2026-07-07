@@ -1,0 +1,86 @@
+# Sinkhorn Normalize -- Precision Acceptance Report (Step 6a)
+
+**Date**: 2026-07-02
+**Reviewer**: Independent Reviewer
+**Operator**: sinkhorn_normalize
+**Data Types Tested**: FP32 (only supported dtype)
+**Precision Standard**: Community Standard (MERE < 1.22e-4, MARE < 1.22e-3)
+
+---
+
+## Overall Status: FAIL
+
+The operator passes precision checks for the default configuration (repeat=10) but fails for all non-default repeat values due to a confirmed bug in the tiling attribute reading (repeat parameter not passed to kernel).
+
+---
+
+## Detailed Results
+
+### Configuration: repeat=10 (default)
+
+| dtype | shape | rtol (MERE) | atol (MARE) | max_abs_error | Status |
+|-------|-------|-------------|-------------|---------------|--------|
+| FP32 | [1, 1, 4, 4] | 1.39e-05 | 7.50e-05 | 1.29e-06 | PASS |
+| FP32 | [1, 4, 4, 4] | 8.26e-06 | 6.69e-05 | 1.55e-06 | PASS |
+| FP32 | [1, 128, 4, 4] | 7.13e-06 | 1.02e-04 | 5.29e-06 | PASS |
+| FP32 | [1, 512, 4, 4] | 7.17e-06 | 1.36e-04 | 6.05e-06 | PASS |
+| FP32 | [1, 1024, 4, 4] | 7.23e-06 | 1.09e-04 | 6.74e-06 | PASS |
+| FP32 | [1, 2048, 4, 4] | 7.25e-06 | 1.28e-04 | 6.73e-06 | PASS |
+
+**Verdict (repeat=10)**: PASS -- All shapes pass with significant margin.
+
+### Configuration: repeat != 10 (non-default)
+
+| dtype | shape | repeat | rtol (MERE) | atol (MARE) | Status |
+|-------|-------|--------|-------------|-------------|--------|
+| FP32 | [1, 1024, 4, 4] | 1 | 1.76e-01 | 1.92e+00 | **FAIL** |
+| FP32 | [1, 1024, 4, 4] | 5 | 2.36e-03 | 9.04e-02 | **FAIL** |
+| FP32 | [1, 1024, 4, 4] | 20 | 6.00e-05 | 1.17e-02 | **FAIL** |
+
+**Verdict (non-default repeat)**: FAIL -- Kernel uses repeat=10 regardless of parameter value.
+
+---
+
+## Root Cause Analysis
+
+### Problem Classification
+
+| Feature | Observation | Classification |
+|---------|-------------|----------------|
+| Output values | Non-zero, non-NaN, but wrong for non-default repeat | **Code bug** -- repeat parameter not propagated to kernel |
+| Error pattern | For repeat=1, NPU output is fully converged (10 iters) but golden is barely converged (1 iter) | Confirms kernel always uses 10 iterations |
+| Bug location | `op_host/arch22/sinkhorn_normalize_tiling.cpp`, line 91: `attrs->GetInt(0)` returns default value (10) rather than runtime attribute value | Tiling attribute reading mechanism issue |
+
+### Diagnostic Conclusion
+
+The `ADD_TO_LAUNCHER_LIST_AICORE` macro passes `OP_ATTR(eps, repeat)` as operator attributes. However, `context->GetAttrs()->GetInt(0)` in the tiling function retrieves the attribute from the operator definition's default values, not the runtime-overridden values. The kernel always sees `repeat=10` (the default from `sinkhorn_normalize_def.cpp`).
+
+### Recommended Fix
+
+1. Verify whether `context->GetAttrs()` returns runtime attributes or compile-time defaults
+2. If only defaults, use `context->GetOpAttr("repeat", repeat)` or `context->GetRuntimeAttr()`
+3. Alternatively, access attributes by name rather than per-type index
+
+---
+
+## Doubly Stochastic Property Verification (repeat=10)
+
+| Shape | Max Row Error | Max Col Error | Status |
+|-------|--------------|--------------|--------|
+| [1, 1024, 4, 4] | ~1e-5 | ~1e-5 | PASS |
+
+All output matrices satisfy the doubly stochastic property within tolerance for the default configuration.
+
+---
+
+## Summary
+
+| dtype | Total Cases | Passed | Failed | Overall |
+|-------|-------------|--------|--------|---------|
+| FP32 (default repeat=10) | 6 shapes | 6 | 0 | PASS |
+| FP32 (non-default repeat) | 3 configs | 0 | 3 | **FAIL** |
+| **Combined** | **9** | **6** | **3** | **FAIL** |
+
+**Precision Acceptance Status**: FAIL
+**Blocking Issue**: repeat parameter not functional (H-1 in REVIEW.md Round 2)
+**Estimated Fix Effort**: 0.5-1 day

@@ -1,0 +1,48 @@
+MTPBlock Performance Summary - Round 001
+========================================
+Date: 2026-06-30
+Platform: Ascend910B2 (DAV_2201), CANN 9.0.0
+Demo Shape: b=1, s=8, hc=4, d=512, vocab=1000
+
+Per-Kernel Execution Time (msprof, single-core):
+================================================
+| Kernel | Name         | Duration (us) | Duration (ms) | Task Type      | Scalar % | Vec % |
+|--------|-------------|:------------:|:------------:|----------------|:--------:|:-----:|
+| K1     | embed_fuse  | 167,862.87   | 167.86       | MIX_AIC        | 98.7     | 0.00  |
+| K2     | hc_pre      |   6,364.57   |   6.36       | AI_VECTOR_CORE | 99.2     | 0.02  |
+| K3     | attn_block  |  72,721.15   |  72.72       | MIX_AIC        | 99.1     | 0.00  |
+| K4     | hc_post     |   2,342.01   |   2.34       | AI_VECTOR_CORE | 99.8     | 0.00  |
+| K5     | moe_block   | 113,944.48   | 113.94       | MIX_AIC        | 99.6     | 0.00  |
+| K6     | mtp_head    |   9,174.64   |   9.17       | MIX_AIC        | 96.9     | 0.01  |
+|--------|-------------|:------------:|:------------:|----------------|:--------:|:-----:|
+| Total  | All 6       | 372,409.72   | 372.41       |                |          |       |
+
+Bottleneck Analysis:
+====================
+- ALL kernels are heavily scalar-bound (≥97% scalar time)
+- AscendC::Mul, AscendC::Exp, AscendC::Rsqrt contribute < 1% of total time
+- Main bottleneck: scalar GetValue/SetValue triple loops in MatMul dot products
+- K1 (168ms) and K5 (114ms) dominate due to largest MatMul operations
+- K4 (2.3ms) is fastest: simplest computation with no MatMul
+
+Root Cause:
+- All MatMul operations use scalar GetValue/SetValue loops instead of SIMD vector ops (AscendC::Mul + ReduceSum) or MatmulImpl
+- Weight rows are re-loaded from GM inside inner loops (no UB caching)
+- Demo shape (M=8, K=512) is small enough for scalar loops to work functionally but not performantly
+
+Recommended Optimizations (by impact):
+1. Replace scalar MatMul with SIMD vector dot product (AscendC::Mul + AscendC::ReduceSum) - 5-20x speedup expected
+2. Preload weight matrices into UB (avoid GM re-reads) - 2-5x speedup for K1/K2/K5/K6
+3. Integrate MatmulImpl for K1 e_proj/h_proj and K5 w1/w2/w3 - 10-50x speedup
+4. Enable Double Buffer for I/O queues (K1, K3, K5, K6) - pipeline overlap
+5. Multi-core parallelization on s-dimension - O(cores) speedup
+
+Precision Status:
+=================
+All 6 kernels pass precision verification (MARE < 7.81e-02):
+  K1: MARE=5.09e-03  PASS
+  K2: MARE=1.12e-03  PASS
+  K3: MARE=1.62e-02  PASS
+  K4: MARE=6.30e-04  PASS
+  K5: MARE=8.62e-04  PASS
+  K6: MARE=1.35e-03  PASS

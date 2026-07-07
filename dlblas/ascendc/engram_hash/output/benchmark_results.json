@@ -1,0 +1,89 @@
+{
+  "per_shape": [
+    {
+      "nt": 32,
+      "N": 3,
+      "L": 2,
+      "T": 8,
+      "W": 16,
+      "exact": true,
+      "torch_ms": 0.6216,
+      "ascend_ms": 0.0879,
+      "speedup": 7.0689
+    },
+    {
+      "nt": 256,
+      "N": 3,
+      "L": 2,
+      "T": 8,
+      "W": 16,
+      "exact": true,
+      "torch_ms": 0.6161,
+      "ascend_ms": 0.0876,
+      "speedup": 7.0306
+    },
+    {
+      "nt": 1024,
+      "N": 3,
+      "L": 2,
+      "T": 8,
+      "W": 16,
+      "exact": true,
+      "torch_ms": 0.6122,
+      "ascend_ms": 0.0887,
+      "speedup": 6.9033
+    },
+    {
+      "nt": 4096,
+      "N": 3,
+      "L": 2,
+      "T": 8,
+      "W": 16,
+      "exact": true,
+      "torch_ms": 0.6577,
+      "ascend_ms": 0.096,
+      "speedup": 6.8531
+    },
+    {
+      "nt": 65536,
+      "N": 3,
+      "L": 2,
+      "T": 8,
+      "W": 16,
+      "exact": true,
+      "torch_ms": 1.5544,
+      "ascend_ms": 1.1947,
+      "speedup": 1.3011
+    },
+    {
+      "nt": 4096,
+      "N": 5,
+      "L": 4,
+      "T": 16,
+      "W": 64,
+      "exact": true,
+      "torch_ms": 1.7616,
+      "ascend_ms": 0.5648,
+      "speedup": 3.119
+    },
+    {
+      "nt": 256,
+      "N": 5,
+      "L": 4,
+      "T": 16,
+      "W": 64,
+      "exact": true,
+      "torch_ms": 1.8503,
+      "ascend_ms": 0.0955,
+      "speedup": 19.3842
+    }
+  ],
+  "geomean_speedup_vs_torch": 5.6551,
+  "all_bit_exact": true,
+  "core_scaling_wall_ms": {
+    "1": 1634.4,
+    "8": 1642.18,
+    "24": 1636.52,
+    "48": 1635.41
+  }
+}

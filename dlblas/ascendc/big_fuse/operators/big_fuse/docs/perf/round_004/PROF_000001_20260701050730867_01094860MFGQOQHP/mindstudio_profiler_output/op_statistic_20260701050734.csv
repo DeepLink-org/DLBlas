@@ -1,0 +1,4 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+5,big_fuse_k2_kernel,AI_VECTOR_CORE,1,1065.901,1065.901,1065.901,1065.901,90.872
+5,big_fuse_k1_kernel,AI_CORE,1,88.802,88.802,88.802,88.802,7.571
+5,big_fuse_k0_kernel,AI_VECTOR_CORE,1,18.261,18.261,18.261,18.261,1.557

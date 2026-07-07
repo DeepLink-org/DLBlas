@@ -1,0 +1,152 @@
+2026-07-01 02:38:58 [INFO] [4110425] [4110425] [time_logger.h:32] DeviceContextEntry  start
+2026-07-01 02:38:58 [INFO] [4110425] [4110427] [parser.cpp:124] notify: no files pattern, don't need to parse
+2026-07-01 02:38:58 [WARN] [4110425] [4110428] [load_stream_expand_spec_data.cpp:43] There is no /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/..///host//sqlite/stream_expand_spec.db
+2026-07-01 02:38:58 [INFO] [4110425] [4110427] [freq_parser.cpp:71] FreqProfileData structCount is : 0
+2026-07-01 02:38:58 [INFO] [4110425] [4110427] [freq_parser.cpp:99] Freq.data parser is completed, begin to save data into dataInventory!
+2026-07-01 02:38:58 [INFO] [4110425] [4110427] [parser.cpp:181] Parser is completed!
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [parser.cpp:55] loop: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/data/ts_track.data.6.slice_0, file size: 80
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [parser.cpp:58] total size: 80
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [parser.cpp:163] Parse filePrefix is: ts_track., the number of files is: 1, and the total size of all files is: 80
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [parser.cpp:91] Data has been read to the memory successfully!
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [ts_track_parser.cpp:69] TsTrack structCount: 2
+2026-07-01 02:38:58 [INFO] [4110425] [4110429] [parser.cpp:181] Parser is completed!
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[0]Release Data Types: 
+2026-07-01 02:38:58 [INFO] [4110425] [4110431] [freq_persistence.cpp:50] Start to process /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/sqlite/freq.db.
+2026-07-01 02:38:58 [INFO] [4110425] [4110432] [step_trace_process.cpp:201] Start to process step trace data
+2026-07-01 02:38:58 [INFO] [4110425] [4110431] [freq_persistence.cpp:54] The freq is default data no need to persistence!
+2026-07-01 02:38:58 [WARN] [4110425] [4110432] [step_trace_process.cpp:204] stepData is empty
+2026-07-01 02:38:58 [INFO] [4110425] [4110433] [parser.cpp:124] notify: no files pattern, don't need to parse
+2026-07-01 02:38:58 [INFO] [4110425] [4110433] [ffts_profile_parser.cpp:83] FftsProfileData structCount is : 0
+2026-07-01 02:38:58 [INFO] [4110425] [4110433] [ffts_profile_parser.cpp:97] Ffts_profile.data parser is completed, begin to save data into dataInventory!
+2026-07-01 02:38:58 [INFO] [4110425] [4110433] [parser.cpp:181] Parser is completed!
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [parser.cpp:55] loop: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/data/stars_soc.data.6.slice_0, file size: 384
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [parser.cpp:58] total size: 384
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [parser.cpp:163] Parse filePrefix is: stars_soc., the number of files is: 1, and the total size of all files is: 384
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [parser.cpp:91] Data has been read to the memory successfully!
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [stars_soc_parser.cpp:81] StarsSoc structCount: 6
+2026-07-01 02:38:58 [INFO] [4110425] [4110434] [parser.cpp:181] Parser is completed!
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[1]Release Data Types: 
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [time_logger.h:32] LogModeling::SplitLogGroups  start
+2026-07-01 02:38:58 [INFO] [4110425] [4110436] [acc_pmu_persistence.cpp:61] Start to process /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/sqlite/acc_pmu.db.
+2026-07-01 02:38:58 [INFO] [4110425] [4110437] [pmu_modeling.cpp:52] PMU modeling has done!
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [time_logger.h:39] LogModeling::SplitLogGroups  end, cost time = 0 ms
+2026-07-01 02:38:58 [INFO] [4110425] [4110436] [acc_pmu_persistence.cpp:65] There is no acc pmu data don't need to persistence!
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:150] HalLogData size:6
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:151] acsqS stream:1, total:3
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:152] acsqE stream:1, total:3
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:153] fftsS stream:0, total:0
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:154] fftsE stream:0, total:0
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [time_logger.h:32] LogModeling::AddToDeviceTask  start
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:224] ACSQ matched count:3
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [log_modeling.cpp:234] FFTS matched count:0
+2026-07-01 02:38:58 [INFO] [4110425] [4110435] [time_logger.h:39] LogModeling::AddToDeviceTask  end, cost time = 0 ms
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[2]Release Data Types: St6vectorIN8Analysis6Domain10HalLogDataESaIS2_EE St6vectorIN8Analysis6Domain12HalTrackDataESaIS2_EE 
+2026-07-01 02:38:58 [INFO] [4110425] [4110438] [db_runner.h:79] Start query data
+2026-07-01 02:38:58 [INFO] [4110425] [4110438] [db_runner.h:90] Query data success: SELECT stream_id, request_id, batch_id, task_id, context_ids, model_id, task_type, kernel_name, connection_id, device_id FROM HostTask WHERE device_id IN (6)
+2026-07-01 02:38:58 [WARN] [4110425] [4110438] [load_host_data.cpp:52] There is no /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/..///host//sqlite/ge_info.db
+2026-07-01 02:38:58 [WARN] [4110425] [4110438] [load_host_data.cpp:52] There is no /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/..///host//sqlite/hccl.db
+2026-07-01 02:38:58 [WARN] [4110425] [4110438] [load_host_data.cpp:52] There is no /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/..///host//sqlite/hccl.db
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[3]Release Data Types: 
+2026-07-01 02:38:58 [WARN] [4110425] [4110440] [pmu_association.cpp:225] There is no deviceTask or PMUData, don't need to associate!
+2026-07-01 02:38:58 [INFO] [4110425] [4110439] [ascend_task_association.cpp:188] Found 2 host device matched task, generate 3 topDownTask
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[4]Release Data Types: St3mapIN8Analysis6Domain6TaskIdESt6vectorINS1_8HostTaskESaIS4_EESt4lessIS2_ESaISt4pairIKS2_S6_EEE St6vectorIN8Analysis6Domain10HalPmuDataESaIS2_EE St6vectorIN8Analysis6Domain14HalFreqLpmDataESaIS2_EE 
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:57] Start Hccl calculator ProcessEntry.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:87] Start Hccl calculator GetHcclData.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:116] Start merge hccl task and ascend task.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:215] Start merge hccl op data.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:284] Start UpdateHcclOpNameByGroupName.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:308] Start UpdateHcclBandwidth.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:384] Start GetHcclStatisticsData.
+2026-07-01 02:38:58 [WARN] [4110425] [4110441] [hccl_calculator.cpp:386] No op type in hccl data.
+2026-07-01 02:38:58 [INFO] [4110425] [4110441] [hccl_calculator.cpp:438] Start inject hccl data.
+2026-07-01 02:38:58 [INFO] [4110425] [4110442] [metric_summary_persistence.cpp:277] Start to process /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/sqlite/metric_summary.db.
+2026-07-01 02:38:58 [INFO] [4110425] [4110442] [db_runner.cpp:53] Start create MetricSummary
+2026-07-01 02:38:58 [INFO] [4110425] [4110442] [db_runner.cpp:66] create MetricSummary success
+2026-07-01 02:38:58 [INFO] [4110425] [4110442] [metric_summary_persistence.cpp:285] Process MetricSummary done!
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[5]Release Data Types: St3mapIN8Analysis6Domain6TaskIdESt6vectorINS1_10DeviceTaskESaIS4_EESt4lessIS2_ESaISt4pairIKS2_S6_EEE St6vectorIN8Analysis6Domain8HcclTaskESaIS2_EE 
+2026-07-01 02:38:58 [INFO] [4110425] [4110444] [device_hccl_persistence.cpp:133] Start to dump device hccl data.
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [ascend_task_persistence.cpp:76] Start to process /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6/sqlite/ascend_task.db.
+2026-07-01 02:38:58 [WARN] [4110425] [4110444] [device_hccl_persistence.cpp:52] Hccl op data is empty.
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [persistence_utils.h:43] Processor Save AscendTask Data.
+2026-07-01 02:38:58 [WARN] [4110425] [4110444] [device_hccl_persistence.cpp:80] Hccl task data is empty.
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [db_runner.cpp:53] Start create AscendTask
+2026-07-01 02:38:58 [WARN] [4110425] [4110444] [device_hccl_persistence.cpp:112] Hccl statistics data is empty.
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [db_runner.cpp:66] create AscendTask success
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [db_runner.h:61] Start insert data to AscendTask
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [db_runner.h:72] insert data to AscendTask success
+2026-07-01 02:38:58 [INFO] [4110425] [4110443] [ascend_task_persistence.cpp:85] Process AscendTask done!
+2026-07-01 02:38:58 [INFO] [4110425] [4110426] [process_control.cpp:193] Level[6]Release Data Types: St6vectorI11TopDownTaskSaIS0_EE St6vectorIN8Analysis6Domain14DeviceHcclTaskESaIS2_EE St6vectorIN8Analysis6Domain14HcclStatisticsESaIS2_EE St6vectorIN8Analysis6Domain6HcclOpESaIS2_EE 
+2026-07-01 02:38:58 [INFO] [4110425] [4110425] [device_context.cpp:139] stat info: ===============================================================================
+deivce file in /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/msprof_output/PROF_GROUP_20260701_023840/PROF_Memory/PROF_000001_20260701023856323_04110252IBGJNKKC/device_6
+chip id: 5, process levels:7
+-------------------------------------------------------------------------------
+level[0] generalResult:true, process num:4
+	process0[FreqParser]:return: 0x0, mandatory:true
+		dependProcessNames: 
+		startTime:2247350019560 us, duration: 98 us
+	process1[LoadStreamExpandSpec]:return: 0x0, mandatory:true
+		dependProcessNames: 
+		startTime:2247350019586 us, duration: 53 us
+	process2[TsTrackParser]:return: 0x0, mandatory:true
+		dependProcessNames: 
+		startTime:2247350019640 us, duration: 269 us
+	process3[DeviceTaskProcess]:return: 0x0, mandatory:true
+		dependProcessNames: 
+		startTime:2247350019682 us, duration: 43 us
+-------------------------------------------------------------------------------
+level[1] generalResult:true, process num:4
+	process0[FreqPersistence]:return: 0x0, mandatory:true
+		dependProcessNames: FreqParser, 
+		startTime:2247350020240 us, duration: 57 us
+	process1[StarsSocParser]:return: 0x0, mandatory:true
+		dependProcessNames: LoadStreamExpandSpec, 
+		startTime:2247350020245 us, duration: 337 us
+	process2[StepTraceProcess]:return: 0x0, mandatory:false
+		dependProcessNames: TsTrackParser, 
+		startTime:2247350020270 us, duration: 27 us
+	process3[FftsProfileParser]:return: 0x0, mandatory:true
+		dependProcessNames: LoadStreamExpandSpec, 
+		startTime:2247350020274 us, duration: 106 us
+-------------------------------------------------------------------------------
+level[2] generalResult:true, process num:3
+	process0[Domain::LogModeling]:return: 0x0, mandatory:true
+		dependProcessNames: StarsSocParser, TsTrackParser, 
+		startTime:2247350020797 us, duration: 141 us
+	process1[AccPmuPersistence]:return: 0x0, mandatory:true
+		dependProcessNames: StarsSocParser, 
+		startTime:2247350020808 us, duration: 66 us
+	process2[PmuModeling]:return: 0x0, mandatory:true
+		dependProcessNames: FftsProfileParser, TsTrackParser, 
+		startTime:2247350020820 us, duration: 36 us
+-------------------------------------------------------------------------------
+level[3] generalResult:true, process num:1
+	process0[LoadHostData]:return: 0x0, mandatory:false
+		dependProcessNames: Domain::LogModeling, 
+		startTime:2247350021085 us, duration: 722 us
+-------------------------------------------------------------------------------
+level[4] generalResult:true, process num:2
+	process0[PmuAssociation]:return: 0x0, mandatory:true
+		dependProcessNames: LoadHostData, PmuModeling, 
+		startTime:2247350021976 us, duration: 30 us
+	process1[AscendTaskAssociation]:return: 0x0, mandatory:true
+		dependProcessNames: LoadHostData, 
+		startTime:2247350021987 us, duration: 96 us
+-------------------------------------------------------------------------------
+level[5] generalResult:true, process num:2
+	process0[HcclCalculator]:return: 0x0, mandatory:true
+		dependProcessNames: AscendTaskAssociation, LoadHostData, 
+		startTime:2247350022241 us, duration: 79 us
+	process1[MetricSummaryPersistence]:return: 0x0, mandatory:false
+		dependProcessNames: PmuAssociation, 
+		startTime:2247350022254 us, duration: 1007 us
+-------------------------------------------------------------------------------
+level[6] generalResult:true, process num:2
+	process0[AscendTaskPersistence]:return: 0x0, mandatory:true
+		dependProcessNames: HcclCalculator, 
+		startTime:2247350023524 us, duration: 1065 us
+	process1[DeviceHcclPersistence]:return: 0x0, mandatory:true
+		dependProcessNames: HcclCalculator, 
+		startTime:2247350023534 us, duration: 58 us
+
+
+2026-07-01 02:38:58 [INFO] [4110425] [4110425] [time_logger.h:39] DeviceContextEntry  end, cost time = 6 ms

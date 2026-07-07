@@ -1,0 +1,59 @@
+# act_quant_kernel 性能采集 (Round 002)
+
+## 测试配置
+- 芯片: Ascend910B2 (DAV_2201)
+- 输入: 65536 elements, bf16, group_size=128
+- 分组数: 512 groups
+- 使用核数: 47 VectorCores
+- 每核分组: 11, 每tile分组: 11
+
+## 关键指标
+| 指标 | 值 |
+|------|-----|
+| Task Duration | 49.54 us |
+| Block Dim | 47 |
+| Rated Freq | 1800 MHz |
+| AIV Time | 47.1-48.6 us (per core) |
+
+## 流水线时间分布 (per core average)
+| 流水线 | 耗时 | 占比 |
+|--------|------|------|
+| AIV Vector | 1.48 us | 3.1% |
+| AIV Scalar | 46.5 us | 97.6% |
+| AIV MTE2 | 0.3 us | 0.6% |
+| AIV MTE3 | 0.25 us | 0.5% |
+
+## Scalar 时间细分
+| 类型 | 耗时 |
+|------|------|
+| Scalar Single Issue | 8.6 us |
+| Scalar Dual Issue | 14.7 us |
+
+## 瓶颈分析
+- **主要瓶颈: Scalar 计算 (97.6%)**
+  - 根本原因: fp32→fp8_e4m3fn 转换使用逐元素标量循环 (GetValue/SetValue)
+  - Vector 利用率仅 3.1%，远低于可接受水平
+  - MTE2/MTE3 带宽利用率低于 80%
+  - 零 I-Cache Miss (优秀)
+
+## 与 Round 001 对比
+| 指标 | Round 001 | Round 002 | 变化 |
+|------|-----------|-----------|------|
+| Task Duration | 66.92 us | 49.54 us | -26.0% |
+| Scalar Time | 53.27 us | 46.5 us | -12.7% |
+| Vector Time | 1.47 us | 1.48 us | +0.7% |
+| MTE2 Time | 0.89 us | 0.30 us | -66.3% |
+
+注：Round 001 和 Round 002 运行在不同 NPU 设备上，差异可能来自：
+1. 设备间个体差异
+2. 随机数据导致的 warm-up 效果不同
+3. 系统负载不同
+
+## 优化方向
+1. **向量化 fp8 转换**: 若 CANN 后续版本支持 DAV_2201 上的 fp8 Cast，可直接替换
+2. **查表法**: 用预计算查找表替代逐元素转换
+3. **DAV_3510 迁移**: 该架构原生支持硬件 fp8 Cast API
+
+## 结论
+当前性能瓶颈明确且可预期（DAV_2201 无硬件 fp8 Cast）。kernel 功能正确，
+精度达标（1-ULP），多核并行有效。建议在 DAV_3510 平台上重新评估性能。

@@ -1,0 +1,8 @@
+10000_0:node_basic_info
+10000_1:tensor_info
+10000_2:fusion_op_info
+10000_4:context_id_info
+10000_5:launch
+10000_6:task_memory_info
+10000_9:node_attr_info
+10000_11:static_op_mem

@@ -1,0 +1,24 @@
+**精度验收状态**: PASS
+
+**验收日期**: 2026-07-02 (Round 1)
+**验收标准**: bf16 (rtol=1e-2, atol=1e-2), fp32 scalar outputs (rtol=1e-5, atol=1e-5)
+**测试方法**: 独立多 shape 精度测试，Kernel vs CPU golden (fp32 reference)
+**覆盖率**: 8 个 (dtype, shape) 组合（7 有效 + 1 UB 溢出保护）
+
+| # | num_tokens | hc_mult | hidden_size | dtype | bf16 max_abs_err | bf16 max_rel_err | raw_dot max_abs | gate_score max_abs | rstd_x max_abs | 达标状态 | 备注 |
+|---|------------|---------|-------------|-------|------------------|------------------|-----------------|-------------------|----------------|---------|------|
+| TC0 | 2 | 2 | 16 | bf16 | 0.00e+00 | 0.00e+00 | 2.38e-07 | 0.00e+00 | 0.00e+00 | PASS | Level 0 基础 |
+| TC1 | 2 | 2 | 256 | bf16 | 0.00e+00 | 0.00e+00 | 2.86e-06 | 1.19e-07 | 0.00e+00 | PASS | Level 0 |
+| TC2 | 32 | 4 | 1024 | bf16 | 7.81e-03 | 7.81e-03 | 1.53e-05 | 1.79e-07 | 1.19e-07 | PASS | Level 1 典型 |
+| TC3 | 32 | 4 | 4096 | bf16 | 2.44e-04 | 1.51e-02 | 3.81e-05 | 4.77e-07 | 2.38e-07 | PASS | Level 1 基准 |
+| TC4 | 1 | 4 | 4096 | bf16 | 5.96e-08 | 1.58e-02 | 6.10e-05 | 1.49e-07 | 1.19e-07 | PASS | 边界: single_token |
+| TC5 | 8 | 1 | 4096 | bf16 | 3.81e-06 | 6.90e-03 | 1.53e-05 | 2.98e-07 | 1.19e-07 | PASS | 边界: single_hc |
+| TC6 | 8 | 4 | 512 | bf16 | 3.81e-06 | 6.41e-03 | 8.82e-06 | 4.17e-07 | 1.19e-07 | PASS | 边界: small_hs |
+| TC7 | 4 | 4 | 4097 | bf16 | 7.81e-03 | 7.69e-03 | 2.48e-05 | 1.19e-07 | 1.19e-07 | PASS | **Round 0 失败 → Round 1 修复** |
+| TC8 | 4 | 4 | 8192 | bf16 | — | — | — | — | — | 正确拒绝 | UB 溢出保护生效 |
+
+**Round 0 → Round 1 修复验证**:
+- TC7 (hidden_size=4097): Round 0 时 bf16 max_abs_err=4.94 (FAIL) → Round 1 修复为 7.81e-03 (PASS)。根因: hidden_size_align 在 kernel 中正确使用 + padding 区域显式清零。
+- TC8 (hidden_size=8192): Round 0 时 kernel 运行导致 UB 溢出 → Round 1 Host 侧正确拒绝执行。
+
+**判定**: 全部 7 个有效用例通过精度验证，TC8 溢出保护正确触发。精度验收状态为 PASS。

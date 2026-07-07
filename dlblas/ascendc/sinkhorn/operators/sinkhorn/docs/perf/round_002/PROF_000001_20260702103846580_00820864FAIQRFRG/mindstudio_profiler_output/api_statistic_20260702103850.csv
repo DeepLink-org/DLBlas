@@ -1,0 +1,17 @@
+Device_id,Level,API Name,Time(us),Count,Avg(us),Min(us),Max(us),Variance
+host,acl,SinkhornNormalize_Tiling,52.81,2,26.405,1.39,51.42,625.75
+host,acl,aclnnSinkhornNormalize,545.75,1,545.75,545.75,545.75,0
+host,acl,aclnnSinkhornNormalizeGetWorkspaceSize,491945.54,1,491945.54,491945.54,491945.54,0
+host,acl,aclrtBinaryLoadFromData,58.93,1,58.93,58.93,58.93,0
+host,acl,aclrtCreateStream,553.86,1,553.86,553.86,553.86,0
+host,acl,aclrtCtxGetSysParamOpt,9.75,3,3.25,0.51,6.17,5.355
+host,acl,aclrtDestroyStream,11152.69,1,11152.69,11152.69,11152.69,0
+host,acl,aclrtFree,19.7,3,6.567,3.59,11.98,14.701
+host,acl,aclrtGetResInCurrentThread,5.48,2,2.74,0.32,5.16,5.856
+host,acl,aclrtGetStreamAttribute,1.3,1,1.3,1.3,1.3,0
+host,acl,aclrtLaunchKernelWithHostArgs,85.19,1,85.19,85.19,85.19,0
+host,acl,aclrtMalloc,51.56,3,17.187,2.64,38.51,237.404
+host,acl,aclrtMemcpy,46.72,2,23.36,22.98,23.74,0.144
+host,acl,aclrtResetDevice,323713.25,1,323713.25,323713.25,323713.25,0
+host,acl,aclrtSynchronizeStream,238.16,1,238.16,238.16,238.16,0
+host,node,launch,349.9,1,349.9,349.9,349.9,0

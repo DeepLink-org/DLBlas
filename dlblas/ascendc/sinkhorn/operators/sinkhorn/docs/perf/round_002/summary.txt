@@ -1,0 +1,25 @@
+Sinkhorn Normalize Performance Summary
+======================================
+Date: 2026-07-02
+Round: 002 (post H-1 repeat bug fix, H-2 reverted)
+Device: Ascend 910B2 (DAV_2201), NPU 7
+CANN: 9.0.0
+
+Kernel Performance:
+  Task Duration:    263.5 us
+  AIV Total Time:   254.6 us
+  AIV Vector:        66.8 us (26.2%)
+  AIV Scalar:       170.6 us (67.0%)
+  AIV MTE2:           1.6 us (0.6%)
+  AIV MTE3:           0.4 us (0.1%)
+  AIV ICache Miss:   0.003
+  Block Num:         48
+
+Comparison with Round 001 (baseline):
+  Kernel time: 266.9 us -> 263.5 us (within noise, unchanged)
+  Scalar overhead remains at 66-67%
+
+Changes from baseline:
+  - H-1 fix: GetInt(0) -> GetInt(1) in tiling (host-side, no kernel impact)
+  - H-2 attempt: operator[] reverted (breaks kernel on CANN 9.0.0)
+  - Kernel binary unchanged

@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_vfy/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

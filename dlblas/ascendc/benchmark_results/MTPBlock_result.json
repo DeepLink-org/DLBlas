@@ -1,0 +1,15 @@
+{
+  "op": "MTPBlock",
+  "geomean_speedup": 0,
+  "total": 1,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "error": "matmul_implement_npu:build/CMakeFiles/torch_npu.dir/compiler_depend.ts:92 NPU function error: call aclnnMatmul failed, error code is 161002\n[ERROR] 2026-07-03-08:12:39 (PID:2246884, Device:0, RankID:-1) ERR00100 PTA call acl api failed.\n[PID: 2246884] 2026-07-03-08:12:39.337.474 AclNN_Parameter_Error(EZ1001): The k-axis of the two inputs are different [2, 1024, 4, 1280], [4, 4]\n | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_MTPBlock.py\", line 38, in <module>\n    tu=bench(tr); au=bench(lambda:torch.ops.mtpblock.hc_post(x_n,res_n,post_n,comb_n))\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merg",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 14.8,
+  "returncode": 0
+}

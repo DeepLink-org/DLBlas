@@ -1,0 +1,49 @@
+=== 上板性能统计摘要 ===
+Op: expand_kenel_bwd_kernel | Type: vector | Duration: 163.483276us | BlockDim: 4 | Freq: 1800/1800
+
+--- PipeUtilization (4 cores, prefix=aiv) ---
+                                  min        avg        max
+  aiv_time(us)               162.09     162.42     162.90
+  vec_ratio%                  40.87      40.99      41.07
+  scalar_ratio%               66.77      66.97      67.14
+  mte2_ratio%                 96.62      96.94      97.26
+  mte3_ratio%                 45.24      45.90      46.27
+  mte2_active_bw               61.8       62.0       62.2    (GB/s)
+  mte3_active_bw               32.5       32.8       33.1    (GB/s)
+
+--- SCALAR 子类耗时 (avg) ---
+  single: 34.30us | dual: 31.70us | vec_stall: 53.17us | wait_ib: 0.13us
+
+--- 头开销 ---
+  Task Duration: 163.483276us | 最长核: 162.90us | 头开销: 0.59us (0.4%)
+
+--- Memory ---
+  GM→UB: 40960.0KB total (10240.0KB/core), BW usage: 27.32%
+  UB→GM: 10240.0KB total (2560.0KB/core), BW usage: 8.05%
+  主存读取: 40962.0KB total
+  主存写入: 10240.5KB total
+  Avg MTE2 transfer: 5.00KB (8196 instructions total)
+  GM→UB avg BW: 60.13 GB/s
+  UB→GM avg BW: 15.03 GB/s
+
+--- MemoryUB ---
+  UB read BW (vector): avg=105.2 GB/s
+  UB write BW (vector): avg=60.1 GB/s
+
+--- L2Cache ---
+  total_hit: avg=0.0% (min=0.0%, max=0.0%)
+  read_hit: avg=0.0% (min=0.0%, max=0.0%)
+  write_hit: avg=0.0% (min=0.0%, max=0.0%)
+  write cache: hit=1 miss=20483
+
+--- ResourceConflict ---
+  vec_total_cflt: 12.61% | bankgroup_cflt: 11.56% | bank_cflt: 1.05% | resc_cflt: 0.00% | mte_cflt: 0.00%
+  vec_wait: 65.38% | mte2_wait: 98.26% | mte3_wait: 99.05%
+
+--- ArithmeticUtilization ---
+  vec_fp32: 34.2% | vec_misc: 6.8%
+  vec_fops: 2883712/core
+
+--- 原始数据位置 ---
+  CSV 文件: /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/docs/perf/round_003/
+  如需逐核详情，请 Read 对应 CSV 文件。

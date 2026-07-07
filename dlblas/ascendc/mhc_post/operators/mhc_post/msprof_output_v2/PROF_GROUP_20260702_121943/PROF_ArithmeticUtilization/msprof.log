@@ -1,0 +1,51 @@
+[INFO] Start profiling....
+Step 1: aclInit
+Step 2: aclrtSetDevice
+Available device count: 1
+Step 3: aclrtGetDeviceInfo
+Shape: n0=2, n1=4096, h=1280. Using 20 cores (available: 48)
+KernelCall: start
+KernelCall: alloc input 0, size=20971520
+[ERROR]  file size 128 != expected size 20971520
+KernelCall: alloc input 1, size=83886080
+[ERROR]  file size 512 != expected size 83886080
+KernelCall: alloc input 2, size=131072
+[ERROR]  file size 16 != expected size 131072
+KernelCall: alloc input 3, size=524288
+[ERROR]  file size 64 != expected size 524288
+KernelCall: alloc output 0, size=83886080
+KernelCall: compute tiling
+KernelCall: launching kernel with 20 blocks
+KernelCall: waiting for sync
+KernelCall: sync done
+MHC Post kernel completed successfully.
+[INFO] Start export data in PROF_000001_20260702121954638_01174683IQFEHLML.
+Thu 02 Jul 2026 12:19:56 [WARNING] [MSVP] [1174758] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Thu 02 Jul 2026 12:19:56 [INFO] [MSVP] [1174764] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/host" ...
+Thu 02 Jul 2026 12:19:56 [INFO] [MSVP] [1174764] msprof_common.py: It may take few minutes, please be patient ...
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174764] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/host" finished.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174764] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3" ...
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174764] msprof_common.py: It may take few minutes, please be patient ...
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174764] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3" finished.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174764] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3.
+Thu 02 Jul 2026 12:19:57 [WARNING] [MSVP] [1174933] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174939] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/host" has been analyzed. Parsing phase will be skipped.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174939] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3" has been analyzed. Parsing phase will be skipped.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174939] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3.
+Thu 02 Jul 2026 12:19:57 [INFO] [MSVP] [1174939] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/host"
+Thu 02 Jul 2026 12:19:58 [INFO] [MSVP] [1174939] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3.
+Thu 02 Jul 2026 12:19:58 [INFO] [MSVP] [1174939] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/device_3"
+Thu 02 Jul 2026 12:19:58 [INFO] [MSVP] [1174939] msprof_common.py: Start exporting summary output_file.
+Thu 02 Jul 2026 12:19:58 [INFO] [MSVP] [1174939] msprof_common.py: End exporting summary output_file.The file is stored in the /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260702121954638_01174683IQFEHLML done.
+[INFO] Start query data in PROF_000001_20260702121954638_01174683IQFEHLML.
+Thu 02 Jul 2026 12:19:58 [WARNING] [MSVP] [1174981] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-07-02 12:19:54.482083	N/A     	N/A             	N/A               	-1     	
+
+NA      	3        	device_3	2026-07-02 12:19:54.485879	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260702121954638_01174683IQFEHLML done.
+[INFO] Profiling finished.
+[INFO] Process profiling data complete. Data is saved in /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/msprof_output_v2/PROF_GROUP_20260702_121943/PROF_ArithmeticUtilization/PROF_000001_20260702121954638_01174683IQFEHLML

@@ -1,0 +1,2 @@
+Device_id,Model ID,Task ID,Stream ID,Op Name,OP Type,OP State,Task Type,Task Start Time(us),Task Duration(us),Task Wait Time(us),Block Num,Mix Block Num,HF32 Eligible,Input Shapes,Input Data Types,Input Formats,Output Shapes,Output Data Types,Output Formats,Context ID
+3,4294967295,0,3,engram_gate_w_reduce_kernel,engram_gate_w_reduce_kernel,dynamic,AI_VECTOR_CORE,1782974060443218.480	,187.644,0,48,0,NO,N/A,N/A,N/A,N/A,N/A,N/A,N/A

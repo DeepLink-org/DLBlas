@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+big_fuse_k1_kernel,cube,55.621113,8,NA,5,82339,1800,1800,

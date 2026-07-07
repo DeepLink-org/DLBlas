@@ -1,0 +1,15 @@
+{
+  "op": "big_fuse",
+  "geomean_speedup": 0,
+  "total": 1,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "default",
+      "error": "list index out of range | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_big_fuse.py\", line 33, in <module>\n    fn_n,ms_n,mb_n = data[1].npu(),data[2].npu(),data[3].npu()\nIndexError: list index out of range\n",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 27.4,
+  "returncode": 0
+}

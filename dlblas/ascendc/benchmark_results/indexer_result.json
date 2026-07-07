@@ -1,0 +1,8 @@
+{
+  "op": "indexer",
+  "geomean_speedup": null,
+  "total": 0,
+  "passed": 0,
+  "shapes": [],
+  "note": "No AscendC .so. indexer uses torch.cuda - incompatible with NPU."
+}

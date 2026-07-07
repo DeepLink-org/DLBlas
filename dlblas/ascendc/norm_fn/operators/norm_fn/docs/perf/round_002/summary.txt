@@ -1,0 +1,52 @@
+=== 上板性能统计摘要 ===
+Op: norm_fn_kernel | Type: vector | Duration: 377.647552us | BlockDim: 1 | Freq: 1800/1800
+
+--- PipeUtilization (1 cores, prefix=aiv) ---
+                                  min        avg        max
+  aiv_time(us)               377.06     377.06     377.06
+  vec_ratio%                  58.72      58.72      58.72
+  scalar_ratio%               46.68      46.68      46.68
+  mte2_ratio%                  7.44       7.44       7.44
+  mte3_ratio%                  0.06       0.06       0.06
+  icache_miss%                 0.13       0.13       0.13
+  mte2_active_bw               21.4       21.4       21.4    (GB/s)
+  mte3_active_bw                4.9        4.9        4.9    (GB/s)
+
+--- SCALAR 子类耗时 (avg) ---
+  single: 40.54us | dual: 46.81us | wait: 191.92us | vec_stall: 30.01us | wait_ib: 2.91us
+
+--- 头开销 ---
+  Task Duration: 377.647552us | 最长核: 377.06us | 头开销: 0.59us (0.2%)
+
+--- Memory ---
+  GM→UB: 630.0KB total (630.0KB/core), BW usage: 0.72%
+  UB→GM: 1.2KB total (1.2KB/core), BW usage: 0.00%
+  主存读取: 636.4KB total
+  主存写入: 1.4KB total
+  Avg MTE2 transfer: 20.32KB (31 instructions total)
+  GM→UB avg BW: 1.59 GB/s
+  UB→GM avg BW: 0.00 GB/s
+
+--- MemoryUB ---
+  UB read BW (vector): avg=52.9 GB/s
+  UB write BW (vector): avg=19.6 GB/s
+  UB read BW (scalar): avg=0.3 GB/s
+  UB write BW (scalar): avg=0.3 GB/s
+
+--- L2Cache ---
+  total_hit: avg=0.7% (min=0.7%, max=0.7%)
+  read_hit: avg=0.7% (min=0.7%, max=0.7%)
+  write_hit: avg=40.0% (min=40.0%, max=40.0%)
+  write cache: hit=2 miss=3
+
+--- ResourceConflict ---
+  vec_total_cflt: 4.16% | bankgroup_cflt: 4.06% | bank_cflt: 0.10% | resc_cflt: 0.00% | mte_cflt: 0.00%
+  vec_wait: 31.28% | mte2_wait: 0.00% | mte3_wait: 8.73%
+
+--- ArithmeticUtilization ---
+  vec_fp32: 39.6% | vec_misc: 19.1%
+  vec_fops: 4401344/core
+
+--- 原始数据位置 ---
+  CSV 文件: /mnt/data01/zmz/workspace/12agent/waic/build/norm_fn/operators/norm_fn/docs/perf/round_002/
+  如需逐核详情，请 Read 对应 CSV 文件。

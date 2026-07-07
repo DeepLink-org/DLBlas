@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+hc_split_sinkhorn_kernel,vector,24.220484,16,NA,2,1072409,1800,1800,

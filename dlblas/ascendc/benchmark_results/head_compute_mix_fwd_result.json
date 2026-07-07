@@ -1,0 +1,49 @@
+{
+  "op": "head_compute_mix_fwd",
+  "geomean_speedup": 8.9145,
+  "total": 4,
+  "passed": 4,
+  "shapes": [
+    {
+      "label": "default",
+      "shape": [
+        16,
+        16384
+      ],
+      "t_us": 100129.79,
+      "a_us": 234.43,
+      "sp": 427.1153
+    },
+    {
+      "label": "1K",
+      "shape": [
+        1,
+        256
+      ],
+      "t_us": 47.6,
+      "a_us": 227.92,
+      "sp": 0.2088
+    },
+    {
+      "label": "small",
+      "shape": [
+        2,
+        1
+      ],
+      "t_us": 37.54,
+      "a_us": 212.63,
+      "sp": 0.1766
+    },
+    {
+      "label": "4M",
+      "shape": [
+        32,
+        32768
+      ],
+      "t_us": 90641.0,
+      "a_us": 226.04,
+      "sp": 400.9869
+    }
+  ],
+  "elapsed_s": 21.7
+}

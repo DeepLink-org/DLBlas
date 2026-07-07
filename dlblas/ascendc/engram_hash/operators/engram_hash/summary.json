@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "op_name": "engram_hash",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 72,
+    "passed_cases": 72
+  },
+  "perf_data": {
+    "ascend_us": 79.02,
+    "torch_us": 657.7,
+    "speedup_vs_torch": 5.6551,
+    "device_kernel_us_at_nt65536": 1191.8,
+    "multi_core_scaling_48v1": 47.78
+  },
+  "review_score": 93,
+  "gen_iterations": 1
+}

@@ -1,0 +1,133 @@
+{
+  "timestamp": "2026-07-03 08:30:00",
+  "arch": "ascend910b2",
+  "total_operators": 20,
+  "with_valid_speedup": 14,
+  "failed": 6,
+  "aggregate": {
+    "geometric_mean_speedup": 7.0099,
+    "arithmetic_mean_speedup": 32.128,
+    "median_speedup": 5.4643,
+    "min_speedup": 0.4091,
+    "max_speedup": 269.8636
+  },
+  "speedups": {
+    "expand_kenel_bwd": 269.8636,
+    "engram_gate_w_reduce": 74.3174,
+    "sinkhorn": 26.4899,
+    "engram_fused_weight": 23.696,
+    "norm_fn": 23.6141,
+    "hc_split_sinkhorn": 10.2011,
+    "engram_hash": 5.4643,
+    "expand_kenel_fwd": 5.4055,
+    "pre_split_mixes": 3.0232,
+    "head_compute_mix_fwd": 2.9547,
+    "engram_gate_fwd": 2.3082,
+    "act_quant_kernel": 1.3828,
+    "head_compute_mix_bwd": 0.6621,
+    "apply_mix": 0.4091
+  },
+  "per_operator": {
+    "expand_kenel_bwd": {
+      "geomean_speedup": 269.8636,
+      "passed": 1,
+      "total": 1
+    },
+    "engram_gate_w_reduce": {
+      "geomean_speedup": 74.3174,
+      "passed": 1,
+      "total": 1
+    },
+    "sinkhorn": {
+      "geomean_speedup": 26.4899,
+      "passed": 1,
+      "total": 1
+    },
+    "norm_fn": {
+      "geomean_speedup": 23.6141,
+      "passed": 1,
+      "total": 3,
+      "note": "2 shapes aicore exception"
+    },
+    "engram_fused_weight": {
+      "geomean_speedup": 23.696,
+      "passed": 3,
+      "total": 3
+    },
+    "hc_split_sinkhorn": {
+      "geomean_speedup": 10.2011,
+      "passed": 5,
+      "total": 5
+    },
+    "engram_hash": {
+      "geomean_speedup": 5.4643,
+      "passed": 4,
+      "total": 4
+    },
+    "expand_kenel_fwd": {
+      "geomean_speedup": 5.4055,
+      "passed": 5,
+      "total": 5
+    },
+    "pre_split_mixes": {
+      "geomean_speedup": 3.0232,
+      "passed": 1,
+      "total": 1
+    },
+    "head_compute_mix_fwd": {
+      "geomean_speedup": 2.9547,
+      "passed": 4,
+      "total": 4
+    },
+    "engram_gate_fwd": {
+      "geomean_speedup": 2.3082,
+      "passed": 1,
+      "total": 1
+    },
+    "act_quant_kernel": {
+      "geomean_speedup": 1.3828,
+      "passed": 5,
+      "total": 5
+    },
+    "head_compute_mix_bwd": {
+      "geomean_speedup": 0.6621,
+      "passed": 1,
+      "total": 1
+    },
+    "apply_mix": {
+      "geomean_speedup": 0.4091,
+      "passed": 4,
+      "total": 4
+    },
+    "sparse_attn": {
+      "speedup": null,
+      "reason": ".so schema conflict (Scalar vs float)",
+      "category": "build issue"
+    },
+    "engram_gate_bwd": {
+      "speedup": null,
+      "reason": "Segfault on .so load",
+      "category": ".so bug"
+    },
+    "big_fuse": {
+      "speedup": null,
+      "reason": "Binary input files required",
+      "category": "test infra"
+    },
+    "MTPBlock": {
+      "speedup": null,
+      "reason": "Matmul shape mismatch in hc_post",
+      "category": "input shape"
+    },
+    "mhc_post": {
+      "speedup": null,
+      "reason": "Dict-format test data, needs special handling",
+      "category": "test infra"
+    },
+    "indexer": {
+      "speedup": null,
+      "reason": "No AscendC .so; torch.cuda incompatible",
+      "category": "no kernel"
+    }
+  }
+}

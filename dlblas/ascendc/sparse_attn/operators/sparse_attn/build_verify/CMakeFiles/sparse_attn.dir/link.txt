@@ -1,0 +1,1 @@
+/usr/local/Ascend/cann-9.0.0/bin/bisheng CMakeFiles/sparse_attn.dir/op_host/sparse_attn_main.asc.o -o sparse_attn  -ltiling_api -lregister -lplatform -lunified_dlog -ldl -lm -lgraph_base

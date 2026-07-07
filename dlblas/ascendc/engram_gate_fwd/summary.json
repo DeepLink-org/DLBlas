@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "op_name": "engram_gate_fwd",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.000244,
+    "total_cases": 8,
+    "passed_cases": 7,
+    "note": "1 case (hidden_size=8192) correctly rejected by UB overflow protection"
+  },
+  "perf_data": {
+    "shape": [32, 4, 4096],
+    "ascend_us": 16.52,
+    "torch_us": 579.66,
+    "speedup_vs_torch": 35.09
+  },
+  "review_score": 93,
+  "gen_iterations": 1
+}

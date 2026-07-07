@@ -1,0 +1,10 @@
+Op Name=engram_hash_kernel
+Block Dim=48
+Run Soc Version=Ascend910B2
+Device Id=2
+Pid=1702648
+Current Freq=1800
+Rated Freq=1800
+Is MC2=0
+Is Lccl=0
+Has Simt=0

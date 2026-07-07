@@ -1,0 +1,26 @@
+=== engram_gate_fwd profiling summary (round_002) ===
+Date: 2026-07-02
+Shape: num_tokens=32, hc_mult=4, hidden_size=4096
+Block Dim: 48
+
+Task Duration: 16.52 us
+
+Active core averages:
+- aiv_time: 14.5 us
+- aiv_vec_time: 6.06 us (41.7%)  [vector compute]
+- aiv_scalar_time: 5.6 us (38.7%)  [scalar pipe, gate + loop]
+- aiv_mte2_time: 2.1 us (14.3%)   [memory read]
+- aiv_mte3_time: 2.7 us (18.5%)   [memory write]
+- aiv_wait_time: 8.5 us (~59% overhead)
+
+Idle cores (32-47): essentially no work (< 0.02us vec time)
+
+Bottleneck analysis:
+- Memory-bound characteristics: mte2/MTE3 time moderate (14-18%)
+- Scalar pipe overhead: 38.7% due to gate computation (sqrt, exp) on scalar path
+- High wait overhead: ~59% wait time indicates pipeline stalls
+
+Optimization opportunities:
+1. Double Buffer: reduce wait overhead, overlap DMA with compute
+2. Gate vectorization: batch multiple rows' gate computations
+3. v-load hoisting: move v[t,:] load out of hc inner loop

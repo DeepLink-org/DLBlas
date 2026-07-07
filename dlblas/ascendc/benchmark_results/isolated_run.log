@@ -1,0 +1,137 @@
+================================================================================
+  AscendC vs PyTorch (NPU) - Process-Isolated Benchmarks
+  20 operators
+================================================================================
+
+──────────────────────────────────────────────────────────────────────
+  [act_quant_kernel] Running in subprocess...
+  [act_quant_kernel] Speedup: 1.3828x (5/5) [14.4s]
+
+──────────────────────────────────────────────────────────────────────
+  [apply_mix] Running in subprocess...
+  [apply_mix] Speedup: 0.4091x (4/4) [17.7s]
+
+──────────────────────────────────────────────────────────────────────
+  [head_compute_mix_fwd] Running in subprocess...
+  [head_compute_mix_fwd] Speedup: 2.9547x (4/4) [17.3s]
+
+──────────────────────────────────────────────────────────────────────
+  [expand_kenel_fwd] Running in subprocess...
+  [expand_kenel_fwd] Speedup: 5.4055x (5/5) [18.3s]
+
+──────────────────────────────────────────────────────────────────────
+  [hc_split_sinkhorn] Running in subprocess...
+  [hc_split_sinkhorn] Speedup: 10.2011x (5/5) [17.2s]
+
+──────────────────────────────────────────────────────────────────────
+  [sparse_attn] Running in subprocess...
+  [sparse_attn] stderr: terminate called after throwing an instance of 'c10::Error'
+  what():  Inferred operator schema for a C++ kernel function doesn't match the expected function schema.
+  operator: npu::sparse_attn
+  expected schema: npu::sparse_attn(Tensor q, Tensor kv, Tensor attn_sink, Tensor topk_idxs, Scalar softmax_scale) -> Tensor
+    registered at /mnt/data01/zmz/workspace/12agent/waic/cannbot/sparse_attn/op_extension/register.cpp:12
+  inferred schema: (Tensor _0, Tensor _1, Tensor _2, Tensor _3, float _4) 
+  [sparse_attn] No output. rc=-6 stderr=terminate called after throwing an instance of 'c10::Error'
+  what():  Inferred operator schema for a C++ kernel function doesn't match the expected function schema.
+  operator: npu::sparse_attn
+  exp
+
+──────────────────────────────────────────────────────────────────────
+  [engram_fused_weight] Running in subprocess...
+  [engram_fused_weight] No speedup: Model.__init__() missing 2 required positional arguments: 'hc_mult' and 'hidden_size' [12.5s]
+
+──────────────────────────────────────────────────────────────────────
+  [engram_hash] Running in subprocess...
+  [engram_hash] No speedup: unhashable type: 'dict' [12.4s]
+
+──────────────────────────────────────────────────────────────────────
+  [engram_gate_fwd] Running in subprocess...
+  [engram_gate_fwd] No speedup: unknown [12.5s]
+
+──────────────────────────────────────────────────────────────────────
+  [engram_gate_bwd] Running in subprocess...
+  [engram_gate_bwd] No output. rc=-11 stderr=
+
+──────────────────────────────────────────────────────────────────────
+  [engram_gate_w_reduce] Running in subprocess...
+  [engram_gate_w_reduce] No speedup: unknown [12.4s]
+
+──────────────────────────────────────────────────────────────────────
+  [head_compute_mix_bwd] Running in subprocess...
+  [head_compute_mix_bwd] No speedup: unknown [16.3s]
+
+──────────────────────────────────────────────────────────────────────
+  [expand_kenel_bwd] Running in subprocess...
+  [expand_kenel_bwd] No speedup: unknown [15.5s]
+
+──────────────────────────────────────────────────────────────────────
+  [pre_split_mixes] Running in subprocess...
+  [pre_split_mixes] No speedup: Model.__init__() missing 1 required positional argument: 'mhc_mult' [12.6s]
+
+──────────────────────────────────────────────────────────────────────
+  [norm_fn] Running in subprocess...
+  [norm_fn] stderr: [W703 08:01:37.560806100 compiler_depend.ts:57] Warning: EE9999: Inner Error!
+EE9999[PID: 2227868] 2026-07-03-08:01:37.383.258 (EE9999):  rtStreamSynchronize execution failed, reason=aicore exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       synchronize stream failed, runtime result = 507015[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+       rtGetDevMsg execution failed, reason=aicore exception[FUNC:FuncErrorReason][FIL
+  [norm_fn] Speedup: 23.6141x (1/3) [68.8s]
+
+──────────────────────────────────────────────────────────────────────
+  [mhc_post] Running in subprocess...
+  [mhc_post] No speedup: unknown [150.4s]
+
+──────────────────────────────────────────────────────────────────────
+  [sinkhorn] Running in subprocess...
+  [sinkhorn] Speedup: 26.4899x (1/1) [15.3s]
+
+──────────────────────────────────────────────────────────────────────
+  [big_fuse] Running in subprocess...
+  [big_fuse] No speedup: Model.__init__() missing 2 required positional arguments: 'mhc_mult' and 'hidden_size' [12.9s]
+
+──────────────────────────────────────────────────────────────────────
+  [MTPBlock] Running in subprocess...
+  [MTPBlock] No speedup: unknown [15.0s]
+
+──────────────────────────────────────────────────────────────────────
+  [indexer] Running in subprocess...
+  [indexer] No speedup: Torch not compiled with CUDA enabled [12.3s]
+
+
+================================================================================
+  AGGREGATE BENCHMARK SUMMARY
+================================================================================
+
+Rank  Operator                    Geomean Speedup       Status
+──────────────────────────────────────────────────────────────
+  1    sinkhorn                          26.4899x            OK
+  2    norm_fn                           23.6141x            OK
+  3    hc_split_sinkhorn                 10.2011x            OK
+  4    expand_kenel_fwd                   5.4055x            OK
+  5    head_compute_mix_fwd               2.9547x            OK
+  6    act_quant_kernel                   1.3828x            OK
+  7    apply_mix                          0.4091x            OK
+  ---   sparse_attn                           N/A         ERROR
+  ---   engram_fused_weight                   N/A         ERROR
+  ---   engram_hash                           N/A         ERROR
+  ---   engram_gate_fwd                       N/A       UNKNOWN
+  ---   engram_gate_bwd                       N/A         ERROR
+  ---   engram_gate_w_reduce                  N/A       UNKNOWN
+  ---   head_compute_mix_bwd                  N/A       UNKNOWN
+  ---   expand_kenel_bwd                      N/A       UNKNOWN
+  ---   pre_split_mixes                       N/A         ERROR
+  ---   mhc_post                              N/A       UNKNOWN
+  ---   big_fuse                              N/A         ERROR
+  ---   MTPBlock                              N/A       UNKNOWN
+  ---   indexer                               N/A         ERROR
+
+──────────────────────────────────────────────────────────────
+  Aggregate Statistics:
+    Total: 20 | With speedup: 7 | Failed/Skipped: 13
+    Geometric mean: 4.7876x | Arithmetic mean: 10.0653x
+    Median: 5.4055x | Min: 0.4091x | Max: 26.4899x
+
+  Summary: /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/benchmark_summary.json
+  Report: /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/benchmark_report.md
+
+  Total time: 477.4s (8.0 min)

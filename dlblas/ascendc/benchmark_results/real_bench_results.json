@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-07-07 02:34:10",
+  "warmup": 10,
+  "repeat": 100,
+  "device": "Ascend910B2 (DAV_2201)",
+  "cann": "9.0.0",
+  "results": [
+    {
+      "op": "sinkhorn",
+      "torch_us": 7751.04,
+      "ascendc_us": 475.63,
+      "speedup": 16.2965,
+      "shapes": [
+        {
+          "label": "default",
+          "t_us": 7751.04,
+          "a_us": 475.63,
+          "sp": 16.2965
+        }
+      ],
+      "status": "OK"
+    },
+    {
+      "op": "hc_split_sinkhorn",
+      "status": "ERROR",
+      "error": "Model.forward() missing 2 required positional arguments: 'hc_scale' and 'hc_base'"
+    },
+    {
+      "op": "act_quant_kernel",
+      "geomean_speedup": 1.2903,
+      "shapes": [
+        {
+          "label": "1K",
+          "t_us": 162.44,
+          "a_us": 112.08,
+          "sp": 1.4492
+        },
+        {
+          "label": "4K",
+          "t_us": 154.92,
+          "a_us": 113.84,
+          "sp": 1.3609
+        },
+        {
+          "label": "16K",
+          "t_us": 158.61,
+          "a_us": 118.9,
+          "sp": 1.3339
+        },
+        {
+          "label": "65K",
+          "t_us": 171.86,
+          "a_us": 113.64,
+          "sp": 1.5123
+        },
+        {
+          "label": "256K",
+          "t_us": 165.08,
+          "a_us": 183.65,
+          "sp": 0.8989
+        }
+      ],
+      "status": "OK"
+    },
+    {
+      "op": "expand_kenel_fwd",
+      "status": "ERROR",
+      "error": "npu::expand_kenel_fwd() expected at most 2 argument(s) but received 6 argument(s). Declaration: npu::expand_kenel_fwd(Tensor x, int mhc_mult) -> Tensor"
+    },
+    {
+      "op": "engram_gate_bwd",
+      "status": "ERROR",
+      "error": "no timing"
+    },
+    {
+      "op": "apply_mix",
+      "status": "ERROR",
+      "error": "apply_mix: x must be bfloat16, got Half"
+    },
+    {
+      "op": "head_compute_mix_fwd",
+      "status": "ERROR",
+      "error": "npu::head_compute_mix_fwd() is missing value for argument 'mhc_scale'. Declaration: npu::head_compute_mix_fwd(Tensor input_mix, Tensor mhc_scale, Tensor mhc_base, float mhc_pre_eps) -> Tensor"
+    }
+  ]
+}

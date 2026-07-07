@@ -1,0 +1,61 @@
+# Expand Kernel Backward - Round 002 Profiling Summary
+# Date: 2026-07-03
+# Device: Ascend 910B2 (NPU 5)
+# Shape: (2, 1024, 4, 1280), FP16
+# BlockDim: 48 AIV cores
+
+=== Task Duration (avg across 7 runs) ===
+~31.7 us (min: 30.340, max: 36.921)
+
+=== Pipe Utilization ===
+| Pipe    | Time (us) | Ratio |
+|---------|-----------|-------|
+| MTE2    | 17.66     | 53.4% |
+| VEC     | 9.152     | 27.7% |
+| Scalar  | 12.243    | 37.0% |
+| MTE3    | 7.827     | 23.7% |
+| AIV Time| 33.083    |       |
+| Task Dur| 36.921    |       |
+
+MTE2(53.4%) + VEC(27.7%) = 81.1% < 100% (流水重叠程度适中)
+
+=== Arithmetic Utilization ===
+| Metric        | Value       |
+|---------------|-------------|
+| VEC FP32 Ratio| 13.0%       |
+| Vector FLOPS  | 19,011,584  |
+| AIV Time      | 25.585 us   |
+
+=== Memory Bandwidth ===
+| Metric          | Value      |
+|-----------------|------------|
+| UB Read BW      | 41.977 GB/s|
+| UB Write BW     | 41.037 GB/s|
+| Main Mem Read   | 0.239 GB/s |
+| Main Mem Write  | 0.058 GB/s |
+| UB Vec Read BW  | 9.801 GB/s |
+| UB Vec Write BW | 7.001 GB/s |
+
+=== L2 Cache ===
+| Metric                 | Value  |
+|------------------------|--------|
+| Write Hit              | 40     |
+| Write Miss Allocate    | 10248  |
+| R0 Read Hit            | 551    |
+| R0 Read Miss Allocate  | 81942  |
+| R1 Read Hit            | 546    |
+| R1 Read Miss Allocate  | 81945  |
+
+=== Resource Conflict ===
+| Metric            | Value |
+|-------------------|-------|
+| Bank Group Conflict| 6.1% |
+| Bank Conflict     | 2.0%  |
+| Resource Conflict | 0.0%  |
+
+=== Bottleneck Analysis ===
+Memory bandwidth bottleneck confirmed:
+- MTE2 (GM->UB) at 53.4% is the dominant pipe
+- VEC utilization only 13.0% (27.7% of AIV time)
+- Main memory read 0.239 GB/s (L2 miss rate ~99.3%)
+- Compute intensity ~0.4 FLOPs/Byte, far below DAV_2201 vector limit

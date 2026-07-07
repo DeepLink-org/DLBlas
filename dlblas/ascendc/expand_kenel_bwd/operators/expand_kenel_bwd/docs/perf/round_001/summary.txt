@@ -1,0 +1,41 @@
+=== 上板性能统计摘要 (msprof) ===
+Op: expand_kenel_bwd_kernel
+Type: expand_kenel_bwd_kernel | TaskType: AI_VECTOR_CORE | Duration: 30.061us | BlockDim: 48 (mix=0)
+
+[注] msprof 的 op_summary 是 per-op 聚合值（不含逐核 min/avg/max）；
+     如需逐核数据请改用 msprof op (需要 msopprof 二进制)。
+
+--- Pipe ratios (主导核 = aiv) ---
+  aicore_time: 0.000us | aiv_time: 24.527us
+  aiv: vec= 37.30% | scalar= 36.40% | mte2= 61.30% | mte3= 26.80% | icache_miss=  1.00%
+
+--- 头开销 ---
+  Task Duration: 30.061us | 核最长耗时: 24.527us | 头开销: 5.534us (18.4%)
+
+--- Memory 带宽 (aic-metrics=Memory) ---
+  aiv main_mem read: 0.22 GB/s
+  aiv main_mem write: 0.05 GB/s
+  aiv UB read: 38.76 GB/s
+  aiv UB write: 37.90 GB/s
+
+--- MemoryUB ---
+  UB read (vector): 10.35 GB/s
+  UB write (vector): 7.39 GB/s
+
+--- ResourceConflict ---
+  vec_bank_cflt=  1.90% | vec_resc_cflt=  0.00%
+
+--- 原始数据位置 ---
+  归档 CSV : /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/docs/perf/round_001/
+  原始 PROF: /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/
+  按 aic-metrics 拆分的 op_summary_<Metric>.csv 均已复制到归档目录，
+  如需逐列查看可直接 Read。
+
+--- Metric 来源 ---
+  PipeUtilization        <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_PipeUtilization/PROF_000001_20260703034716579_01666943IHNCECNB/mindstudio_profiler_output/op_summary_20260703034719.csv
+  ArithmeticUtilization  <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_ArithmeticUtilization/PROF_000001_20260703034721612_01667497DMMMLGCL/mindstudio_profiler_output/op_summary_20260703034724.csv
+  Memory                 <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_Memory/PROF_000001_20260703034726663_01668540GDIKIIEA/mindstudio_profiler_output/op_summary_20260703034730.csv
+  MemoryL0               <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_MemoryL0/PROF_000001_20260703034731694_01668842GBJJECDP/mindstudio_profiler_output/op_summary_20260703034735.csv
+  MemoryUB               <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_MemoryUB/PROF_000001_20260703034736747_01669150PKKJCFAP/mindstudio_profiler_output/op_summary_20260703034740.csv
+  L2Cache                <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_L2Cache/PROF_000001_20260703034741777_01669458LMCDCRQP/mindstudio_profiler_output/op_summary_20260703034745.csv
+  ResourceConflictRatio  <- /mnt/data01/zmz/workspace/12agent/waic/build/expand_kenel_bwd/operators/expand_kenel_bwd/build/msprof_output/PROF_GROUP_20260703_034711/PROF_ResourceConflictRatio/PROF_000001_20260703034746809_01669850DAJFCBQB/mindstudio_profiler_output/op_summary_20260703034750.csv

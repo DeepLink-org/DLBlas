@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "op_name": "engram_gate_bwd",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 9.73e-04,
+    "total_cases": 5,
+    "passed_cases": 5,
+    "details": {
+      "grad_x": {"max_diff": 9.651780e-04, "status": "pass"},
+      "grad_k": {"max_diff": 1.049675e-04, "status": "pass"},
+      "grad_v": {"max_diff": 9.730458e-04, "status": "pass"},
+      "grad_wh": {"max_diff": 1.039430e-04, "status": "pass"},
+      "grad_we": {"max_diff": 9.047985e-05, "status": "pass"}
+    }
+  },
+  "perf_data": {
+    "ascend_us": 56.37,
+    "torch_us": 479.4,
+    "speedup_vs_torch": 8.51
+  },
+  "review_score": 84,
+  "gen_iterations": 3,
+  "shape": {"T": 14, "H": 4, "D": 128},
+  "kernel_version": "v17",
+  "notes": "AscendC timing includes kernel launch+sync only (50 iterations averaged, after 3 warmup). PyTorch timing is numpy reference. Torch extension not compiled (pre-existing CANN 9.0.0 issue)."
+}

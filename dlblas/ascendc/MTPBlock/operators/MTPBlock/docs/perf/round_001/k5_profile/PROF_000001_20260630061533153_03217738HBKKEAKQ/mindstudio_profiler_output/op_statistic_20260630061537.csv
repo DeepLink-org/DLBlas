@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+6,k5_moe_block_kernel,MIX_AIC,1,113944.477,113944.477,113944.477,113944.477,100

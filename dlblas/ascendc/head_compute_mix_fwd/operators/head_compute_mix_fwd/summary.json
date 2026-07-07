@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "op_name": "head_compute_mix_fwd",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.002929688,
+    "total_cases": 17,
+    "passed_cases": 17
+  },
+  "perf_data": {
+    "ascend_us": 233.34,
+    "torch_us": 57009.19,
+    "speedup_vs_torch": 244.3194,
+    "kernel_duration_us": 51.921,
+    "per_shape_results": [
+      {"name": "default_1M", "shape": [16, 16384, 4], "precision_pass": true, "max_diff": 0.00293, "ascendc_ms": 0.2333, "torch_ms": 57.0092, "speedup_vs_torch": 244.32},
+      {"name": "1K", "shape": [1, 256, 4], "precision_pass": true, "max_diff": 0.00244, "ascendc_ms": 0.2610, "torch_ms": 0.0474, "speedup_vs_torch": 0.18},
+      {"name": "small_8", "shape": [2, 1, 4], "precision_pass": true, "max_diff": 0.00098, "ascendc_ms": 0.2371, "torch_ms": 0.0368, "speedup_vs_torch": 0.16},
+      {"name": "4M", "shape": [32, 32768, 4], "precision_pass": true, "max_diff": 0.00293, "ascendc_ms": 0.2257, "torch_ms": 120.4121, "speedup_vs_torch": 533.44}
+    ]
+  },
+  "review_score": 91,
+  "gen_iterations": 1
+}

@@ -1,0 +1,62 @@
+# engram_hash Performance Summary (Round 001)
+
+## Profile Environment
+- Device: Ascend 910B2 (DAV_2201), NPU 2
+- CANN: 9.0.0
+- Profiling tool: msprof op
+- Frequency: 1800 MHz (rated & actual)
+
+## Kernel-level Metrics (msprof op)
+
+### Baseline shape (NT=4096, N=3, L=2, T=8, 48 cores)
+| Metric | Value |
+|--------|-------|
+| Task Duration | 79.0 us |
+| Block Dim | 48 |
+| AIV scalar ratio | 0.985 (98.5%) |
+| AIV vector ratio | 0.00023 (0.023%) |
+| AIV MTE2 ratio | 0.008-0.014 (0.8-1.4%) |
+| AIV MTE3 ratio | 0.002-0.005 (0.2-0.5%) |
+| Scalar dual-issue | ~20% of scalar time |
+| MTE2 active BW | 1.0-2.8 GB/s |
+| MTE3 active BW | 20-65 GB/s |
+| ~cycles/output element | ~50 |
+
+### Multi-core scaling (NT=65536, baseline params)
+| Cores | Kernel Time | Scaling |
+|-------|-------------|---------|
+| 1 | 56948.1 us | 1.00x |
+| 48 | 1191.8 us | 47.78x |
+
+**Scaling efficiency: 99.5% of ideal linear (48x)**.
+
+### Large batch (NT=65536, 48 cores)
+| Metric | Value |
+|--------|-------|
+| Task Duration | 1191.8 us |
+| Block Dim | 48 |
+
+## Benchmark Results (wall-clock via torch.ops.npu.engram_hash)
+| NT | N | L | T | W | PyTorch (ms) | AscendC (ms) | Speedup | Bit-exact |
+|----|---|---|---|----|-------------|-------------|---------|-----------|
+| 32 | 3 | 2 | 8 | 16 | 0.6204 | 0.0821 | 7.558x | Yes |
+| 256 | 3 | 2 | 8 | 16 | 0.6270 | 0.0828 | 7.574x | Yes |
+| 1024 | 3 | 2 | 8 | 16 | 0.6303 | 0.0847 | 7.441x | Yes |
+| 4096 | 3 | 2 | 8 | 16 | 0.6434 | 0.0904 | 7.115x | Yes |
+| 65536 | 3 | 2 | 8 | 16 | 1.5506 | 1.1936 | 1.299x | Yes |
+| 4096 | 5 | 4 | 16 | 64 | 1.8361 | 0.5648 | 3.251x | Yes |
+| 256 | 5 | 4 | 16 | 64 | 1.8864 | 0.0922 | 20.468x | Yes |
+
+**Geomean speedup vs PyTorch: 5.943x**
+
+## Bottleneck Analysis
+1. **Scalar-bound**: AIV scalar ratio ~98.5%, confirming the kernel is dominated by int64 scalar operations (mul/xor/mod)
+2. **int64 mod is the main cost**: ~50 cycles per output element, dominated by the integer division (mod) operation
+3. **Memory is not a bottleneck**: MTE2/MTE3 utilization < 2%, memory bandwidth far from saturation
+4. **Vector unit unused (by design)**: Vector ratio ~0.02%, since DAV_2201 Vector unit does not support int64 arithmetic
+5. **Multi-core scaling near ideal**: 47.78/48x = 99.5% efficiency, confirming load-balanced token splitting
+
+## Conclusion
+Performance is close to the physical ceiling for this scalar-bound integer hash kernel.
+The ~50 cycles/element is dominated by int64 modulo (multi-cycle integer division) and cannot be avoided without breaking bit-exact correctness.
+The kernel achieves excellent multi-core scaling (99.5% efficiency).

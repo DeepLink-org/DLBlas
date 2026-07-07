@@ -1,0 +1,52 @@
+=== 上板性能统计摘要 ===
+Op: big_fuse_k1_kernel | Type: cube | Duration: 59.201183us | BlockDim: 8 | Freq: 1800/1800
+
+--- PipeUtilization (8 cores, prefix=aic) ---
+                                  min        avg        max
+  aic_time(us)                57.90      58.18      58.56
+  scalar_ratio%               81.31      82.09      82.66
+  mte2_ratio%                 95.08      95.37      95.77
+  mte3_ratio%                  0.00       0.00       0.00
+  cube_ratio%                 19.11      19.25      19.34
+  fixpipe_ratio%               0.68       0.84       0.99
+  mte1_ratio%                 20.95      21.06      21.19
+  mte3_active_bw              429.2      429.2      429.2    (GB/s)
+  fixpipe_active_bw            10.0       11.9       14.4    (GB/s)
+
+--- SCALAR 子类耗时 (avg) ---
+  single: 11.49us | dual: 20.26us | cube_stall: 8.49us | wait_ib: 3.80us
+
+--- 头开销 ---
+  Task Duration: 59.201183us | 最长核: 58.56us | 头开销: 0.64us (1.1%)
+
+--- Memory ---
+  GM→L1: 14080.0KB total (1760.0KB/core), BW usage: 10.93%
+  主存读取: 16902.8KB total
+  主存写入: 49.0KB total
+
+--- MemoryUB ---
+
+--- MemoryL0 ---
+  L0A read BW: 21.0 GB/s
+  L0A write BW: 21.0 GB/s
+  L0B read BW: 83.9 GB/s
+  L0B write BW: 10.5 GB/s
+  L0C read BW (cube): 41.8 GB/s
+  L0C write BW (cube): 42.0 GB/s
+
+--- L2Cache ---
+  total_hit: avg=77.8% (min=73.9%, max=78.8%)
+  read_hit: avg=77.8% (min=74.0%, max=78.8%)
+  write_hit: avg=7.7% (min=7.7%, max=7.7%)
+  write cache: hit=8 miss=96
+
+--- ResourceConflict ---
+  vec_total_cflt: 0.00% | bankgroup_cflt: 0.00% | bank_cflt: 0.00% | resc_cflt: 0.00% | mte_cflt: 0.00%
+  cube_wait: 94.95% | vec_wait: 0.00% | mte2_wait: 0.00% | mte3_wait: 0.00%
+
+--- ArithmeticUtilization ---
+  cube_fp16: 19.2% | cube_fops: 2621440/core
+
+--- 原始数据位置 ---
+  CSV 文件: /mnt/data01/zmz/workspace/12agent/waic/build/big_fuse/operators/big_fuse/docs/perf/round_001/
+  如需逐核详情，请 Read 对应 CSV 文件。

@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+3,engram_gate_w_reduce_kernel,AI_VECTOR_CORE,1,187.644,187.644,187.644,187.644,100

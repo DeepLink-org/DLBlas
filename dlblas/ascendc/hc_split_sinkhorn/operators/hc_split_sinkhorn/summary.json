@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "op_name": "hc_split_sinkhorn",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 1.788e-07,
+    "total_cases": 5,
+    "passed_cases": 5
+  },
+  "perf_data": {
+    "geomean_speedup_vs_torch": 8.4306,
+    "per_cases": [
+      { "label": "C1_b2s8hc4iters20", "b": 2, "s": 8, "hc": 4, "iters": 20, "torch_us": 2753.29, "ascend_us": 278.34, "speedup_vs_torch": 9.8919, "max_diff": 1.19e-07, "status": "pass" },
+      { "label": "C7_b1s1hc4iters20", "b": 1, "s": 1, "hc": 4, "iters": 20, "torch_us": 2734.79, "ascend_us": 276.46, "speedup_vs_torch": 9.8921, "max_diff": 5.96e-08, "status": "pass" },
+      { "label": "C6_b64s8hc4iters20", "b": 64, "s": 8, "hc": 4, "iters": 20, "torch_us": 2776.88, "ascend_us": 492.73, "speedup_vs_torch": 5.6357, "max_diff": 1.79e-07, "status": "pass" },
+      { "label": "C3_b4s16hc4iters20", "b": 4, "s": 16, "hc": 4, "iters": 20, "torch_us": 2713.27, "ascend_us": 278.75, "speedup_vs_torch": 9.7337, "max_diff": 1.49e-07, "status": "pass" },
+      { "label": "C5_b8s4hc8iters20", "b": 8, "s": 4, "hc": 8, "iters": 20, "torch_us": 2920.88, "ascend_us": 368.15, "speedup_vs_torch": 7.9340, "max_diff": 1.19e-07, "status": "pass" }
+    ]
+  },
+  "review_score": 97,
+  "gen_iterations": 1
+}

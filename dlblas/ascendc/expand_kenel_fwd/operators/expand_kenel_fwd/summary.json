@@ -1,0 +1,194 @@
+{
+  "success": true,
+  "op_name": "expand_kenel_fwd",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.0,
+    "total_cases": 10,
+    "passed_cases": 10
+  },
+  "perf_data": {
+    "ascend_us": 105.81,
+    "torch_us": 2767.99,
+    "speedup_vs_torch": 4.4064,
+    "speedup_vs_torch_arithmetic": 25.6581,
+    "total_cases": 10,
+    "passed_cases": 10,
+    "failed_cases": 0,
+    "per_shape_results": [
+      {
+        "name": "T1 typical FP16",
+        "shape": [
+          1,
+          1024,
+          1280
+        ],
+        "M": 4,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 5242880,
+        "torch_ms": 8.325325,
+        "ascendc_ms": 0.105231,
+        "speedup_vs_torch": 79.1145
+      },
+      {
+        "name": "T2 min rows",
+        "shape": [
+          1,
+          1,
+          128
+        ],
+        "M": 2,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 256,
+        "torch_ms": 0.082446,
+        "ascendc_ms": 0.105205,
+        "speedup_vs_torch": 0.7837
+      },
+      {
+        "name": "T3 multi rows",
+        "shape": [
+          4,
+          256,
+          256
+        ],
+        "M": 2,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 524288,
+        "torch_ms": 7.310497,
+        "ascendc_ms": 0.1038,
+        "speedup_vs_torch": 70.4289
+      },
+      {
+        "name": "T4 large M",
+        "shape": [
+          1,
+          1,
+          1280
+        ],
+        "M": 16,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 20480,
+        "torch_ms": 0.073365,
+        "ascendc_ms": 0.099439,
+        "speedup_vs_torch": 0.7378
+      },
+      {
+        "name": "T5 M=1",
+        "shape": [
+          1,
+          1,
+          1280
+        ],
+        "M": 1,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 1280,
+        "torch_ms": 0.059736,
+        "ascendc_ms": 0.10067,
+        "speedup_vs_torch": 0.5934
+      },
+      {
+        "name": "T6 FP32",
+        "shape": [
+          1,
+          1024,
+          1280
+        ],
+        "M": 4,
+        "dtype": "torch.float32",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 5242880,
+        "torch_ms": 4.588911,
+        "ascendc_ms": 0.120228,
+        "speedup_vs_torch": 38.1683
+      },
+      {
+        "name": "T7 aligned H=32",
+        "shape": [
+          1,
+          5,
+          32
+        ],
+        "M": 4,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 640,
+        "torch_ms": 0.077857,
+        "ascendc_ms": 0.1042,
+        "speedup_vs_torch": 0.7472
+      },
+      {
+        "name": "T8 multicore",
+        "shape": [
+          10,
+          100,
+          512
+        ],
+        "M": 8,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 4096000,
+        "torch_ms": 6.973442,
+        "ascendc_ms": 0.108574,
+        "speedup_vs_torch": 64.2278
+      },
+      {
+        "name": "T9 large H",
+        "shape": [
+          1,
+          1,
+          2048
+        ],
+        "M": 4,
+        "dtype": "torch.float16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 8192,
+        "torch_ms": 0.106494,
+        "ascendc_ms": 0.112026,
+        "speedup_vs_torch": 0.9506
+      },
+      {
+        "name": "T10 BF16",
+        "shape": [
+          1,
+          16,
+          128
+        ],
+        "M": 4,
+        "dtype": "torch.bfloat16",
+        "precision_passed": true,
+        "max_diff": 0.0,
+        "mismatches": 0,
+        "total_elements": 8192,
+        "torch_ms": 0.081869,
+        "ascendc_ms": 0.098765,
+        "speedup_vs_torch": 0.8289
+      }
+    ]
+  },
+  "review_score": 81,
+  "gen_iterations": 1
+}

@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "op_name": "expand_kenel_bwd",
+  "arch": "ascend910b2",
+  "cann_version": "9.0.0",
+  "device": "NPU 5",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.00781,
+    "rtol": 0.001,
+    "atol": 0.0001,
+    "total_cases": 5,
+    "passed_cases": 5,
+    "test_details": {
+      "T1_standard": {"shape": [2, 1024, 4, 1280], "max_diff": 0.0078125, "status": "pass"},
+      "T2_small": {"shape": [1, 1, 4, 128], "max_diff": 0.00390625, "status": "pass"},
+      "T3_zeros": {"shape": [2, 1024, 4, 1280], "max_diff": 0.0, "status": "pass"},
+      "T4_large": {"shape": [2, 256, 4, 128], "max_diff": 0.0, "status": "pass"},
+      "T5_mixed": {"shape": [2, 512, 4, 256], "max_diff": 0.0625, "status": "pass"}
+    }
+  },
+  "perf_data": {
+    "task_duration_us": 31.7,
+    "task_duration_range_us": [30.340, 36.921],
+    "block_dim": 48,
+    "torch_npu_us": 30.09,
+    "ascendc_torch_us": 88.69,
+    "ascendc_direct_us": 31.7,
+    "speedup_vs_torch": 0.3393,
+    "benchmark_note": "AscendC includes host launch + stream sync overhead (~60us). On-device kernel time: 31.7us (msprof).",
+    "multi_shape_comparison": [
+      {"shape": "(2,1024,4,1280)", "torch_us": 30.09, "ascendc_us": 88.69, "speedup": 0.3393},
+      {"shape": "(1,1,4,128)",     "torch_us": 16.40, "ascendc_us": 97.90, "speedup": 0.1675},
+      {"shape": "(2,256,4,128)",   "torch_us": 17.06, "ascendc_us": 86.08, "speedup": 0.1982},
+      {"shape": "(2,512,4,256)",   "torch_us": 17.94, "ascendc_us": 85.87, "speedup": 0.2089},
+      {"shape": "(4,2048,4,1280)", "torch_us": 82.04, "ascendc_us": 92.48, "speedup": 0.8872}
+    ],
+    "geometric_mean_speedup": 0.2910,
+    "pipe_utilization": {
+      "mte2_ratio": 0.534,
+      "vec_ratio": 0.277,
+      "scalar_ratio": 0.37,
+      "mte3_ratio": 0.237
+    },
+    "vec_fp32_ratio": 0.13,
+    "vector_fops": 19011584.0,
+    "ub_read_bw_gbs": 41.977,
+    "ub_write_bw_gbs": 41.037,
+    "bank_group_conflict_ratio": 0.061,
+    "bank_conflict_ratio": 0.02,
+    "bottleneck": "memory_bandwidth"
+  },
+  "profiling_dir": "docs/perf/round_002/",
+  "build_targets": {
+    "executable": "build/expand_kenel_bwd",
+    "shared_library": "build/libexpand_kenel_bwd_ops.so"
+  },
+  "review_score": 97,
+  "gen_iterations": 1
+}

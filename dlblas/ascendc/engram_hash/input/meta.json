@@ -1,0 +1,31 @@
+{
+  "nt": 4096,
+  "ngram": 3,
+  "layers": 2,
+  "tables": 8,
+  "P": 2,
+  "W": 16,
+  "seed": 42,
+  "out_shape": [
+    2,
+    4096,
+    16
+  ],
+  "ngram_shape": [
+    4096,
+    3
+  ],
+  "mult_shape": [
+    2,
+    3
+  ],
+  "vocab_shape": [
+    2,
+    2,
+    8
+  ],
+  "offsets_shape": [
+    2,
+    16
+  ]
+}

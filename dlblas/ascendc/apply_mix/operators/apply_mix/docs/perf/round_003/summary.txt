@@ -1,0 +1,38 @@
+=== 上板性能统计摘要 (Round 003 - v3.0/v4.0 per-row Muls+Add + Double Buffer) ===
+Op: apply_mix_kernel | Type: vector | Duration: 234.844696us | BlockDim: 48 | Freq: 1800/1800
+
+--- PipeUtilization (48 blocks, prefix=aiv) ---
+                                  min        avg        max
+  aiv_time(us)               147.33     228.18     233.94
+  vec_ratio%                   3.79       3.86       3.93
+  scalar_ratio%               88.91      97.70      98.77
+  mte2_ratio%                 21.61      24.27      31.53
+  mte3_ratio%                  7.24       8.72       9.81
+  mte2_active_bw               11.2       15.0       16.6    (GB/s)
+  mte3_active_bw                9.1       10.2       12.3    (GB/s)
+
+--- SCALAR 子类耗时 (avg) ---
+  single: 4.55us | dual: 3.91us | wait: ~3.6us | wait_ib: ~0.12us
+
+--- Load Balance ---
+  Core 0-46: ~229-234us (43 tiles/block)
+  Core 47 (tail): ~147us (27 tiles/block)
+  Per-tile time: ~5.33us
+
+--- Performance Analysis ---
+  vec_ratio 3.86%: Vector pipeline severely underutilized (target >15%)
+  scalar_ratio 97.70%: Scalar dispatch dominates (inherent for small-R operators)
+  mte2_ratio 24.27%: GM->UB data movement is 24% of total time
+  mte3_ratio 8.72%: UB->GM data movement is 9% of total time
+
+  Bottleneck: Scalar dispatch overhead (per-tile AllocTensor/FreeTensor/EnQue/DeQue).
+  The EnQue→DeQue pattern is sequential (no pipeline overlap with compute).
+  Double Buffer (TQue<2>) correctly configured but prefetch pattern not implemented.
+
+--- Comparison with previous rounds ---
+  v1.0 (manual Muls+Add, TQue<1>):  92us  (Reviewer measurement, may differ in methodology)
+  v2.0 (ReduceSum RA, TQue<2>):    242us  (Reviewer Round 1)
+  v3.0/v4.0 (manual Muls+Add, TQue<2>): 235us  (this round)
+
+--- 原始数据位置 ---
+  CSV 文件: operators/apply_mix/docs/perf/round_003/

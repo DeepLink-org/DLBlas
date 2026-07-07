@@ -1,0 +1,40 @@
+{
+  "op": "engram_gate_fwd",
+  "geomean_speedup": 0,
+  "total": 3,
+  "passed": 0,
+  "shapes": [
+    {
+      "label": "T1H4D128",
+      "shape": [
+        1,
+        4,
+        128
+      ],
+      "error": "'hidden' | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_engram_gate_fwd.py\", line 29, in <module>\n    hs,k,v,wh,we=generate_test_data(par",
+      "status": "FAIL"
+    },
+    {
+      "label": "T8H4D128",
+      "shape": [
+        8,
+        4,
+        128
+      ],
+      "error": "'hidden' | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_engram_gate_fwd.py\", line 29, in <module>\n    hs,k,v,wh,we=generate_test_data(par",
+      "status": "FAIL"
+    },
+    {
+      "label": "T14H4D128",
+      "shape": [
+        14,
+        4,
+        128
+      ],
+      "error": "'hidden' | Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_engram_gate_fwd.py\", line 29, in <module>\n    hs,k,v,wh,we=generate_test_data(par",
+      "status": "FAIL"
+    }
+  ],
+  "elapsed_s": 12.3,
+  "returncode": 0
+}

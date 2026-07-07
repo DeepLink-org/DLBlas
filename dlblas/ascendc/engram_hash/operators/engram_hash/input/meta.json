@@ -1,0 +1,1 @@
+{"nt": 1000, "ngram": 4, "layers": 2, "tables": 4, "P": 3, "W": 12, "out_shape": [2, 1000, 12]}

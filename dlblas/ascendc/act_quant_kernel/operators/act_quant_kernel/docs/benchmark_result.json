@@ -1,0 +1,63 @@
+{
+  "total_cases": 5,
+  "passed_cases": 5,
+  "failed_cases": 0,
+  "speedup_vs_torch_geomean": 2.275,
+  "per_shape_results": [
+    {
+      "case_idx": 1,
+      "shape_desc": "1K, gs=128",
+      "numel": 1024,
+      "group_size": 128,
+      "status": "PASS",
+      "ascend_us": 123.6856,
+      "torch_npu_us": 300.3136,
+      "speedup_vs_torch": 2.428,
+      "s_max_diff": 1.5384983271360397e-05
+    },
+    {
+      "case_idx": 2,
+      "shape_desc": "4K, gs=128",
+      "numel": 4096,
+      "group_size": 128,
+      "status": "PASS",
+      "ascend_us": 113.5056,
+      "torch_npu_us": 309.8314,
+      "speedup_vs_torch": 2.7297,
+      "s_max_diff": 1.7169397324323654e-05
+    },
+    {
+      "case_idx": 3,
+      "shape_desc": "16K, gs=128",
+      "numel": 16384,
+      "group_size": 128,
+      "status": "PASS",
+      "ascend_us": 132.087,
+      "torch_npu_us": 293.3778,
+      "speedup_vs_torch": 2.2211,
+      "s_max_diff": 2.3066997528076172e-05
+    },
+    {
+      "case_idx": 4,
+      "shape_desc": "65K, gs=128",
+      "numel": 65536,
+      "group_size": 128,
+      "status": "PASS",
+      "ascend_us": 118.9646,
+      "torch_npu_us": 290.5786,
+      "speedup_vs_torch": 2.4426,
+      "s_max_diff": 3.156531602144241e-05
+    },
+    {
+      "case_idx": 5,
+      "shape_desc": "256K, gs=128",
+      "numel": 262144,
+      "group_size": 128,
+      "status": "PASS",
+      "ascend_us": 185.4888,
+      "torch_npu_us": 314.3454,
+      "speedup_vs_torch": 1.6947,
+      "s_max_diff": 3.2423995435237885e-05
+    }
+  ]
+}

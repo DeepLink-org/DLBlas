@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+5,mhc_post_kernel,AI_VECTOR_CORE,1,7767.535,7767.535,7767.535,7767.535,100

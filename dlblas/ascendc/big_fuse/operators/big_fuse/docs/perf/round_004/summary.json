@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "op_name": "big_fuse",
+  "arch": "ascend910b2",
+  "precision": {
+    "status": "pass",
+    "max_diff": 0.00781
+  },
+  "perf_data": {
+    "ascend_total_us": 1866.12,
+    "ascend_k0_us": 402.72,
+    "ascend_k1_us": 337.76,
+    "ascend_k2_us": 1125.64,
+    "torch_avg_ms": 53.27,
+    "torch_min_ms": 37.09,
+    "speedup_vs_torch_avg": 28.55,
+    "speedup_vs_torch_min": 19.88
+  }
+}

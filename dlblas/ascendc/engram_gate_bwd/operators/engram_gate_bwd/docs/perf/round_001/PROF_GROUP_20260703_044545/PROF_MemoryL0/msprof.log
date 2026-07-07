@@ -1,0 +1,31 @@
+[INFO] Start profiling....
+[INFO] Start export data in PROF_000001_20260703044609332_01961515PKHFGAQI.
+Fri 03 Jul 2026 04:46:12 [WARNING] [MSVP] [1961589] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/host" ...
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: It may take few minutes, please be patient ...
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/host" finished.
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: Start analyzing data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1" ...
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: It may take few minutes, please be patient ...
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_common.py: Analysis data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1" finished.
+Fri 03 Jul 2026 04:46:12 [INFO] [MSVP] [1961597] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1.
+Fri 03 Jul 2026 04:46:13 [WARNING] [MSVP] [1961770] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/host" has been analyzed. Parsing phase will be skipped.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: The data in "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1" has been analyzed. Parsing phase will be skipped.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/host"
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: All collected data will be exported, path is: /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_export.py: There is no summary data to export for "/mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/device_1"
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_common.py: Start exporting summary output_file.
+Fri 03 Jul 2026 04:46:13 [INFO] [MSVP] [1961772] msprof_common.py: End exporting summary output_file.The file is stored in the /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI/mindstudio_profiler_output path.
+[INFO] Export all data in PROF_000001_20260703044609332_01961515PKHFGAQI done.
+[INFO] Start query data in PROF_000001_20260703044609332_01961515PKHFGAQI.
+Fri 03 Jul 2026 04:46:14 [WARNING] [MSVP] [1961818] msprof_entrance.py: Msprof analysis is parsing data as root, which may cause potential system security risks.
+Job Info	Device ID	Dir Name	Collection Time           	Model ID	Iteration Number	Top Time Iteration	Rank ID	
+
+NA      	         	host    	2026-07-03 04:46:09.619987	N/A     	N/A             	N/A               	-1     	
+
+NA      	1        	device_1	2026-07-03 04:46:09.623581	N/A     	N/A             	N/A               	-1     	
+
+[INFO] Query all data in PROF_000001_20260703044609332_01961515PKHFGAQI done.
+[INFO] Profiling finished.
+[INFO] Process profiling data complete. Data is saved in /mnt/data01/zmz/workspace/12agent/waic/build/engram_gate_bwd/operators/engram_gate_bwd/docs/perf/round_001/PROF_GROUP_20260703_044545/PROF_MemoryL0/PROF_000001_20260703044609332_01961515PKHFGAQI

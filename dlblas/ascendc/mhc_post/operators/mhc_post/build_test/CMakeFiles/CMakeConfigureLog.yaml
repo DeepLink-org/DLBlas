@@ -1,0 +1,1985 @@
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:7 (find_package)"
+    name: "ASC"
+    configs:
+      -
+        filename: "ASC.cps"
+        kind: "cps"
+      -
+        filename: "asc.cps"
+        kind: "cps"
+      -
+        filename: "ASCConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "asc-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "required_explicit"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "ASC"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/ASCConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/asc-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/lib/cps/ASC.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/lib/cps/asc.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/share/cps/ASC.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/pkgRedirects/share/cps/asc.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/ASCConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/asc-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/lib/cps/ASC.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/lib/cps/asc.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/share/cps/ASC.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/share/cps/asc.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/Ascend/cann-9.0.0/lib64/cmake/ASCConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+    found:
+      path: "/usr/local/Ascend/cann-9.0.0/lib64/cmake/asc-config.cmake"
+      mode: "config"
+      version: ""
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+      CMAKE_MODULE_PATH:
+        - "/usr/local/Ascend/cann-9.0.0/compiler/tikcpp/ascendc_kernel_cmake/asc_modules"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineSystem.cmake:12 (find_program)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_UNAME"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "uname"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/uname"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/uname"
+      - "/usr/local/Ascend/cann-9.0.0/bin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/uname"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/uname"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/uname"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/uname"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/uname"
+      - "/root/.nvm/versions/node/v24.14.1/bin/uname"
+      - "/opt/conda/envs/dlcompiler/bin/uname"
+      - "/opt/conda/condabin/uname"
+      - "/opt/conda/bin/uname"
+      - "/usr/local/sbin/uname"
+      - "/usr/local/bin/uname"
+      - "/usr/sbin/uname"
+    found: "/usr/bin/uname"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      The system is: Linux - 4.19.90-2102.2.0.0066.ctl2.aarch64 - aarch64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeUnixFindMake.cmake:5 (find_program)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_MAKE_PROGRAM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gmake"
+      - "make"
+      - "smake"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/bin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/gmake"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/gmake"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/gmake"
+      - "/root/.nvm/versions/node/v24.14.1/bin/gmake"
+      - "/opt/conda/envs/dlcompiler/bin/gmake"
+      - "/opt/conda/condabin/gmake"
+      - "/opt/conda/bin/gmake"
+      - "/usr/local/sbin/gmake"
+      - "/usr/local/bin/gmake"
+      - "/usr/sbin/gmake"
+    found: "/usr/bin/gmake"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/local/Ascend/cann-9.0.0/compiler/tikcpp/ascendc_kernel_cmake/asc_modules/CMakeDetermineASCCompiler.cmake:23 (find_program)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_ASC_COMPILER"
+    description: "ASC Compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "bisheng"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/aarch64-linux/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin:/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin:/usr/local/Ascend/cann-9.0.0/tools/profiler/bin:/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys:/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data:/usr/local/Ascend/cann-9.0.0/tools/msobjdump:/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli:/root/.nvm/versions/node/v24.14.1/bin:/opt/conda/envs/dlcompiler/bin:/opt/conda/condabin:/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/"
+    searched_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/bisheng"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/bisheng"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bisheng"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/bisheng"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/bisheng"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bisheng"
+    found: "/usr/local/Ascend/cann-9.0.0/bin/bisheng"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/usr/local/Ascend/cann-9.0.0/compiler/tikcpp/ascendc_kernel_cmake/asc_modules/CMakeDetermineASCCompiler.cmake:33 (find_program)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_ASC_LLD_LINKER"
+    description: "ASC ld.lld Linker"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ld.lld"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/aarch64-linux/ccec_compiler/bin/"
+    found: "/usr/local/Ascend/cann-9.0.0/aarch64-linux/ccec_compiler/bin/ld.lld"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake:54 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:69 (_cmake_find_compiler)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_CXX_COMPILER"
+    description: "CXX compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "c++"
+      - "CC"
+      - "g++"
+      - "aCC"
+      - "cl"
+      - "bcc"
+      - "xlC"
+      - "icpx"
+      - "icx"
+      - "clang++"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+    searched_directories:
+      - "/usr/local/Ascend/cann-9.0.0/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/bin/CC"
+      - "/usr/local/Ascend/cann-9.0.0/bin/g++"
+      - "/usr/local/Ascend/cann-9.0.0/bin/aCC"
+      - "/usr/local/Ascend/cann-9.0.0/bin/cl"
+      - "/usr/local/Ascend/cann-9.0.0/bin/bcc"
+      - "/usr/local/Ascend/cann-9.0.0/bin/xlC"
+      - "/usr/local/Ascend/cann-9.0.0/bin/icpx"
+      - "/usr/local/Ascend/cann-9.0.0/bin/icx"
+      - "/usr/local/Ascend/cann-9.0.0/bin/clang++"
+    found: false
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompiler.cmake:73 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:69 (_cmake_find_compiler)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_CXX_COMPILER"
+    description: "CXX compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "c++"
+      - "CC"
+      - "g++"
+      - "aCC"
+      - "cl"
+      - "bcc"
+      - "xlC"
+      - "icpx"
+      - "icx"
+      - "clang++"
+    candidate_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/sbin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake/c++"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/sbin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/lib64/cmake/c++"
+      - "/usr/local/Ascend/cann-9.0.0/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/c++"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/c++"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/c++"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/c++"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/c++"
+      - "/root/.nvm/versions/node/v24.14.1/bin/c++"
+      - "/opt/conda/envs/dlcompiler/bin/c++"
+      - "/opt/conda/condabin/c++"
+      - "/opt/conda/bin/c++"
+      - "/usr/local/sbin/c++"
+      - "/usr/local/bin/c++"
+      - "/usr/sbin/c++"
+    found: "/usr/bin/c++"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/"
+      - "/usr/local/Ascend/cann-9.0.0/compiler/tikcpp/ascendc_kernel_cmake/asc_modules/"
+    found: "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /usr/bin/c++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+      
+      The CXX compiler identification is GNU, found in:
+        /mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/4.3.1/CompilerIdCXX/a.out
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ar"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/ar"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_RANLIB"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ranlib"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/ranlib"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_STRIP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "strip"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/strip"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ld"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/ld"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_NM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "nm"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/nm"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJDUMP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objdump"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/objdump"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJCOPY"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objcopy"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/objcopy"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_READELF"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "readelf"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/readelf"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_DLLTOOL"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "dlltool"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/bin/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/bin/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/dlltool"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/dlltool"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/dlltool"
+      - "/root/.nvm/versions/node/v24.14.1/bin/dlltool"
+      - "/opt/conda/envs/dlcompiler/bin/dlltool"
+      - "/opt/conda/condabin/dlltool"
+      - "/opt/conda/bin/dlltool"
+      - "/usr/local/sbin/dlltool"
+      - "/usr/local/bin/dlltool"
+      - "/usr/sbin/dlltool"
+      - "/sbin/dlltool"
+      - "/bin/dlltool"
+      - "/snap/bin/dlltool"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/dlltool"
+    found: false
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_ADDR2LINE"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "addr2line"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    found: "/usr/bin/addr2line"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_TAPI"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "tapi"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/bin/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/bin/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/tapi"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/tapi"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/tapi"
+      - "/root/.nvm/versions/node/v24.14.1/bin/tapi"
+      - "/opt/conda/envs/dlcompiler/bin/tapi"
+      - "/opt/conda/condabin/tapi"
+      - "/opt/conda/bin/tapi"
+      - "/usr/local/sbin/tapi"
+      - "/usr/local/bin/tapi"
+      - "/usr/sbin/tapi"
+      - "/sbin/tapi"
+      - "/bin/tapi"
+      - "/snap/bin/tapi"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/tapi"
+    found: false
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/Compiler/GNU-FindBinUtils.cmake:18 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:207 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_CXX_COMPILER_AR"
+    description: "A wrapper around 'ar' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ar-11.4"
+      - "gcc-ar-11"
+      - "gcc-ar11"
+      - "gcc-ar"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/bin/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/bin/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/gcc-ar-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/gcc-ar-11.4"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/gcc-ar-11.4"
+      - "/root/.nvm/versions/node/v24.14.1/bin/gcc-ar-11.4"
+      - "/opt/conda/envs/dlcompiler/bin/gcc-ar-11.4"
+      - "/opt/conda/condabin/gcc-ar-11.4"
+      - "/opt/conda/bin/gcc-ar-11.4"
+      - "/usr/local/sbin/gcc-ar-11.4"
+      - "/usr/local/bin/gcc-ar-11.4"
+      - "/usr/sbin/gcc-ar-11.4"
+      - "/sbin/gcc-ar-11.4"
+      - "/bin/gcc-ar-11.4"
+      - "/snap/bin/gcc-ar-11.4"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/gcc-ar-11.4"
+    found: "/usr/bin/gcc-ar-11"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/Compiler/GNU-FindBinUtils.cmake:30 (find_program)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:207 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_CXX_COMPILER_RANLIB"
+    description: "A wrapper around 'ranlib' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ranlib-11.4"
+      - "gcc-ranlib-11"
+      - "gcc-ranlib11"
+      - "gcc-ranlib"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/"
+      - "/root/.nvm/versions/node/v24.14.1/bin/"
+      - "/opt/conda/envs/dlcompiler/bin/"
+      - "/opt/conda/condabin/"
+      - "/opt/conda/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/snap/bin/"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/"
+    searched_directories:
+      - "/usr/bin/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/bin/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data/gcc-ranlib-11.4"
+      - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump/gcc-ranlib-11.4"
+      - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli/gcc-ranlib-11.4"
+      - "/root/.nvm/versions/node/v24.14.1/bin/gcc-ranlib-11.4"
+      - "/opt/conda/envs/dlcompiler/bin/gcc-ranlib-11.4"
+      - "/opt/conda/condabin/gcc-ranlib-11.4"
+      - "/opt/conda/bin/gcc-ranlib-11.4"
+      - "/usr/local/sbin/gcc-ranlib-11.4"
+      - "/usr/local/bin/gcc-ranlib-11.4"
+      - "/usr/sbin/gcc-ranlib-11.4"
+      - "/sbin/gcc-ranlib-11.4"
+      - "/bin/gcc-ranlib-11.4"
+      - "/snap/bin/gcc-ranlib-11.4"
+      - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin/gcc-ranlib-11.4"
+    found: "/usr/bin/gcc-ranlib-11"
+    search_context:
+      ENV{CMAKE_PREFIX_PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/toolkit/tools/tikicpulib/lib/cmake"
+        - "/usr/local/Ascend/cann-9.0.0/lib64/cmake"
+      ENV{PATH}:
+        - "/usr/local/Ascend/cann-9.0.0/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ccec_compiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/profiler/bin"
+        - "/usr/local/Ascend/cann-9.0.0/tools/ascend_system_advisor/asys"
+        - "/usr/local/Ascend/cann-9.0.0/tools/show_kernel_debug_data"
+        - "/usr/local/Ascend/cann-9.0.0/tools/msobjdump"
+        - "/root/.vscode-server/bin/ea1445cc7016315d0f5728f8e8b12a45dc0a7286/bin/remote-cli"
+        - "/root/.nvm/versions/node/v24.14.1/bin"
+        - "/opt/conda/envs/dlcompiler/bin"
+        - "/opt/conda/condabin"
+        - "/opt/conda/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/snap/bin"
+        - "/mnt/data01/zmz/workspace/12agent/Auto-Kernel-Harness/humanize/bin"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk"
+      binary: "/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: ""
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/usr/local/Ascend/cann-9.0.0/compiler/tikcpp/ascendc_kernel_cmake/asc_modules"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk'
+        
+        Run Build Command(s): /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_b9a05/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_b9a05.dir/build.make CMakeFiles/cmTC_b9a05.dir/build
+        gmake[1]: Entering directory '/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk'
+        Building CXX object CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o
+        /usr/bin/c++   -v -o CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -c /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/c++
+        Target: aarch64-linux-gnu
+        Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c,ada,c++,go,d,fortran,objc,obj-c++,m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=aarch64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-libquadmath --disable-libquadmath-support --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --enable-fix-cortex-a53-843419 --disable-werror --enable-checking=release --build=aarch64-linux-gnu --host=aarch64-linux-gnu --target=aarch64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=4
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/'
+         /usr/lib/gcc/aarch64-linux-gnu/11/cc1plus -quiet -v -imultiarch aarch64-linux-gnu -D_GNU_SOURCE /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_b9a05.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mlittle-endian -mabi=lp64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -o /tmp/claude-0/ccxbb8Vt.s
+        GNU C++17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (aarch64-linux-gnu)
+        	compiled by GNU C version 11.4.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "/usr/include/aarch64-linux-gnu/c++/11"
+        ignoring nonexistent directory "/usr/local/include/aarch64-linux-gnu"
+        ignoring nonexistent directory "/usr/lib/gcc/aarch64-linux-gnu/11/include-fixed"
+        ignoring nonexistent directory "/usr/lib/gcc/aarch64-linux-gnu/11/../../../../aarch64-linux-gnu/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /usr/include/c++/11
+         /usr/include/aarch64-linux-gnu/c++/11
+         /usr/include/c++/11/backward
+         /usr/lib/gcc/aarch64-linux-gnu/11/include
+         /usr/local/include
+         /usr/include/aarch64-linux-gnu
+         /usr/include
+        End of search list.
+        GNU C++17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (aarch64-linux-gnu)
+        	compiled by GNU C version 11.4.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        Compiler executable checksum: 1ec2e7097ef542eddc6fe6fb48e7bad4
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/'
+         as -v -EL -mabi=lp64 -o CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o /tmp/claude-0/ccxbb8Vt.s
+        GNU assembler version 2.38 (aarch64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.38
+        COMPILER_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib/:/lib/aarch64-linux-gnu/:/lib/../lib/:/usr/lib/aarch64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_b9a05
+        /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b9a05.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/c++
+        COLLECT_LTO_WRAPPER=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper
+        Target: aarch64-linux-gnu
+        Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c,ada,c++,go,d,fortran,objc,obj-c++,m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=aarch64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-libquadmath --disable-libquadmath-support --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --enable-fix-cortex-a53-843419 --disable-werror --enable-checking=release --build=aarch64-linux-gnu --host=aarch64-linux-gnu --target=aarch64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=4
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) 
+        COMPILER_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib/:/lib/aarch64-linux-gnu/:/lib/../lib/:/usr/lib/aarch64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_b9a05' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'cmTC_b9a05.'
+         /usr/lib/gcc/aarch64-linux-gnu/11/collect2 -plugin /usr/lib/gcc/aarch64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-0/ccd3PKqp.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux-aarch64.so.1 -X -EL -maarch64linux --fix-cortex-a53-843419 -pie -z now -z relro -o cmTC_b9a05 /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o /usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/aarch64-linux-gnu/11 -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib -L/lib/aarch64-linux-gnu -L/lib/../lib -L/usr/lib/aarch64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/aarch64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o
+        collect2 version 11.4.0
+        /usr/bin/ld -plugin /usr/lib/gcc/aarch64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-0/ccd3PKqp.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux-aarch64.so.1 -X -EL -maarch64linux --fix-cortex-a53-843419 -pie -z now -z relro -o cmTC_b9a05 /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o /usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/aarch64-linux-gnu/11 -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib -L/lib/aarch64-linux-gnu -L/lib/../lib -L/usr/lib/aarch64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/aarch64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o
+        GNU ld (GNU Binutils for Ubuntu) 2.38
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_b9a05' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'cmTC_b9a05.'
+        /usr/bin/c++  -v -Wl,-v CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_b9a05
+        gmake[1]: Leaving directory '/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:217 (message)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/usr/include/c++/11]
+          add: [/usr/include/aarch64-linux-gnu/c++/11]
+          add: [/usr/include/c++/11/backward]
+          add: [/usr/lib/gcc/aarch64-linux-gnu/11/include]
+          add: [/usr/local/include]
+          add: [/usr/include/aarch64-linux-gnu]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/usr/include/c++/11] ==> [/usr/include/c++/11]
+        collapse include dir [/usr/include/aarch64-linux-gnu/c++/11] ==> [/usr/include/aarch64-linux-gnu/c++/11]
+        collapse include dir [/usr/include/c++/11/backward] ==> [/usr/include/c++/11/backward]
+        collapse include dir [/usr/lib/gcc/aarch64-linux-gnu/11/include] ==> [/usr/lib/gcc/aarch64-linux-gnu/11/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/include/aarch64-linux-gnu] ==> [/usr/include/aarch64-linux-gnu]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/usr/include/c++/11;/usr/include/aarch64-linux-gnu/c++/11;/usr/include/c++/11/backward;/usr/lib/gcc/aarch64-linux-gnu/11/include;/usr/local/include;/usr/include/aarch64-linux-gnu;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
+        ignore line: [Change Dir: '/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk']
+        ignore line: []
+        ignore line: [Run Build Command(s): /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_b9a05/fast]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_b9a05.dir/build.make CMakeFiles/cmTC_b9a05.dir/build]
+        ignore line: [gmake[1]: Entering directory '/mnt/data01/zmz/workspace/12agent/waic/build/mhc_post/operators/mhc_post/build_test/CMakeFiles/CMakeScratch/TryCompile-okYQyk']
+        ignore line: [Building CXX object CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o]
+        ignore line: [/usr/bin/c++   -v -o CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -c /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/c++]
+        ignore line: [Target: aarch64-linux-gnu]
+        ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c ada c++ go d fortran objc obj-c++ m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=aarch64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-libquadmath --disable-libquadmath-support --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --enable-fix-cortex-a53-843419 --disable-werror --enable-checking=release --build=aarch64-linux-gnu --host=aarch64-linux-gnu --target=aarch64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=4]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/']
+        ignore line: [ /usr/lib/gcc/aarch64-linux-gnu/11/cc1plus -quiet -v -imultiarch aarch64-linux-gnu -D_GNU_SOURCE /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_b9a05.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mlittle-endian -mabi=lp64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -o /tmp/claude-0/ccxbb8Vt.s]
+        ignore line: [GNU C++17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (aarch64-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.4.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "/usr/include/aarch64-linux-gnu/c++/11"]
+        ignore line: [ignoring nonexistent directory "/usr/local/include/aarch64-linux-gnu"]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/aarch64-linux-gnu/11/include-fixed"]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/aarch64-linux-gnu/11/../../../../aarch64-linux-gnu/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /usr/include/c++/11]
+        ignore line: [ /usr/include/aarch64-linux-gnu/c++/11]
+        ignore line: [ /usr/include/c++/11/backward]
+        ignore line: [ /usr/lib/gcc/aarch64-linux-gnu/11/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include/aarch64-linux-gnu]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [GNU C++17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (aarch64-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.4.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [Compiler executable checksum: 1ec2e7097ef542eddc6fe6fb48e7bad4]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/']
+        ignore line: [ as -v -EL -mabi=lp64 -o CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o /tmp/claude-0/ccxbb8Vt.s]
+        ignore line: [GNU assembler version 2.38 (aarch64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.38]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib/:/lib/aarch64-linux-gnu/:/lib/../lib/:/usr/lib/aarch64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [Linking CXX executable cmTC_b9a05]
+        ignore line: [/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b9a05.dir/link.txt --verbose=1]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/c++]
+        ignore line: [COLLECT_LTO_WRAPPER=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper]
+        ignore line: [Target: aarch64-linux-gnu]
+        ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c ada c++ go d fortran objc obj-c++ m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=aarch64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-libquadmath --disable-libquadmath-support --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --enable-fix-cortex-a53-843419 --disable-werror --enable-checking=release --build=aarch64-linux-gnu --host=aarch64-linux-gnu --target=aarch64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=4]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) ]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/aarch64-linux-gnu/11/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib/:/lib/aarch64-linux-gnu/:/lib/../lib/:/usr/lib/aarch64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/aarch64-linux-gnu/11/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_b9a05' '-shared-libgcc' '-mlittle-endian' '-mabi=lp64' '-dumpdir' 'cmTC_b9a05.']
+        link line: [ /usr/lib/gcc/aarch64-linux-gnu/11/collect2 -plugin /usr/lib/gcc/aarch64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-0/ccd3PKqp.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux-aarch64.so.1 -X -EL -maarch64linux --fix-cortex-a53-843419 -pie -z now -z relro -o cmTC_b9a05 /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o /usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/aarch64-linux-gnu/11 -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib -L/lib/aarch64-linux-gnu -L/lib/../lib -L/usr/lib/aarch64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/aarch64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o]
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/collect2] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/liblto_plugin.so] ==> ignore
+          arg [-plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper] ==> ignore
+          arg [-plugin-opt=-fresolution=/tmp/claude-0/ccd3PKqp.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [--build-id] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--as-needed] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib/ld-linux-aarch64.so.1] ==> ignore
+          arg [-X] ==> ignore
+          arg [-EL] ==> ignore
+          arg [-maarch64linux] ==> ignore
+          arg [--fix-cortex-a53-843419] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-znow] ==> ignore
+          arg [-zrelro] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_b9a05] ==> ignore
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o] ==> obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o]
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o] ==> obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o]
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o] ==> obj [/usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o]
+          arg [-L/usr/lib/gcc/aarch64-linux-gnu/11] ==> dir [/usr/lib/gcc/aarch64-linux-gnu/11]
+          arg [-L/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu] ==> dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu]
+          arg [-L/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib] ==> dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib]
+          arg [-L/lib/aarch64-linux-gnu] ==> dir [/lib/aarch64-linux-gnu]
+          arg [-L/lib/../lib] ==> dir [/lib/../lib]
+          arg [-L/usr/lib/aarch64-linux-gnu] ==> dir [/usr/lib/aarch64-linux-gnu]
+          arg [-L/usr/lib/../lib] ==> dir [/usr/lib/../lib]
+          arg [-L/usr/lib/gcc/aarch64-linux-gnu/11/../../..] ==> dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../..]
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o] ==> obj [/usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o]
+          arg [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o] ==> obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o]
+        ignore line: [collect2 version 11.4.0]
+        ignore line: [/usr/bin/ld -plugin /usr/lib/gcc/aarch64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-0/ccd3PKqp.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux-aarch64.so.1 -X -EL -maarch64linux --fix-cortex-a53-843419 -pie -z now -z relro -o cmTC_b9a05 /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o /usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/aarch64-linux-gnu/11 -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu -L/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib -L/lib/aarch64-linux-gnu -L/lib/../lib -L/usr/lib/aarch64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/aarch64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_b9a05.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o /usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o]
+        linker tool for 'CXX': /usr/bin/ld
+        collapse obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/Scrt1.o] ==> [/usr/lib/aarch64-linux-gnu/Scrt1.o]
+        collapse obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crti.o] ==> [/usr/lib/aarch64-linux-gnu/crti.o]
+        collapse obj [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu/crtn.o] ==> [/usr/lib/aarch64-linux-gnu/crtn.o]
+        collapse library dir [/usr/lib/gcc/aarch64-linux-gnu/11] ==> [/usr/lib/gcc/aarch64-linux-gnu/11]
+        collapse library dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../../aarch64-linux-gnu] ==> [/usr/lib/aarch64-linux-gnu]
+        collapse library dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../../../lib] ==> [/usr/lib]
+        collapse library dir [/lib/aarch64-linux-gnu] ==> [/lib/aarch64-linux-gnu]
+        collapse library dir [/lib/../lib] ==> [/lib]
+        collapse library dir [/usr/lib/aarch64-linux-gnu] ==> [/usr/lib/aarch64-linux-gnu]
+        collapse library dir [/usr/lib/../lib] ==> [/usr/lib]
+        collapse library dir [/usr/lib/gcc/aarch64-linux-gnu/11/../../..] ==> [/usr/lib]
+        implicit libs: [stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+        implicit objs: [/usr/lib/aarch64-linux-gnu/Scrt1.o;/usr/lib/aarch64-linux-gnu/crti.o;/usr/lib/gcc/aarch64-linux-gnu/11/crtbeginS.o;/usr/lib/gcc/aarch64-linux-gnu/11/crtendS.o;/usr/lib/aarch64-linux-gnu/crtn.o]
+        implicit dirs: [/usr/lib/gcc/aarch64-linux-gnu/11;/usr/lib/aarch64-linux-gnu;/usr/lib;/lib/aarch64-linux-gnu;/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "/opt/conda/envs/dlcompiler/lib/python3.10/site-packages/cmake/data/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Running the CXX compiler's linker: "/usr/bin/ld" "-v"
+      GNU ld (GNU Binutils for Ubuntu) 2.38
+...

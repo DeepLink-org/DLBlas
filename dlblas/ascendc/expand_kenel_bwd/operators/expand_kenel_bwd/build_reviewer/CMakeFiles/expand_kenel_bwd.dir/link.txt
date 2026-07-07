@@ -1,0 +1,1 @@
+/usr/local/Ascend/cann-9.0.0/bin/bisheng CMakeFiles/expand_kenel_bwd.dir/op_host/expand_kenel_bwd.asc.o -o expand_kenel_bwd  -ltiling_api -lregister -lplatform -lunified_dlog -ldl -lm -lgraph_base

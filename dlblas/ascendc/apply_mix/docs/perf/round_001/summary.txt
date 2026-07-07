@@ -1,0 +1,50 @@
+=== 上板性能统计摘要 ===
+Op: apply_mix_kernel | Type: vector | Duration: 501.250031us | BlockDim: 48 | Freq: 1800/1800
+
+--- PipeUtilization (48 cores, prefix=aiv) ---
+                                  min        avg        max
+  aiv_time(us)               317.56     489.97     500.21
+  vec_ratio%                   2.54       2.60       2.63
+  scalar_ratio%               91.45      99.22      99.79
+  mte2_ratio%                 22.15      23.43      30.52
+  mte3_ratio%                  3.60       4.24       5.00
+  mte2_active_bw                5.4        7.2        7.5    (GB/s)
+  mte3_active_bw                8.3        9.8       11.5    (GB/s)
+
+--- SCALAR 子类耗时 (avg) ---
+  single: 12.41us | dual: 8.52us | wait: 3.64us | wait_ib: 0.23us
+
+--- 头开销 ---
+  Task Duration: 501.250031us | 最长核: 500.21us | 头开销: 1.04us (0.2%)
+
+--- Memory ---
+  GM→UB: 41216.0KB total (858.7KB/core), BW usage: 0.76%
+  UB→GM: 10240.0KB total (213.3KB/core), BW usage: 0.22%
+  主存读取: 42770.0KB total
+  主存写入: 10246.0KB total
+  Avg MTE2 transfer: 4.01KB (10288 instructions total)
+  GM→UB avg BW: 1.67 GB/s
+  UB→GM avg BW: 0.42 GB/s
+
+--- MemoryUB ---
+  UB read BW (vector): avg=5.7 GB/s
+  UB write BW (vector): avg=3.7 GB/s
+  UB read BW (scalar): avg=0.0 GB/s
+
+--- L2Cache ---
+  total_hit: avg=4.0% (min=3.9%, max=4.0%)
+  read_hit: avg=4.2% (min=4.2%, max=4.2%)
+  write_hit: avg=0.2% (min=0.2%, max=0.4%)
+  write cache: hit=48 miss=20480
+
+--- ResourceConflict ---
+  vec_total_cflt: 0.55% | bankgroup_cflt: 0.43% | bank_cflt: 0.12% | resc_cflt: 0.00% | mte_cflt: 0.00%
+  vec_wait: 21.99% | mte2_wait: 0.11% | mte3_wait: 4.60%
+
+--- ArithmeticUtilization ---
+  vec_fp32: 2.2% | vec_misc: 0.4%
+  vec_fops: 540800/core
+
+--- 原始数据位置 ---
+  CSV 文件: /mnt/data01/zmz/workspace/12agent/waic/build/apply_mix/operators/apply_mix/docs/perf/round_001/
+  如需逐核详情，请 Read 对应 CSV 文件。

@@ -1,0 +1,77 @@
+================================================================================
+  AscendC vs PyTorch (NPU) Benchmark - ALL Operators
+  20 operators
+================================================================================
+
+──────────────────────────────────────────────────────────────────────
+  [act_quant_kernel]...
+  [act_quant_kernel] Speedup: 1.3238x (5/5) [1.2s]
+
+──────────────────────────────────────────────────────────────────────
+  [apply_mix]...
+  [apply_mix] Speedup: 0.5317x (4/4) [2.5s]
+
+──────────────────────────────────────────────────────────────────────
+  [head_compute_mix_fwd]...
+  [head_compute_mix_fwd] Speedup: 8.9145x (4/4) [21.7s]
+
+──────────────────────────────────────────────────────────────────────
+  [expand_kenel_fwd]...
+  [expand_kenel_fwd] Speedup: 2.1570x (5/5) [0.5s]
+
+──────────────────────────────────────────────────────────────────────
+  [hc_split_sinkhorn]...
+  [hc_split_sinkhorn] Speedup: 11.3442x (5/5) [1.9s]
+
+──────────────────────────────────────────────────────────────────────
+  [sparse_attn]...
+terminate called after throwing an instance of 'c10::Error'
+  what():  Inferred operator schema for a C++ kernel function doesn't match the expected function schema.
+  operator: npu::sparse_attn
+  expected schema: npu::sparse_attn(Tensor q, Tensor kv, Tensor attn_sink, Tensor topk_idxs, Scalar softmax_scale) -> Tensor
+    registered at /mnt/data01/zmz/workspace/12agent/waic/cannbot/sparse_attn/op_extension/register.cpp:12
+  inferred schema: (Tensor _0, Tensor _1, Tensor _2, Tensor _3, float _4) -> Tensor _0
+    registered at /mnt/data01/zmz/workspace/12agent/waic/cannbot/sparse_attn/op_extension/register.cpp:18
+  reason: Type mismatch in argument 5: Scalar vs float.
+Exception raised from checkSchema at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:108 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb0 (0xfffc389448c0 in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) + 0x68 (0xfffc388ec140 in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libc10.so)
+frame #2: <unknown function> + 0x1572b8c (0xfffc39b32b8c in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10::impl::OperatorEntry::registerKernel(c10::Dispatcher const&, std::optional<c10::DispatchKey>, c10::KernelFunction, std::optional<c10::impl::CppSignature>, std::unique_ptr<c10::FunctionSchema, std::default_delete<c10::FunctionSchema> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x2c4 (0xfffc39b373a4 in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #4: c10::Dispatcher::registerImpl(c10::OperatorName, std::optional<c10::DispatchKey>, c10::KernelFunction, std::optional<c10::impl::CppSignature>, std::unique_ptr<c10::FunctionSchema, std::default_delete<c10::FunctionSchema> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xf8 (0xfffc39b2b4e8 in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #5: torch::Library::_impl(char const*, torch::CppFunction&&, torch::_RegisterOrVerify) & + 0x1a4 (0xfffc39b6ca44 in /opt/conda/envs/dlcompiler/lib/python3.10/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: torch::Library& torch::Library::impl<char const*, c10::CompileTimeFunctionPointer<at::Tensor (at::Tensor const&, at::Tensor const&, at::Tensor const&, at::Tensor const&, double), &ascend_kernel::sparse_attn_torch> >(char const*, c10::CompileTimeFunctionPointer<at::Tensor (at::Tensor const&, at::Tensor const&, at::Tensor const&, at::Tensor const&, double), &ascend_kernel::sparse_attn_torch>&&, torch::_RegisterOrVerify) & + 0x68 (0xfffaed602c00 in /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/sparse_attn/build/libsparse_attn_ops.so)
+frame #7: <unknown function> + 0xcd0bc (0xfffaed5fd0bc in /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/sparse_attn/build/libsparse_attn_ops.so)
+frame #8: torch::detail::TorchLibraryInit::TorchLibraryInit(torch::Library::Kind, void (*)(torch::Library&), char const*, std::optional<c10::DispatchKey>, char const*, unsigned int) + 0xa0 (0xfffaed6016b8 in /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/sparse_attn/build/libsparse_attn_ops.so)
+frame #9: <unknown function> + 0xce4e8 (0xfffaed5fe4e8 in /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/sparse_attn/build/libsparse_attn_ops.so)
+frame #10: <unknown function> + 0xce5ac (0xfffaed5fe5ac in /mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/sparse_attn/build/libsparse_attn_ops.so)
+frame #11: <unknown function> + 0x5624 (0xfffcf5f95624 in /lib/ld-linux-aarch64.so.1)
+frame #12: <unknown function> + 0x572c (0xfffcf5f9572c in /lib/ld-linux-aarch64.so.1)
+frame #13: _dl_catch_exception + 0xd8 (0xfffcf5dd2008 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #14: <unknown function> + 0xbf5c (0xfffcf5f9bf5c in /lib/ld-linux-aarch64.so.1)
+frame #15: _dl_catch_exception + 0x7c (0xfffcf5dd1fac in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #16: <unknown function> + 0xc2fc (0xfffcf5f9c2fc in /lib/ld-linux-aarch64.so.1)
+frame #17: <unknown function> + 0x7c444 (0xfffcf5d1c444 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #18: _dl_catch_exception + 0x7c (0xfffcf5dd1fac in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #19: _dl_catch_error + 0x44 (0xfffcf5dd2084 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #20: <unknown function> + 0x7bef8 (0xfffcf5d1bef8 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #21: dlopen + 0x58 (0xfffcf5d1c4e8 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #22: <unknown function> + 0x12894 (0xfffc44ee2894 in /opt/conda/envs/dlcompiler/lib/python3.10/lib-dynload/_ctypes.cpython-310-aarch64-linux-gnu.so)
+frame #23: python3() [0x5d5e9c]
+<omitting python frames>
+frame #26: python3() [0x4d5a44]
+frame #29: python3() [0x48efdc]
+frame #30: python3() [0x487320]
+frame #33: python3() [0x4d5a44]
+frame #34: python3() [0x5bd8b0]
+frame #36: python3() [0x4d5a44]
+frame #38: python3() [0x4d5a44]
+frame #40: python3() [0x4d5a44]
+frame #42: python3() [0x4d5a44]
+frame #44: python3() [0x4d5a44]
+frame #45: python3() [0x5bd958]
+frame #46: python3() [0x58434c]
+frame #47: python3() [0x524d14]
+frame #48: <unknown function> + 0x80398 (0xfffcf5d20398 in /usr/lib/aarch64-linux-gnu/libc.so.6)
+frame #49: <unknown function> + 0xe9e9c (0xfffcf5d89e9c in /usr/lib/aarch64-linux-gnu/libc.so.6)
+

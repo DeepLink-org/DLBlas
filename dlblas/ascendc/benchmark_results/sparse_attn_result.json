@@ -1,0 +1,8 @@
+{
+  "op": "sparse_attn",
+  "error": "name 'tensor' is not defined",
+  "trace": "Traceback (most recent call last):\n  File \"/mnt/data01/zmz/workspace/12agent/waic/cannbot-merge/benchmark_results/_fix_sparse_attn.py\", line 33, in <module>\n    torch.manual_seed(42); dev=torch.device(\"npu:0\"); ss=tensor(d**-0.5) # try as tensor\nNameError: name 'tensor' is not defined\n",
+  "status": "ERROR",
+  "elapsed_s": 12.6,
+  "returncode": 0
+}
