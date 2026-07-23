@@ -1,5 +1,6 @@
 import argparse
 import ast
+import contextlib
 import importlib.util
 import statistics
 import sys
@@ -52,6 +53,15 @@ def parse_args():
         "--full-traceback",
         action="store_true",
         help="Print full Python traceback for load/run failures.",
+    )
+    parser.add_argument(
+        "--math-sdpa",
+        action="store_true",
+        help=(
+            "Force PyTorch scaled-dot-product attention to its math backend. "
+            "Useful when an installed FlashAttention plugin is incompatible with "
+            "the current PyTorch/ROCm runtime."
+        ),
     )
     return parser.parse_args()
 
@@ -386,9 +396,14 @@ def build_case(v0_path: Path, v1_path: Path, seed: int):
         f"{v1_path}: get_init_inputs()",
     )
 
+    # Model constructors may initialise trainable parameters from the RNG.  Build
+    # both variants from the same RNG state so correctness compares equivalent
+    # weights rather than two unrelated random models.
+    set_seed(seed)
     model = call_with_context(
         lambda: model_cls(*v0_init_args), f"{v0_path}: Model(...)"
     )
+    set_seed(seed)
     model_new = call_with_context(
         lambda: model_new_cls(*v1_init_args), f"{v1_path}: ModelNew(...)"
     )
@@ -537,12 +552,22 @@ def compare_case(name, v0_path, v1_path, args):
     v1_inputs = _move_to_device(v1_inputs, target_device)
     v1_inputs = clone_value(v0_inputs)
 
-    v0_output = run_forward(model, v0_inputs, args.seed, f"{name}: v0")
-    v1_output = run_forward(model_new, v1_inputs, args.seed, f"{name}: v1")
-    compare_values(v0_output, v1_output, "output", args.atol, args.rtol)
+    # The context covers both correctness and timed calls.  This only changes
+    # PyTorch SDPA dispatch; custom Triton kernels remain the executed v1 path.
+    sdpa_context = (
+        torch.backends.cuda.sdp_kernel(
+            enable_flash=False, enable_math=True, enable_mem_efficient=False
+        )
+        if args.math_sdpa
+        else contextlib.nullcontext()
+    )
+    with sdpa_context:
+        v0_output = run_forward(model, v0_inputs, args.seed, f"{name}: v0")
+        v1_output = run_forward(model_new, v1_inputs, args.seed, f"{name}: v1")
+        compare_values(v0_output, v1_output, "output", args.atol, args.rtol)
 
-    v0_ms = time_forward(model, v0_inputs, args.seed, args.warmup, args.repeat)
-    v1_ms = time_forward(model_new, v1_inputs, args.seed, args.warmup, args.repeat)
+        v0_ms = time_forward(model, v0_inputs, args.seed, args.warmup, args.repeat)
+        v1_ms = time_forward(model_new, v1_inputs, args.seed, args.warmup, args.repeat)
     speedup = v0_ms / v1_ms if v1_ms > 0 else float("inf")
     return CaseResult(name=name, passed=True, v0_ms=v0_ms, v1_ms=v1_ms, speedup=speedup)
 
