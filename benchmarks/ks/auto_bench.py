@@ -507,10 +507,24 @@ def _move_to_device(value, device):
     return value
 
 
+def _move_model_to_device(model, device, description):
+    """Move a torch module's parameters and buffers to the target device."""
+    if not isinstance(model, torch.nn.Module):
+        return model
+    try:
+        return model.to(device)
+    except Exception as exc:
+        raise KsCompareError(
+            f"{description}: failed to move model to {device}: {exc}"
+        ) from exc
+
+
 def compare_case(name, v0_path, v1_path, args):
     model, model_new, v0_inputs, v1_inputs = build_case(v0_path, v1_path, args.seed)
 
     target_device = _detect_target_device(model, model_new, v0_inputs, v1_inputs)
+    model = _move_model_to_device(model, target_device, f"{name}: v0")
+    model_new = _move_model_to_device(model_new, target_device, f"{name}: v1")
     v0_inputs = _move_to_device(v0_inputs, target_device)
     v1_inputs = _move_to_device(v1_inputs, target_device)
 
