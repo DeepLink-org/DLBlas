@@ -417,17 +417,12 @@ def build_case(v0_path: Path, v1_path: Path, seed: int):
         call_with_context(v0_get_inputs, f"{v0_path}: get_inputs()"),
         f"{v0_path}: get_inputs()",
     )
-    set_seed(seed)
-    v1_inputs = as_args(
-        call_with_context(v1_get_inputs, f"{v1_path}: get_inputs()"),
-        f"{v1_path}: get_inputs()",
-    )
-
-    if len(v0_inputs) != len(v1_inputs):
-        raise KsCompareError(
-            f"get_inputs argument count mismatch: {v0_path} returns {len(v0_inputs)} "
-            f"args, {v1_path} returns {len(v1_inputs)} args."
-        )
+    # v0/reference inputs are the canonical comparison data.  Generating a
+    # separate v1 input can yield different values even under the same seed
+    # when the files use different device RNGs (CPU vs CUDA).  Clone the
+    # canonical data instead; compare_case later moves both copies to the same
+    # accelerator before executing either implementation.
+    v1_inputs = clone_value(v0_inputs)
     return model, model_new, v0_inputs, v1_inputs
 
 
