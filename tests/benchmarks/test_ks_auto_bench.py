@@ -78,6 +78,45 @@ class AutoBenchDeviceTests(unittest.TestCase):
 
         self.assertTrue(torch.equal(model.weight, model_new.weight))
 
+    def test_build_case_clones_reference_inputs_for_v1(self):
+        v0_source = textwrap.dedent(
+            """
+            import torch
+
+            class Model(torch.nn.Module):
+                pass
+
+            def get_init_inputs():
+                return []
+
+            def get_inputs():
+                return [torch.tensor([3.0])]
+            """
+        )
+        v1_source = textwrap.dedent(
+            """
+            import torch
+
+            class ModelNew(torch.nn.Module):
+                pass
+
+            def get_init_inputs():
+                return []
+
+            def get_inputs():
+                return [torch.tensor([-1.0])]
+            """
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            v0_path = Path(tmpdir) / "v0.py"
+            v1_path = Path(tmpdir) / "v1.py"
+            v0_path.write_text(v0_source)
+            v1_path.write_text(v1_source)
+            _, _, v0_inputs, v1_inputs = auto_bench.build_case(v0_path, v1_path, 42)
+
+        self.assertTrue(torch.equal(v0_inputs[0], v1_inputs[0]))
+        self.assertNotEqual(v0_inputs[0].data_ptr(), v1_inputs[0].data_ptr())
+
 
 if __name__ == "__main__":
     unittest.main()
