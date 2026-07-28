@@ -135,6 +135,8 @@ def _rewrite_device_for_backend(tree: ast.AST) -> None:
     if target is None or target == "npu":
         return
     _RewriteDeviceStr("npu", target).visit(tree)
+    if target == "gcu":
+        _RewriteDeviceStr("cuda", target).visit(tree)
     ast.fix_missing_locations(tree)
 
 
@@ -204,10 +206,11 @@ def as_args(value, description):
 def _iter_accelerators():
     """Yield (name, module) for each available accelerator backend.
 
-    Covers cuda / npu (Ascend) / mlu (Cambricon). Add more backends here as
-    needed; set_seed / sync_devices / device detection all derive from this.
+    Covers cuda / npu (Ascend) / mlu (Cambricon) / gcu (Enflame). 
+    Add more backends here asneeded; 
+    set_seed / sync_devices / device detection all derive from this.
     """
-    for name in ("cuda", "npu", "mlu"):
+    for name in ("gcu", "cuda", "npu", "mlu"):
         mod = getattr(torch, name, None)
         if mod is None:
             continue
@@ -511,8 +514,20 @@ def compare_case(name, v0_path, v1_path, args):
     model, model_new, v0_inputs, v1_inputs = build_case(v0_path, v1_path, args.seed)
 
     target_device = _detect_target_device(model, model_new, v0_inputs, v1_inputs)
+
+    try:
+        model_new.load_state_dict(model.state_dict())
+    except Exception:
+        pass
+
+    if hasattr(model, 'to'):
+        model = model.to(target_device)
+    if hasattr(model_new, 'to'):
+        model_new = model_new.to(target_device)
+
     v0_inputs = _move_to_device(v0_inputs, target_device)
     v1_inputs = _move_to_device(v1_inputs, target_device)
+    v1_inputs = clone_value(v0_inputs)
 
     v0_output = run_forward(model, v0_inputs, args.seed, f"{name}: v0")
     v1_output = run_forward(model_new, v1_inputs, args.seed, f"{name}: v1")
