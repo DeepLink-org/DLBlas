@@ -206,8 +206,8 @@ def as_args(value, description):
 def _iter_accelerators():
     """Yield (name, module) for each available accelerator backend.
 
-    Covers cuda / npu (Ascend) / mlu (Cambricon) / gcu (Enflame). 
-    Add more backends here asneeded; 
+    Covers cuda / npu (Ascend) / mlu (Cambricon) / gcu (Enflame).
+    Add more backends here asneeded;
     set_seed / sync_devices / device detection all derive from this.
     """
     for name in ("gcu", "cuda", "npu", "mlu"):
@@ -520,9 +520,9 @@ def compare_case(name, v0_path, v1_path, args):
     except Exception:
         pass
 
-    if hasattr(model, 'to'):
+    if hasattr(model, "to"):
         model = model.to(target_device)
-    if hasattr(model_new, 'to'):
+    if hasattr(model_new, "to"):
         model_new = model_new.to(target_device)
 
     v0_inputs = _move_to_device(v0_inputs, target_device)
