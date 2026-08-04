@@ -143,7 +143,8 @@ def permute_bwd_kernel(
     num_topK: tl.constexpr,
     BLOCK_SIZE_COLS: tl.constexpr,
 ):
-    pid_m = tl.program_id(axis=0)
+    # 64 位行偏移：pid_m * num_cols 和 perm_row * num_cols 在 int32 下会溢出
+    pid_m = tl.program_id(axis=0).to(tl.int64)
 
     for col_block_start in range(0, tl.cdiv(num_cols, BLOCK_SIZE_COLS)):
         col_offsets = col_block_start * BLOCK_SIZE_COLS + tl.arange(0, BLOCK_SIZE_COLS)
@@ -155,7 +156,7 @@ def permute_bwd_kernel(
         # tl.static_range 确保这个循环在编译时展开，没有运行时开销
         for k in tl.static_range(num_topK):
             # 加载需要 gather 的行索引
-            perm_row = tl.load(inv_idx_ptr + pid_m * num_topK + k)
+            perm_row = tl.load(inv_idx_ptr + pid_m * num_topK + k).to(tl.int64)
             is_valid = perm_row >= 0
 
             vals = tl.load(go_ptr + perm_row * num_cols + col_offsets, 
