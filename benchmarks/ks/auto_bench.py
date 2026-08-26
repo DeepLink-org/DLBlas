@@ -99,7 +99,7 @@ def _filter_module_ast(tree):
 
 
 def _auto_accel_name() -> str | None:
-    """Name of the first available accelerator (cuda/npu/mlu), or None."""
+    """Name of the first available accelerator (gcu/cuda/npu/mlu/musa), or None."""
     for name, _ in _iter_accelerators():
         return name
     return None
@@ -206,11 +206,12 @@ def as_args(value, description):
 def _iter_accelerators():
     """Yield (name, module) for each available accelerator backend.
 
-    Covers cuda / npu (Ascend) / mlu (Cambricon) / gcu (Enflame).
+    Covers cuda / npu (Ascend) / mlu (Cambricon) / gcu (Enflame) /
+    musa (Moore Threads).
     Add more backends here asneeded;
     set_seed / sync_devices / device detection all derive from this.
     """
-    for name in ("gcu", "cuda", "npu", "mlu"):
+    for name in ("gcu", "cuda", "npu", "mlu", "musa"):
         mod = getattr(torch, name, None)
         if mod is None:
             continue
@@ -492,7 +493,7 @@ def _detect_target_device(model, model_new, v0_inputs, v1_inputs):
     for name, _ in _iter_accelerators():
         return torch.device(name)
     raise KsCompareError(
-        "no accelerator device available (cuda/npu/mlu); "
+        "no accelerator device available (gcu/cuda/npu/mlu/musa); "
         "cannot run accuracy or performance comparison on CPU."
     )
 
