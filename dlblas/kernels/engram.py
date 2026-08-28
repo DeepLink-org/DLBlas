@@ -200,7 +200,8 @@ def engram_gate_value_rms_kernel(
     gate_abs = tl.abs(gate_raw)
     gate_clamped = tl.maximum(gate_abs, 1e-6)
     gate_sqrt = tl.sqrt(gate_clamped)
-    gate = gate_sqrt * tl.where(gate_raw >= 0, 1.0, -1.0)
+    gate_sign = tl.where(gate_raw > 0, 1.0, tl.where(gate_raw < 0, -1.0, 0.0))
+    gate = gate_sqrt * gate_sign
     gate = tl.sigmoid(gate)
 
     sum_sq_val = 0.0
