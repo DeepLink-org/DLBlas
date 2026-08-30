@@ -120,15 +120,9 @@ class ModelNew(nn.Module):
         if self.centre_only:
             u1 = u2 = u3 = translation = x_input_coords
         else:
-            u1 = torch.rand(
-                self.n_sample, device=x_input_coords.device, dtype=dtype
-            )
-            u2 = torch.rand(
-                self.n_sample, device=x_input_coords.device, dtype=dtype
-            )
-            u3 = torch.rand(
-                self.n_sample, device=x_input_coords.device, dtype=dtype
-            )
+            u1 = torch.rand(self.n_sample, device=x_input_coords.device, dtype=dtype)
+            u2 = torch.rand(self.n_sample, device=x_input_coords.device, dtype=dtype)
+            u3 = torch.rand(self.n_sample, device=x_input_coords.device, dtype=dtype)
             translation = torch.randn(
                 self.n_sample, 3, device=x_input_coords.device, dtype=dtype
             )
