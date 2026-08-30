@@ -11,7 +11,16 @@ ROW_WARPS = 1
 
 
 @triton.jit
-def _sinkhorn_kernel(mixes, scales, base, pre_out, post_out, comb_out, rows: tl.constexpr, eps: tl.constexpr):
+def _sinkhorn_kernel(
+    mixes,
+    scales,
+    base,
+    pre_out,
+    post_out,
+    comb_out,
+    rows: tl.constexpr,
+    eps: tl.constexpr,
+):
     row = tl.program_id(0)
     hc = tl.arange(0, 4)
     s0 = tl.load(scales)
@@ -35,21 +44,33 @@ def _sinkhorn_kernel(mixes, scales, base, pre_out, post_out, comb_out, rows: tl.
     row_max1 = tl.max(tl.where(row_id == 1, matrix, -float("inf")), axis=0)
     row_max2 = tl.max(tl.where(row_id == 2, matrix, -float("inf")), axis=0)
     row_max3 = tl.max(tl.where(row_id == 3, matrix, -float("inf")), axis=0)
-    row_max = tl.where(row_id == 0, row_max0, tl.where(row_id == 1, row_max1, tl.where(row_id == 2, row_max2, row_max3)))
+    row_max = tl.where(
+        row_id == 0,
+        row_max0,
+        tl.where(row_id == 1, row_max1, tl.where(row_id == 2, row_max2, row_max3)),
+    )
     matrix = tl.exp(matrix - row_max)
 
     row_sum0 = tl.sum(tl.where(row_id == 0, matrix, 0.0), axis=0)
     row_sum1 = tl.sum(tl.where(row_id == 1, matrix, 0.0), axis=0)
     row_sum2 = tl.sum(tl.where(row_id == 2, matrix, 0.0), axis=0)
     row_sum3 = tl.sum(tl.where(row_id == 3, matrix, 0.0), axis=0)
-    row_sum = tl.where(row_id == 0, row_sum0, tl.where(row_id == 1, row_sum1, tl.where(row_id == 2, row_sum2, row_sum3)))
+    row_sum = tl.where(
+        row_id == 0,
+        row_sum0,
+        tl.where(row_id == 1, row_sum1, tl.where(row_id == 2, row_sum2, row_sum3)),
+    )
     matrix = matrix / row_sum + eps
 
     col_sum0 = tl.sum(tl.where(col_id == 0, matrix, 0.0), axis=0)
     col_sum1 = tl.sum(tl.where(col_id == 1, matrix, 0.0), axis=0)
     col_sum2 = tl.sum(tl.where(col_id == 2, matrix, 0.0), axis=0)
     col_sum3 = tl.sum(tl.where(col_id == 3, matrix, 0.0), axis=0)
-    col_sum = tl.where(col_id == 0, col_sum0, tl.where(col_id == 1, col_sum1, tl.where(col_id == 2, col_sum2, col_sum3)))
+    col_sum = tl.where(
+        col_id == 0,
+        col_sum0,
+        tl.where(col_id == 1, col_sum1, tl.where(col_id == 2, col_sum2, col_sum3)),
+    )
     matrix = matrix / (col_sum + eps)
 
     for _ in range(19):
@@ -57,13 +78,21 @@ def _sinkhorn_kernel(mixes, scales, base, pre_out, post_out, comb_out, rows: tl.
         row_sum1 = tl.sum(tl.where(row_id == 1, matrix, 0.0), axis=0)
         row_sum2 = tl.sum(tl.where(row_id == 2, matrix, 0.0), axis=0)
         row_sum3 = tl.sum(tl.where(row_id == 3, matrix, 0.0), axis=0)
-        row_sum = tl.where(row_id == 0, row_sum0, tl.where(row_id == 1, row_sum1, tl.where(row_id == 2, row_sum2, row_sum3)))
+        row_sum = tl.where(
+            row_id == 0,
+            row_sum0,
+            tl.where(row_id == 1, row_sum1, tl.where(row_id == 2, row_sum2, row_sum3)),
+        )
         matrix = matrix / (row_sum + eps)
         col_sum0 = tl.sum(tl.where(col_id == 0, matrix, 0.0), axis=0)
         col_sum1 = tl.sum(tl.where(col_id == 1, matrix, 0.0), axis=0)
         col_sum2 = tl.sum(tl.where(col_id == 2, matrix, 0.0), axis=0)
         col_sum3 = tl.sum(tl.where(col_id == 3, matrix, 0.0), axis=0)
-        col_sum = tl.where(col_id == 0, col_sum0, tl.where(col_id == 1, col_sum1, tl.where(col_id == 2, col_sum2, col_sum3)))
+        col_sum = tl.where(
+            col_id == 0,
+            col_sum0,
+            tl.where(col_id == 1, col_sum1, tl.where(col_id == 2, col_sum2, col_sum3)),
+        )
         matrix = matrix / (col_sum + eps)
     tl.store(pre_out + row * 4 + hc, pre)
     tl.store(post_out + row * 4 + hc, post)
@@ -77,12 +106,25 @@ class ModelNew(nn.Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.eps = eps
 
-    def forward(self, mixes: torch.Tensor, hc_scale: torch.Tensor, hc_base: torch.Tensor):
+    def forward(
+        self, mixes: torch.Tensor, hc_scale: torch.Tensor, hc_base: torch.Tensor
+    ):
         b, s, _ = mixes.shape
         pre = torch.empty((b, s, 4), dtype=torch.float32, device=mixes.device)
         post = torch.empty_like(pre)
         comb = torch.empty((b, s, 4, 4), dtype=torch.float32, device=mixes.device)
-        _sinkhorn_kernel[(b * s,)](mixes, hc_scale, hc_base, pre, post, comb, rows=b * s, eps=self.eps, num_warps=ROW_WARPS, num_stages=1)
+        _sinkhorn_kernel[(b * s,)](
+            mixes,
+            hc_scale,
+            hc_base,
+            pre,
+            post,
+            comb,
+            rows=b * s,
+            eps=self.eps,
+            num_warps=ROW_WARPS,
+            num_stages=1,
+        )
         return pre, post, comb
 
 
@@ -96,4 +138,8 @@ def get_init_inputs():
 
 def get_inputs():
     torch.manual_seed(0)
-    return [torch.randn(2, 8, 24, dtype=torch.float32), torch.tensor([0.5, 0.25, 1.0], dtype=torch.float32), torch.randn(24, dtype=torch.float32) * 0.1]
+    return [
+        torch.randn(2, 8, 24, dtype=torch.float32),
+        torch.tensor([0.5, 0.25, 1.0], dtype=torch.float32),
+        torch.randn(24, dtype=torch.float32) * 0.1,
+    ]

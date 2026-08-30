@@ -11,7 +11,16 @@ ROW_WARPS = 8
 
 
 @triton.jit
-def _sinkhorn_kernel(mixes, scales, base, pre_out, post_out, comb_out, rows: tl.constexpr, eps: tl.constexpr):
+def _sinkhorn_kernel(
+    mixes,
+    scales,
+    base,
+    pre_out,
+    post_out,
+    comb_out,
+    rows: tl.constexpr,
+    eps: tl.constexpr,
+):
     row = tl.program_id(0)
     hc = tl.arange(0, 4)
     s0 = tl.load(scales)
@@ -51,12 +60,25 @@ class ModelNew(nn.Module):
         self.sinkhorn_iters = sinkhorn_iters
         self.eps = eps
 
-    def forward(self, mixes: torch.Tensor, hc_scale: torch.Tensor, hc_base: torch.Tensor):
+    def forward(
+        self, mixes: torch.Tensor, hc_scale: torch.Tensor, hc_base: torch.Tensor
+    ):
         b, s, _ = mixes.shape
         pre = torch.empty((b, s, 4), dtype=torch.float32, device=mixes.device)
         post = torch.empty_like(pre)
         comb = torch.empty((b, s, 4, 4), dtype=torch.float32, device=mixes.device)
-        _sinkhorn_kernel[(b * s,)](mixes, hc_scale, hc_base, pre, post, comb, rows=b * s, eps=self.eps, num_warps=ROW_WARPS, num_stages=1)
+        _sinkhorn_kernel[(b * s,)](
+            mixes,
+            hc_scale,
+            hc_base,
+            pre,
+            post,
+            comb,
+            rows=b * s,
+            eps=self.eps,
+            num_warps=ROW_WARPS,
+            num_stages=1,
+        )
         return pre, post, comb
 
 
@@ -70,4 +92,8 @@ def get_init_inputs():
 
 def get_inputs():
     torch.manual_seed(0)
-    return [torch.randn(2, 8, 24, dtype=torch.float32), torch.tensor([0.5, 0.25, 1.0], dtype=torch.float32), torch.randn(24, dtype=torch.float32) * 0.1]
+    return [
+        torch.randn(2, 8, 24, dtype=torch.float32),
+        torch.tensor([0.5, 0.25, 1.0], dtype=torch.float32),
+        torch.randn(24, dtype=torch.float32) * 0.1,
+    ]

@@ -11,15 +11,15 @@ if HAS_TRITON:
 
     @triton.jit
     def _sinkhorn_gate_kernel(
-        mixes_ptr,   # *f32 flat rows of length MIX_HC = (2+HC)*HC (contiguous)
-        scale_ptr,   # *f32 (3,)
-        base_ptr,    # *f32 (MIX_HC,)
-        pre_ptr,     # *f32 (N, HC)
-        post_ptr,    # *f32 (N, HC)
-        comb_ptr,    # *f32 (N, HC*HC)
+        mixes_ptr,  # *f32 flat rows of length MIX_HC = (2+HC)*HC (contiguous)
+        scale_ptr,  # *f32 (3,)
+        base_ptr,  # *f32 (MIX_HC,)
+        pre_ptr,  # *f32 (N, HC)
+        post_ptr,  # *f32 (N, HC)
+        comb_ptr,  # *f32 (N, HC*HC)
         loop_iters,  # i32: sinkhorn_iters - 1
         HC: tl.constexpr,
-        BH: tl.constexpr,   # next_power_of_2(HC)
+        BH: tl.constexpr,  # next_power_of_2(HC)
         EPS: tl.constexpr,
     ):
         pid = tl.program_id(0)
@@ -54,17 +54,17 @@ if HAS_TRITON:
         bmat = tl.load(base_ptr + 2 * HC + i * HC + j, mask=m2, other=0.0)
         comb = raw * s2 + bmat
         # Mask padding before the row-max so the max matches amax(dim=-1) exactly.
-        comb = tl.where(m2, comb, float('-inf'))
+        comb = tl.where(m2, comb, float("-inf"))
 
         # ---- initial sinkhorn step (matches reference exactly) ----
-        row_max = tl.max(comb, axis=1)               # amax over dim=-1
+        row_max = tl.max(comb, axis=1)  # amax over dim=-1
         comb = tl.exp(comb - row_max[:, None])
-        comb = tl.where(m2, comb, 0.0)               # clean -inf/nan padding
-        rsum = tl.sum(comb, axis=1)                  # sum over dim=-1
-        comb = comb / rsum[:, None] + EPS            # eps added AFTER division
+        comb = tl.where(m2, comb, 0.0)  # clean -inf/nan padding
+        rsum = tl.sum(comb, axis=1)  # sum over dim=-1
+        comb = comb / rsum[:, None] + EPS  # eps added AFTER division
         comb = tl.where(m2, comb, 0.0)
-        csum = tl.sum(comb, axis=0)                  # sum over dim=-2
-        comb = comb / (csum[None, :] + EPS)          # eps inside denominator
+        csum = tl.sum(comb, axis=0)  # sum over dim=-2
+        comb = comb / (csum[None, :] + EPS)  # eps inside denominator
 
         # ---- remaining sinkhorn iterations, fully on-chip ----
         for _ in range(loop_iters):
@@ -103,12 +103,21 @@ class ModelNew(nn.Module):
         # Zero-copy fast path: the kernel addresses memory flat (row-major), so
         # any f32 contiguous tensor is consumed directly with no reshape/view/
         # cast dispatches. Only non-f32 or non-contiguous inputs pay a copy.
-        x = mixes if (mixes.dtype is _F32 and mixes.is_contiguous()) \
+        x = (
+            mixes
+            if (mixes.dtype is _F32 and mixes.is_contiguous())
             else mixes.to(_F32).contiguous()
-        scale = hc_scale if (hc_scale.dtype is _F32 and hc_scale.is_contiguous()) \
+        )
+        scale = (
+            hc_scale
+            if (hc_scale.dtype is _F32 and hc_scale.is_contiguous())
             else hc_scale.to(_F32).contiguous()
-        base = hc_base if (hc_base.dtype is _F32 and hc_base.is_contiguous()) \
+        )
+        base = (
+            hc_base
+            if (hc_base.dtype is _F32 and hc_base.is_contiguous())
             else hc_base.to(_F32).contiguous()
+        )
 
         # Outputs allocated directly in their final returned shapes: the kernel
         # writes flat contiguous data, so no `.view()` calls are needed later
@@ -119,9 +128,16 @@ class ModelNew(nn.Module):
         comb = torch.empty((b, s, hc, hc), dtype=_F32, device=dev)
 
         _sinkhorn_gate_kernel[(n,)](
-            x, scale, base, pre, post, comb,
+            x,
+            scale,
+            base,
+            pre,
+            post,
+            comb,
             self._loop_iters,
-            HC=hc, BH=self._bh, EPS=self.eps,
+            HC=hc,
+            BH=self._bh,
+            EPS=self.eps,
             num_warps=self._num_warps,
         )
 
