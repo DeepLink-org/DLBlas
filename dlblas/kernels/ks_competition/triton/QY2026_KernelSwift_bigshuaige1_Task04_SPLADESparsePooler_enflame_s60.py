@@ -13,9 +13,14 @@ ROW_WARPS = 1
 
 
 @triton.jit
-def _activation_pool_kernel(logits_ptr, lens_ptr, out_ptr,
-                            vocab: tl.constexpr, BLOCK_M: tl.constexpr,
-                            BLOCK_N: tl.constexpr):
+def _activation_pool_kernel(
+    logits_ptr,
+    lens_ptr,
+    out_ptr,
+    vocab: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
     vocab_tile = tl.program_id(0)
     seq = tl.program_id(1)
     start = 0
@@ -32,14 +37,14 @@ def _activation_pool_kernel(logits_ptr, lens_ptr, out_ptr,
             other=-float("inf"),
         ).to(tl.float32)
         activated = tl.log(1.0 + tl.maximum(logits, 0.0))
-        pooled = tl.maximum(pooled, tl.where(i < length, activated,
-                                             -float("inf")))
+        pooled = tl.maximum(pooled, tl.where(i < length, activated, -float("inf")))
     tl.store(out_ptr + seq * vocab + n, pooled, mask=n < vocab)
 
 
 class ModelNew(nn.Module):
-    def __init__(self, hidden_size: int = 768, vocab_size: int = 30522,
-                 pooling: str = "max"):
+    def __init__(
+        self, hidden_size: int = 768, vocab_size: int = 30522, pooling: str = "max"
+    ):
         super().__init__()
         self.dense = nn.Linear(hidden_size, hidden_size)
         self.act = nn.GELU()
@@ -51,15 +56,22 @@ class ModelNew(nn.Module):
         logits = self.decoder(self.layer_norm(self.act(self.dense(hidden_states))))
         result = torch.empty(
             (seq_lens.shape[0], self.decoder.out_features),
-            dtype=logits.dtype, device=logits.device,
+            dtype=logits.dtype,
+            device=logits.device,
         )
         block_m = int(os.getenv("S60_T4_BLOCK_M", "32"))
         block_n = int(os.getenv("S60_T4_BLOCK_N", "2048"))
         warps = int(os.getenv("S60_T4_WARPS", "1"))
         grid = (triton.cdiv(self.decoder.out_features, block_n), seq_lens.shape[0])
         _activation_pool_kernel[grid](
-            logits, seq_lens, result, vocab=self.decoder.out_features,
-            BLOCK_M=block_m, BLOCK_N=block_n, num_warps=warps, num_stages=1,
+            logits,
+            seq_lens,
+            result,
+            vocab=self.decoder.out_features,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=warps,
+            num_stages=1,
         )
         return [result[i] for i in range(seq_lens.shape[0])]
 

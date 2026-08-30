@@ -46,7 +46,9 @@ def _pool_activation_kernel(
 
 
 class ModelNew(nn.Module):
-    def __init__(self, hidden_size: int = 768, vocab_size: int = 30522, pooling: str = "max"):
+    def __init__(
+        self, hidden_size: int = 768, vocab_size: int = 30522, pooling: str = "max"
+    ):
         super().__init__()
         self.dense = nn.Linear(hidden_size, hidden_size)
         self.act = nn.GELU()
@@ -56,9 +58,22 @@ class ModelNew(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, seq_lens: torch.Tensor):
         logits = self.decoder(self.layer_norm(self.act(self.dense(hidden_states))))
-        result = torch.empty((seq_lens.shape[0], self.decoder.out_features), dtype=logits.dtype, device=logits.device)
+        result = torch.empty(
+            (seq_lens.shape[0], self.decoder.out_features),
+            dtype=logits.dtype,
+            device=logits.device,
+        )
         grid = (triton.cdiv(self.decoder.out_features, BLOCK_N), seq_lens.shape[0])
-        _pool_activation_kernel[grid](logits, seq_lens, result, vocab=self.decoder.out_features, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=ROW_WARPS, num_stages=1)
+        _pool_activation_kernel[grid](
+            logits,
+            seq_lens,
+            result,
+            vocab=self.decoder.out_features,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            num_warps=ROW_WARPS,
+            num_stages=1,
+        )
         return [result[i] for i in range(seq_lens.shape[0])]
 
 
@@ -67,7 +82,10 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(83, 768, device="cuda"), torch.tensor([20, 25, 18, 20], dtype=torch.int32, device="cuda")]
+    return [
+        torch.randn(83, 768, device="cuda"),
+        torch.tensor([20, 25, 18, 20], dtype=torch.int32, device="cuda"),
+    ]
 
 
 def get_init_inputs():
