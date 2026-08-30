@@ -33,7 +33,9 @@ def _mhc_post_kernel(
     valid = (row < n_rows) & (h < 1280)
 
     x = tl.load(x_ptr + token * 1280 + h, mask=valid, other=0.0).to(tl.float32)
-    post = tl.load(post_ptr + token * 4 + mix_idx, mask=row < n_rows, other=0.0).to(tl.float32)
+    post = tl.load(post_ptr + token * 4 + mix_idx, mask=row < n_rows, other=0.0).to(
+        tl.float32
+    )
     acc = x * post
     for j in range(4):
         residual = tl.load(
