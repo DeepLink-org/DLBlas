@@ -55,14 +55,12 @@ class ModelNew(nn.Module):
         super().__init__()
         self.dim = dim
         self.max_seq_len = max_seq_len
-        inv_freq = 1.0 / (
-            base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim)
-        )
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
         self.register_buffer("inv_freq", inv_freq)
         positions = torch.arange(max_seq_len, dtype=torch.float)
-        position_angles = (
-            positions / max_seq_len * (2 * math.pi)
-        ).unsqueeze(-1) * inv_freq
+        position_angles = (positions / max_seq_len * (2 * math.pi)).unsqueeze(
+            -1
+        ) * inv_freq
         self.register_buffer(
             "position_angles", position_angles.repeat_interleave(2, dim=-1)
         )
