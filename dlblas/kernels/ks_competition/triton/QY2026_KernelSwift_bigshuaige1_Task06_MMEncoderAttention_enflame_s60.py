@@ -14,10 +14,17 @@ PIPELINE_STAGES = 1
 
 
 @triton.jit
-def _batched_attention_kernel(q_ptr, k_ptr, v_ptr, out_ptr,
-                              n_tokens: tl.constexpr, scale: tl.constexpr,
-                              BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
-                              D: tl.constexpr):
+def _batched_attention_kernel(
+    q_ptr,
+    k_ptr,
+    v_ptr,
+    out_ptr,
+    n_tokens: tl.constexpr,
+    scale: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    D: tl.constexpr,
+):
     q_tile = tl.program_id(0)
     batch_head = tl.program_id(1)
     batch = batch_head // 8
@@ -30,8 +37,11 @@ def _batched_attention_kernel(q_ptr, k_ptr, v_ptr, out_ptr,
     q = tl.load(q_ptr + q_base + d[None, :], mask=qm[:, None] < n_tokens, other=0.0)
     k = tl.load(k_ptr + k_base + d[:, None], mask=kn[None, :] < n_tokens, other=0.0)
     scores = tl.dot(q, k) * scale
-    scores = tl.where(qm[:, None] < n_tokens,
-                      tl.where(kn[None, :] < n_tokens, scores, -float("inf")), 0.0)
+    scores = tl.where(
+        qm[:, None] < n_tokens,
+        tl.where(kn[None, :] < n_tokens, scores, -float("inf")),
+        0.0,
+    )
     row_max = tl.max(scores, axis=1)
     p = tl.exp(scores - row_max[:, None])
     p = p / tl.sum(p, axis=1)[:, None]
@@ -43,16 +53,14 @@ def _batched_attention_kernel(q_ptr, k_ptr, v_ptr, out_ptr,
 
 
 class ModelNew(nn.Module):
-    def __init__(self, num_heads: int = 8, head_size: int = 64,
-                 num_kv_heads: int = 8):
+    def __init__(self, num_heads: int = 8, head_size: int = 64, num_kv_heads: int = 8):
         super().__init__()
         self.num_heads = num_heads
         self.head_size = head_size
         self.num_kv_heads = num_kv_heads
-        self.scale = 1.0 / (head_size ** 0.5)
+        self.scale = 1.0 / (head_size**0.5)
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor,
-                value: torch.Tensor):
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
         out = torch.empty_like(query)
         bsz, seq_len = query.shape[:2]
         block_m = int(os.getenv("S60_T6_BLOCK_M", "32"))
@@ -61,9 +69,17 @@ class ModelNew(nn.Module):
         stages = int(os.getenv("S60_T6_STAGES", "1"))
         grid = (triton.cdiv(seq_len, block_m), bsz * 8)
         _batched_attention_kernel[grid](
-            query, key, value, out, seq_len, scale=self.scale,
-            BLOCK_M=block_m, BLOCK_N=block_n, D=64,
-            num_warps=warps, num_stages=stages,
+            query,
+            key,
+            value,
+            out,
+            seq_len,
+            scale=self.scale,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            D=64,
+            num_warps=warps,
+            num_stages=stages,
         )
         return out
 

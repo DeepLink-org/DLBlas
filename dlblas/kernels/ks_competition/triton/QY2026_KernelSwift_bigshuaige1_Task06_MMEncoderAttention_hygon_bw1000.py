@@ -12,7 +12,17 @@ PIPELINE_STAGES = 1
 
 
 @triton.jit
-def _batched_attention_kernel(q_ptr, k_ptr, v_ptr, out_ptr, n_tokens: tl.constexpr, scale: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, D: tl.constexpr):
+def _batched_attention_kernel(
+    q_ptr,
+    k_ptr,
+    v_ptr,
+    out_ptr,
+    n_tokens: tl.constexpr,
+    scale: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    D: tl.constexpr,
+):
     q_tile = tl.program_id(0)
     batch_head = tl.program_id(1)
     batch = batch_head // 8
@@ -25,7 +35,11 @@ def _batched_attention_kernel(q_ptr, k_ptr, v_ptr, out_ptr, n_tokens: tl.constex
     q = tl.load(q_ptr + q_base + d[None, :], mask=qm[:, None] < n_tokens, other=0.0)
     k = tl.load(k_ptr + k_base + d[:, None], mask=kn[None, :] < n_tokens, other=0.0)
     scores = tl.dot(q, k) * scale
-    scores = tl.where(qm[:, None] < n_tokens, tl.where(kn[None, :] < n_tokens, scores, -float("inf")), 0.0)
+    scores = tl.where(
+        qm[:, None] < n_tokens,
+        tl.where(kn[None, :] < n_tokens, scores, -float("inf")),
+        0.0,
+    )
     row_max = tl.max(scores, axis=1)
     p = tl.exp(scores - row_max[:, None])
     p = p / tl.sum(p, axis=1)[:, None]
@@ -42,13 +56,25 @@ class ModelNew(nn.Module):
         self.num_heads = num_heads
         self.head_size = head_size
         self.num_kv_heads = num_kv_heads
-        self.scale = 1.0 / (head_size ** 0.5)
+        self.scale = 1.0 / (head_size**0.5)
 
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor):
         out = torch.empty_like(query)
         bsz, seq_len = query.shape[:2]
         grid = (triton.cdiv(seq_len, 64), bsz * 8)
-        _batched_attention_kernel[grid](query, key, value, out, seq_len, scale=self.scale, BLOCK_M=64, BLOCK_N=128, D=64, num_warps=MATRIX_WARPS, num_stages=PIPELINE_STAGES)
+        _batched_attention_kernel[grid](
+            query,
+            key,
+            value,
+            out,
+            seq_len,
+            scale=self.scale,
+            BLOCK_M=64,
+            BLOCK_N=128,
+            D=64,
+            num_warps=MATRIX_WARPS,
+            num_stages=PIPELINE_STAGES,
+        )
         return out
 
 
@@ -57,7 +83,11 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(2, 83, 512, dtype=torch.float16, device="cuda"), torch.randn(2, 83, 512, dtype=torch.float16, device="cuda"), torch.randn(2, 83, 512, dtype=torch.float16, device="cuda")]
+    return [
+        torch.randn(2, 83, 512, dtype=torch.float16, device="cuda"),
+        torch.randn(2, 83, 512, dtype=torch.float16, device="cuda"),
+        torch.randn(2, 83, 512, dtype=torch.float16, device="cuda"),
+    ]
 
 
 def get_init_inputs():

@@ -7,9 +7,13 @@ import triton.language as tl
 
 @triton.jit
 def _attn_fwd_kernel(
-    Q, K, V, O,
+    Q,
+    K,
+    V,
+    O,
     sm_scale,
-    q_len, kv_len,
+    q_len,
+    kv_len,
     H: tl.constexpr,
     NUM_KV_HEADS: tl.constexpr,
     HEAD_DIM: tl.constexpr,
@@ -34,18 +38,23 @@ def _attn_fwd_kernel(
     # GQA mapping: consecutive query heads share one kv head (covers MHA/MQA too)
     kv_head = head // (H // NUM_KV_HEADS)
 
-    q_row_stride = H * HEAD_DIM            # elements per sequence row (contiguous)
+    q_row_stride = H * HEAD_DIM  # elements per sequence row (contiguous)
     kv_row_stride = NUM_KV_HEADS * HEAD_DIM
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_d = tl.arange(0, HEAD_DIM_PAD)
-    PADDED = HEAD_DIM_PAD != HEAD_DIM      # compile-time: only mask d when padded
+    PADDED = HEAD_DIM_PAD != HEAD_DIM  # compile-time: only mask d when padded
     d_mask = offs_d < HEAD_DIM
     m_mask = offs_m < q_len
 
     # Q tile: [BLOCK_M, HEAD_DIM_PAD], rows beyond q_len are zero-filled
-    q_ptrs = (Q + batch * (q_len * q_row_stride) + head * HEAD_DIM
-              + offs_m[:, None] * q_row_stride + offs_d[None, :])
+    q_ptrs = (
+        Q
+        + batch * (q_len * q_row_stride)
+        + head * HEAD_DIM
+        + offs_m[:, None] * q_row_stride
+        + offs_d[None, :]
+    )
     if PADDED:
         q = tl.load(q_ptrs, mask=m_mask[:, None] & d_mask[None, :], other=0.0)
     else:
@@ -70,11 +79,11 @@ def _attn_fwd_kernel(
         else:
             k = tl.load(k_ptrs, mask=n_mask[None, :], other=0.0)
 
-        qk = tl.dot(q, k) * qk_scale                       # fp32 [BLOCK_M, BLOCK_N]
+        qk = tl.dot(q, k) * qk_scale  # fp32 [BLOCK_M, BLOCK_N]
         qk = tl.where(n_mask[None, :], qk, float("-inf"))  # mask out-of-bounds keys
 
         m_i = tl.max(qk, 1)
-        p = tl.math.exp2(qk - m_i[:, None])                # in [0, 1]
+        p = tl.math.exp2(qk - m_i[:, None])  # in [0, 1]
         l_i = tl.sum(p, 1)
 
         v_ptrs = V + kv_off + offs_n[:, None] * kv_row_stride + offs_d[None, :]
@@ -87,9 +96,9 @@ def _attn_fwd_kernel(
         acc = acc / l_i[:, None]
     else:
         # kv_len > BLOCK_N: full online softmax over multiple K/V tiles
-        m_i = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)   # running row max
-        l_i = tl.zeros([BLOCK_M], dtype=tl.float32)                 # running sum of exp
-        acc = tl.zeros([BLOCK_M, HEAD_DIM_PAD], dtype=tl.float32)   # output accumulator
+        m_i = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)  # running row max
+        l_i = tl.zeros([BLOCK_M], dtype=tl.float32)  # running sum of exp
+        acc = tl.zeros([BLOCK_M, HEAD_DIM_PAD], dtype=tl.float32)  # output accumulator
 
         for start_n in range(0, kv_len, BLOCK_N):
             offs_n = start_n + tl.arange(0, BLOCK_N)
@@ -105,8 +114,8 @@ def _attn_fwd_kernel(
             qk = tl.where(n_mask[None, :], qk, float("-inf"))
 
             m_new = tl.maximum(m_i, tl.max(qk, 1))
-            alpha = tl.math.exp2(m_i - m_new)            # rescale previous state
-            p = tl.math.exp2(qk - m_new[:, None])        # in [0, 1]
+            alpha = tl.math.exp2(m_i - m_new)  # rescale previous state
+            p = tl.math.exp2(qk - m_new[:, None])  # in [0, 1]
 
             l_i = l_i * alpha + tl.sum(p, 1)
 
@@ -122,11 +131,17 @@ def _attn_fwd_kernel(
         acc = acc / l_i[:, None]
 
     # Store directly into the [bsz, q_len, H*D] layout (matches transpose+reshape)
-    o_ptrs = (O + batch * (q_len * q_row_stride) + head * HEAD_DIM
-              + offs_m[:, None] * q_row_stride + offs_d[None, :])
+    o_ptrs = (
+        O
+        + batch * (q_len * q_row_stride)
+        + head * HEAD_DIM
+        + offs_m[:, None] * q_row_stride
+        + offs_d[None, :]
+    )
     if PADDED:
-        tl.store(o_ptrs, acc.to(O.dtype.element_ty),
-                 mask=m_mask[:, None] & d_mask[None, :])
+        tl.store(
+            o_ptrs, acc.to(O.dtype.element_ty), mask=m_mask[:, None] & d_mask[None, :]
+        )
     else:
         tl.store(o_ptrs, acc.to(O.dtype.element_ty), mask=m_mask[:, None])
 
@@ -137,7 +152,7 @@ class ModelNew(nn.Module):
         self.num_heads = num_heads
         self.head_size = head_size
         self.num_kv_heads = num_kv_heads
-        self.scale = 1.0 / (head_size ** 0.5)
+        self.scale = 1.0 / (head_size**0.5)
         # Hoist shape-independent constants and cache per-shape launch configs so
         # the per-call hot path is just a dict lookup + one kernel launch.
         self._head_dim_pad = triton.next_power_of_2(head_size)
@@ -179,15 +194,23 @@ class ModelNew(nn.Module):
             # BLOCK_N >= kv_len (capped at 128) collapses the K/V loop to a
             # single tile: plain softmax, no online-softmax rescale.
             BLOCK_N = min(max(triton.next_power_of_2(kv_len), 16), 128)
-            cfg = ((triton.cdiv(q_len, BLOCK_M), bsz * H),
-                   BLOCK_M, BLOCK_N, BLOCK_N >= kv_len)
+            cfg = (
+                (triton.cdiv(q_len, BLOCK_M), bsz * H),
+                BLOCK_M,
+                BLOCK_N,
+                BLOCK_N >= kv_len,
+            )
             self._launch_cache[(bsz, q_len, kv_len)] = cfg
         grid, BLOCK_M, BLOCK_N, single_pass = cfg
 
         _attn_fwd_kernel[grid](
-            query, key, value, out,
+            query,
+            key,
+            value,
+            out,
             self.scale,
-            q_len, kv_len,
+            q_len,
+            kv_len,
             H=H,
             NUM_KV_HEADS=KVH,
             HEAD_DIM=D,
