@@ -46,8 +46,12 @@ def _gate_up_scalar_kernel(x_ptr, w1_ptr, route_id, act_ptr, n_tokens: tl.conste
         for k0 in range(0, 128, 32):
             kk = tl.arange(0, 32)
             x = tl.load(x_ptr + token * 128 + k0 + kk).to(tl.float32)
-            gate = tl.load(w1_ptr + expert * 128 * 128 + n * 128 + k0 + kk).to(tl.float32)
-            up = tl.load(w1_ptr + expert * 128 * 128 + (n + 64) * 128 + k0 + kk).to(tl.float32)
+            gate = tl.load(w1_ptr + expert * 128 * 128 + n * 128 + k0 + kk).to(
+                tl.float32
+            )
+            up = tl.load(w1_ptr + expert * 128 * 128 + (n + 64) * 128 + k0 + kk).to(
+                tl.float32
+            )
             gate_acc += tl.sum(x * gate, axis=0)
             up_acc += tl.sum(x * up, axis=0)
         value = (gate_acc / (1.0 + tl.exp(-gate_acc))) * up_acc
@@ -79,18 +83,29 @@ def _route_reduce_kernel(dense, route_w, out):
         w1 = tl.load(route_w + token * 2 + 1)
         y0 = tl.load(dense + token * 2 * 128 + chunk * 32 + h)
         y1 = tl.load(dense + token * 2 * 128 + 128 + chunk * 32 + h)
-        tl.store(out + token * 128 + hh, y0.to(tl.float32) * w0 + y1.to(tl.float32) * w1)
+        tl.store(
+            out + token * 128 + hh, y0.to(tl.float32) * w0 + y1.to(tl.float32) * w1
+        )
 
 
 class ModelNew(nn.Module):
-    def __init__(self, num_experts: int, top_k: int, hidden_size: int, intermediate_size: int, renormalize: bool = True):
+    def __init__(
+        self,
+        num_experts: int,
+        top_k: int,
+        hidden_size: int,
+        intermediate_size: int,
+        renormalize: bool = True,
+    ):
         super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.renormalize = renormalize
-        self.w1 = nn.Parameter(torch.empty(num_experts, 2 * intermediate_size, hidden_size))
+        self.w1 = nn.Parameter(
+            torch.empty(num_experts, 2 * intermediate_size, hidden_size)
+        )
         self.w2 = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         nn.init.normal_(self.w1, std=0.02)
         nn.init.normal_(self.w2, std=0.02)
@@ -99,12 +114,22 @@ class ModelNew(nn.Module):
         t = hidden_states.shape[0]
         route_w = torch.empty((t, 2), dtype=torch.float32, device=hidden_states.device)
         route_id = torch.empty((t, 2), dtype=torch.int32, device=hidden_states.device)
-        act = torch.empty((t, 2, 64), dtype=hidden_states.dtype, device=hidden_states.device)
-        dense = torch.empty((t, 2, 128), dtype=torch.float16, device=hidden_states.device)
+        act = torch.empty(
+            (t, 2, 64), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+        dense = torch.empty(
+            (t, 2, 128), dtype=torch.float16, device=hidden_states.device
+        )
         out = torch.empty_like(hidden_states)
-        _route_top2_kernel[(t,)](router_logits, route_w, route_id, num_warps=1, num_stages=1)
-        _gate_up_scalar_kernel[(t, 2)](hidden_states, self.w1, route_id, act, t, num_warps=1, num_stages=1)
-        _down_scalar_kernel[(t, 2)](act, self.w2, route_id, dense, t, num_warps=1, num_stages=1)
+        _route_top2_kernel[(t,)](
+            router_logits, route_w, route_id, num_warps=1, num_stages=1
+        )
+        _gate_up_scalar_kernel[(t, 2)](
+            hidden_states, self.w1, route_id, act, t, num_warps=1, num_stages=1
+        )
+        _down_scalar_kernel[(t, 2)](
+            act, self.w2, route_id, dense, t, num_warps=1, num_stages=1
+        )
         _route_reduce_kernel[(t,)](dense, route_w, out, num_warps=1, num_stages=1)
         return out
 

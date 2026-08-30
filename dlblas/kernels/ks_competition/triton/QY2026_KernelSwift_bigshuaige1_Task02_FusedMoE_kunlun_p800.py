@@ -28,8 +28,12 @@ def _top2_gate_up_kernel(x_ptr, router_ptr, w1_ptr, act_ptr, BLOCK_K: tl.constex
     for k0 in range(0, 128, BLOCK_K):
         k = k0 + tl.arange(0, BLOCK_K)
         xv = tl.load(x_ptr + token * 128 + k).to(tl.float16)
-        gw = tl.load(w1_ptr + expert * 16384 + i[:, None] * 128 + k[None, :]).to(tl.float16)
-        uw = tl.load(w1_ptr + expert * 16384 + (i[:, None] + 64) * 128 + k[None, :]).to(tl.float16)
+        gw = tl.load(w1_ptr + expert * 16384 + i[:, None] * 128 + k[None, :]).to(
+            tl.float16
+        )
+        uw = tl.load(w1_ptr + expert * 16384 + (i[:, None] + 64) * 128 + k[None, :]).to(
+            tl.float16
+        )
         gate_acc += tl.sum(gw * xv[None, :], axis=1)
         up_acc += tl.sum(uw * xv[None, :], axis=1)
     act = (gate_acc / (1.0 + tl.exp(-gate_acc)) * up_acc).to(tl.float16)
@@ -51,7 +55,9 @@ def _top2_down_kernel(act_ptr, router_ptr, w2_ptr, tmp_ptr, BLOCK_K: tl.constexp
     for k0 in range(0, 64, BLOCK_K):
         k = k0 + tl.arange(0, BLOCK_K)
         av = tl.load(act_ptr + (token * 2 + choice) * 64 + k).to(tl.float16)
-        w = tl.load(w2_ptr + expert * 8192 + h[:, None] * 64 + k[None, :]).to(tl.float16)
+        w = tl.load(w2_ptr + expert * 8192 + h[:, None] * 64 + k[None, :]).to(
+            tl.float16
+        )
         acc += tl.sum(w * av[None, :], axis=1)
     tl.store(tmp_ptr + (token * 2 + choice) * 128 + h, acc.to(tl.float16))
 
@@ -73,26 +79,57 @@ def _top2_reduce_kernel(tmp_ptr, router_ptr, out_ptr):
 
 
 class ModelNew(nn.Module):
-    def __init__(self, num_experts: int, top_k: int, hidden_size: int, intermediate_size: int, renormalize: bool = True):
+    def __init__(
+        self,
+        num_experts: int,
+        top_k: int,
+        hidden_size: int,
+        intermediate_size: int,
+        renormalize: bool = True,
+    ):
         super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.renormalize = renormalize
-        self.w1 = nn.Parameter(torch.empty(num_experts, 2 * intermediate_size, hidden_size))
+        self.w1 = nn.Parameter(
+            torch.empty(num_experts, 2 * intermediate_size, hidden_size)
+        )
         self.w2 = nn.Parameter(torch.empty(num_experts, hidden_size, intermediate_size))
         nn.init.normal_(self.w1, std=0.02)
         nn.init.normal_(self.w2, std=0.02)
 
     def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor):
         t = hidden_states.shape[0]
-        act = torch.empty((t, 2, 64), dtype=hidden_states.dtype, device=hidden_states.device)
-        tmp = torch.empty((t, 2, 128), dtype=hidden_states.dtype, device=hidden_states.device)
+        act = torch.empty(
+            (t, 2, 64), dtype=hidden_states.dtype, device=hidden_states.device
+        )
+        tmp = torch.empty(
+            (t, 2, 128), dtype=hidden_states.dtype, device=hidden_states.device
+        )
         out = torch.empty_like(hidden_states)
-        _top2_gate_up_kernel[(t, 2)](hidden_states, router_logits, self.w1, act, BLOCK_K=BLOCK_K, num_warps=KERNEL_WARPS, num_stages=1)
-        _top2_down_kernel[(t, 2)](act, router_logits, self.w2, tmp, BLOCK_K=BLOCK_K, num_warps=KERNEL_WARPS, num_stages=1)
-        _top2_reduce_kernel[(t,)](tmp, router_logits, out, num_warps=KERNEL_WARPS, num_stages=1)
+        _top2_gate_up_kernel[(t, 2)](
+            hidden_states,
+            router_logits,
+            self.w1,
+            act,
+            BLOCK_K=BLOCK_K,
+            num_warps=KERNEL_WARPS,
+            num_stages=1,
+        )
+        _top2_down_kernel[(t, 2)](
+            act,
+            router_logits,
+            self.w2,
+            tmp,
+            BLOCK_K=BLOCK_K,
+            num_warps=KERNEL_WARPS,
+            num_stages=1,
+        )
+        _top2_reduce_kernel[(t,)](
+            tmp, router_logits, out, num_warps=KERNEL_WARPS, num_stages=1
+        )
         return out
 
 
@@ -101,7 +138,10 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(83, 128, dtype=torch.float16, device="xpu"), torch.randn(83, 8, dtype=torch.float32, device="xpu")]
+    return [
+        torch.randn(83, 128, dtype=torch.float16, device="xpu"),
+        torch.randn(83, 8, dtype=torch.float32, device="xpu"),
+    ]
 
 
 def get_init_inputs():
