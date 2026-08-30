@@ -7,11 +7,21 @@ import triton.language as tl
 
 @triton.jit
 def _causal_gqa_attn_kernel(
-    Q, K, V, O,
-    stride_qt, stride_qh, stride_qd,
-    stride_kt, stride_kh, stride_kd,
-    stride_vt, stride_vh, stride_vd,
-    stride_ot, stride_oh,
+    Q,
+    K,
+    V,
+    O,
+    stride_qt,
+    stride_qh,
+    stride_qd,
+    stride_kt,
+    stride_kh,
+    stride_kd,
+    stride_vt,
+    stride_vh,
+    stride_vd,
+    stride_ot,
+    stride_oh,
     num_tokens,
     scale,
     NUM_HEADS: tl.constexpr,
@@ -33,7 +43,12 @@ def _causal_gqa_attn_kernel(
     m_mask = offs_m < num_tokens
 
     # Load the Q tile once; it stays in registers for the whole kernel
-    q_ptrs = Q + offs_m[:, None] * stride_qt + pid_h * stride_qh + offs_d[None, :] * stride_qd
+    q_ptrs = (
+        Q
+        + offs_m[:, None] * stride_qt
+        + pid_h * stride_qh
+        + offs_d[None, :] * stride_qd
+    )
     q = tl.load(q_ptrs, mask=m_mask[:, None] & d_mask[None, :], other=0.0)
 
     # Largest key index any row of this block attends to (causal upper bound).
@@ -66,7 +81,7 @@ def _causal_gqa_attn_kernel(
     # For every stored row (offs_m <= hi), `offs_m >= offs_n` already
     # implies `offs_n <= hi`, so the key-range mask is redundant here.
     valid = offs_m[:, None] >= offs_n[None, :]
-    qk = tl.where(valid, qk, float('-inf'))
+    qk = tl.where(valid, qk, float("-inf"))
 
     m_i = tl.max(qk, 1)
     p = tl.exp(qk - m_i[:, None])
@@ -88,7 +103,7 @@ def _causal_gqa_attn_kernel(
 
         qk = tl.dot(q, k) * scale
         valid = offs_m[:, None] >= offs_n[None, :]
-        qk = tl.where(valid, qk, float('-inf'))
+        qk = tl.where(valid, qk, float("-inf"))
 
         m_new = tl.maximum(m_i, tl.max(qk, 1))
         alpha = tl.exp(m_i - m_new)
@@ -108,12 +123,17 @@ def _causal_gqa_attn_kernel(
 
 
 class ModelNew(nn.Module):
-    def __init__(self, num_heads: int = 8, head_size: int = 64,
-                 scale: float = None, num_kv_heads: int = 8):
+    def __init__(
+        self,
+        num_heads: int = 8,
+        head_size: int = 64,
+        scale: float = None,
+        num_kv_heads: int = 8,
+    ):
         super().__init__()
         self.num_heads = num_heads
         self.head_size = head_size
-        self.scale = scale or 1.0 / (head_size ** 0.5)
+        self.scale = scale or 1.0 / (head_size**0.5)
         self.num_kv_heads = num_kv_heads
         # Precomputed launch constants (trims per-call host overhead).
         self._out_width = num_heads * head_size
@@ -121,16 +141,18 @@ class ModelNew(nn.Module):
         self._block_m = 32
         self._block_n = 128
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor,
-                value: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+    ) -> torch.Tensor:
         # query: [num_tokens, num_heads, head_size]
         # key/value: [num_tokens, num_kv_heads, head_size]
         num_tokens = query.size(0)
 
         # Single fused kernel: no transposes, no repeat_interleave copies,
         # no reshape copy — output written directly in final layout.
-        out = torch.empty((num_tokens, self._out_width),
-                          dtype=query.dtype, device=query.device)
+        out = torch.empty(
+            (num_tokens, self._out_width), dtype=query.dtype, device=query.device
+        )
 
         q0, q1, q2 = query.stride()
         k0, k1, k2 = key.stride()
@@ -138,11 +160,21 @@ class ModelNew(nn.Module):
 
         grid = ((num_tokens + self._block_m - 1) // self._block_m, self.num_heads)
         _causal_gqa_attn_kernel[grid](
-            query, key, value, out,
-            q0, q1, q2,
-            k0, k1, k2,
-            v0, v1, v2,
-            self._out_width, 1,  # freshly allocated contiguous [T, H*D] output
+            query,
+            key,
+            value,
+            out,
+            q0,
+            q1,
+            q2,
+            k0,
+            k1,
+            k2,
+            v0,
+            v1,
+            v2,
+            self._out_width,
+            1,  # freshly allocated contiguous [T, H*D] output
             num_tokens,
             self.scale,
             NUM_HEADS=self.num_heads,
@@ -169,7 +201,7 @@ def get_inputs():
     num_tokens, num_heads, head_size = 83, 8, 64
     dtype = torch.float16
     query = torch.randn(num_tokens, num_heads, head_size, dtype=dtype, device="cpu")
-    key   = torch.randn(num_tokens, num_heads, head_size, dtype=dtype, device="cpu")
+    key = torch.randn(num_tokens, num_heads, head_size, dtype=dtype, device="cpu")
     value = torch.randn(num_tokens, num_heads, head_size, dtype=dtype, device="cpu")
     return [query, key, value]
 
