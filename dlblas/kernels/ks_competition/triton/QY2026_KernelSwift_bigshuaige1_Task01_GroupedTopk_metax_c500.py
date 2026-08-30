@@ -82,8 +82,14 @@ class ModelNew(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, gating_output: torch.Tensor):
         assert hidden_states.size(0) == gating_output.size(0)
-        weights = torch.empty((gating_output.shape[0], 8), device=gating_output.device, dtype=torch.float32)
-        ids = torch.empty((gating_output.shape[0], 8), device=gating_output.device, dtype=torch.int32)
+        weights = torch.empty(
+            (gating_output.shape[0], 8),
+            device=gating_output.device,
+            dtype=torch.float32,
+        )
+        ids = torch.empty(
+            (gating_output.shape[0], 8), device=gating_output.device, dtype=torch.int32
+        )
         _grouped_topk_kernel[(gating_output.shape[0],)](
             gating_output,
             weights,
@@ -103,7 +109,10 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(83, 7168, dtype=torch.float16), torch.randn(83, 256, dtype=torch.float32)]
+    return [
+        torch.randn(83, 7168, dtype=torch.float16),
+        torch.randn(83, 256, dtype=torch.float32),
+    ]
 
 
 def get_init_inputs():

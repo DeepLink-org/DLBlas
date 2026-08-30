@@ -6,10 +6,10 @@ import triton.language as tl
 
 @triton.jit
 def _moe_route_fused_kernel(
-    gating_ptr,            # [T, E] gating scores
-    out_w_ptr,             # [T, topk] float32 output weights
-    out_id_ptr,            # [T, topk] int32 output expert ids
-    scaling,               # routed scaling factor (runtime scalar)
+    gating_ptr,  # [T, E] gating scores
+    out_w_ptr,  # [T, topk] float32 output weights
+    out_id_ptr,  # [T, topk] int32 output expert ids
+    scaling,  # routed scaling factor (runtime scalar)
     NUM_EXPERTS: tl.constexpr,
     N_GROUP: tl.constexpr,
     EPG: tl.constexpr,
@@ -31,8 +31,9 @@ def _moe_route_fused_kernel(
     eid = g[:, None] * EPG + c[None, :]
     lmask = (g < N_GROUP)[:, None] & (c < EPG)[None, :] & (eid < NUM_EXPERTS)
 
-    x = tl.load(gating_ptr + row * NUM_EXPERTS + eid, mask=lmask,
-                other=float("-inf")).to(tl.float32)
+    x = tl.load(
+        gating_ptr + row * NUM_EXPERTS + eid, mask=lmask, other=float("-inf")
+    ).to(tl.float32)
 
     # ---- fused scoring function (softmax / sigmoid), fp32 ----
     if USE_SIGMOID:
@@ -46,8 +47,8 @@ def _moe_route_fused_kernel(
     scores = tl.where(lmask, scores, float("-inf"))
 
     # ---- select TOPK_GROUP groups by their best expert score ----
-    group_vals = tl.max(scores, axis=1)                 # [BLOCK_G]
-    gsel = g < 0                                        # all-false seed
+    group_vals = tl.max(scores, axis=1)  # [BLOCK_G]
+    gsel = g < 0  # all-false seed
     for _ in range(TOPK_GROUP):
         gv = tl.max(group_vals, axis=0)
         gidx = tl.min(tl.where(group_vals == gv, g, BLOCK_G), axis=0)
@@ -172,5 +173,5 @@ if __name__ == "__main__":
     inputs = get_inputs()
     with torch.no_grad():
         topk_weights, topk_ids = model(*inputs)
-    print(topk_weights.shape)   # [83, 8]
-    print(topk_ids.shape)       # [83, 8]
+    print(topk_weights.shape)  # [83, 8]
+    print(topk_ids.shape)  # [83, 8]

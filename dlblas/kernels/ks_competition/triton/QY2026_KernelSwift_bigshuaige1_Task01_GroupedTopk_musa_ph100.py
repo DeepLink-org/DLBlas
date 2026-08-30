@@ -16,36 +16,48 @@ PLATFORM = "musa_ph100"
 
 
 @triton.jit
-def _normalize_scores_kernel(logits_ptr, scores_ptr, n_tokens: tl.constexpr, scoring_sigmoid: tl.constexpr):
+def _normalize_scores_kernel(
+    logits_ptr, scores_ptr, n_tokens: tl.constexpr, scoring_sigmoid: tl.constexpr
+):
     token = tl.program_id(0)
     offs = tl.arange(0, 32)
     chunk_ids = tl.arange(0, 8)
     if scoring_sigmoid:
         for chunk in range(8):
-            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(tl.float32)
+            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(
+                tl.float32
+            )
             scores = 1.0 / (1.0 + tl.exp(-logits))
             tl.store(scores_ptr + token * 256 + chunk * 32 + offs, scores)
     else:
         chunk_maxes = tl.zeros((8,), tl.float32)
         for chunk in range(8):
-            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(tl.float32)
+            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(
+                tl.float32
+            )
             local_max = tl.max(logits, axis=0)
             chunk_maxes = tl.where(chunk_ids == chunk, local_max, chunk_maxes)
         global_max = tl.max(chunk_maxes, axis=0)
         chunk_sums = tl.zeros((8,), tl.float32)
         for chunk in range(8):
-            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(tl.float32)
+            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(
+                tl.float32
+            )
             local_sum = tl.sum(tl.exp(logits - global_max), axis=0)
             chunk_sums = tl.where(chunk_ids == chunk, local_sum, chunk_sums)
         denom = tl.sum(chunk_sums, axis=0)
         for chunk in range(8):
-            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(tl.float32)
+            logits = tl.load(logits_ptr + token * 256 + chunk * 32 + offs).to(
+                tl.float32
+            )
             scores = tl.exp(logits - global_max) / denom
             tl.store(scores_ptr + token * 256 + chunk * 32 + offs, scores)
 
 
 @triton.jit
-def _group_top8_kernel(scores_ptr, values_ptr, ids_ptr, group_scores_ptr, n_tokens: tl.constexpr):
+def _group_top8_kernel(
+    scores_ptr, values_ptr, ids_ptr, group_scores_ptr, n_tokens: tl.constexpr
+):
     token = tl.program_id(0)
     group = tl.program_id(1)
     offs = tl.arange(0, 32)
@@ -67,7 +79,16 @@ def _group_top8_kernel(scores_ptr, values_ptr, ids_ptr, group_scores_ptr, n_toke
 
 
 @triton.jit
-def _merge_groups_kernel(group_scores_ptr, values_ptr, ids_ptr, weights_ptr, out_ids_ptr, n_tokens: tl.constexpr, renormalize: tl.constexpr, routed_scale: tl.constexpr):
+def _merge_groups_kernel(
+    group_scores_ptr,
+    values_ptr,
+    ids_ptr,
+    weights_ptr,
+    out_ids_ptr,
+    n_tokens: tl.constexpr,
+    renormalize: tl.constexpr,
+    routed_scale: tl.constexpr,
+):
     token = tl.program_id(0)
     groups = tl.arange(0, 8)
     group_scores = tl.load(group_scores_ptr + token * 8 + groups)
@@ -102,8 +123,16 @@ def _merge_groups_kernel(group_scores_ptr, values_ptr, ids_ptr, weights_ptr, out
         take = v3 > best
         best = tl.where(take, v3, best)
         best_group = tl.where(take, 3, best_group)
-        chosen_index = tl.where(best_group == 0, i0, tl.where(best_group == 1, i1, tl.where(best_group == 2, i2, i3)))
-        chosen_group = tl.where(best_group == 0, g0, tl.where(best_group == 1, g1, tl.where(best_group == 2, g2, g3)))
+        chosen_index = tl.where(
+            best_group == 0,
+            i0,
+            tl.where(best_group == 1, i1, tl.where(best_group == 2, i2, i3)),
+        )
+        chosen_group = tl.where(
+            best_group == 0,
+            g0,
+            tl.where(best_group == 1, g1, tl.where(best_group == 2, g2, g3)),
+        )
         chosen_id = tl.load(ids_ptr + token * 64 + chosen_group * 8 + chosen_index)
         top_values = tl.where(ranks == rank, best, top_values)
         top_ids = tl.where(ranks == rank, chosen_id, top_ids)
@@ -139,10 +168,18 @@ class ModelNew(nn.Module):
     def forward(self, hidden_states: torch.Tensor, gating_output: torch.Tensor):
         n_tokens = gating_output.shape[0]
         scores = torch.empty_like(gating_output, dtype=torch.float32)
-        group_values = torch.empty((n_tokens, 64), device=gating_output.device, dtype=torch.float32)
-        group_ids = torch.empty((n_tokens, 64), device=gating_output.device, dtype=torch.int32)
-        group_scores = torch.empty((n_tokens, 8), device=gating_output.device, dtype=torch.float32)
-        weights = torch.empty((n_tokens, 8), device=gating_output.device, dtype=torch.float32)
+        group_values = torch.empty(
+            (n_tokens, 64), device=gating_output.device, dtype=torch.float32
+        )
+        group_ids = torch.empty(
+            (n_tokens, 64), device=gating_output.device, dtype=torch.int32
+        )
+        group_scores = torch.empty(
+            (n_tokens, 8), device=gating_output.device, dtype=torch.float32
+        )
+        weights = torch.empty(
+            (n_tokens, 8), device=gating_output.device, dtype=torch.float32
+        )
         ids = torch.empty((n_tokens, 8), device=gating_output.device, dtype=torch.int32)
         _normalize_scores_kernel[(n_tokens,)](
             gating_output,
