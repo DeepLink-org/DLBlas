@@ -6,14 +6,14 @@ import triton.language as tl
 
 @triton.jit
 def _mhc_mix_bwd_fused_kernel(
-    input_mix_ptr,      # flattened (n_rows, MHC_MULT) input_mix
-    mhc_scale_ptr,      # NOTE: bound to a Python float (fp32 scalar), NOT a pointer
-    mhc_base_ptr,       # (MHC_MULT,)
-    grad_out_ptr,       # flattened (n_rows, MHC_MULT)
-    grad_input_ptr,     # flattened (n_rows, MHC_MULT) output
-    grad_base_ptr,      # (MHC_MULT,) output
-    grad_scale_ptr,     # (1,) output
-    n_rows,             # runtime row count (n0 * n1)
+    input_mix_ptr,  # flattened (n_rows, MHC_MULT) input_mix
+    mhc_scale_ptr,  # NOTE: bound to a Python float (fp32 scalar), NOT a pointer
+    mhc_base_ptr,  # (MHC_MULT,)
+    grad_out_ptr,  # flattened (n_rows, MHC_MULT)
+    grad_input_ptr,  # flattened (n_rows, MHC_MULT) output
+    grad_base_ptr,  # (MHC_MULT,) output
+    grad_scale_ptr,  # (1,) output
+    n_rows,  # runtime row count (n0 * n1)
     MHC_MULT: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_C: tl.constexpr,
@@ -105,7 +105,7 @@ class ModelNew(nn.Module):
 
     def __init__(self):
         super(ModelNew, self).__init__()
-        self._block_m = 2048     # benchmark-sized single-pass tile
+        self._block_m = 2048  # benchmark-sized single-pass tile
 
     def forward(
         self,

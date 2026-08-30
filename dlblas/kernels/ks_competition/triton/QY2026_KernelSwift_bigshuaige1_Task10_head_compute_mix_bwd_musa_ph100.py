@@ -11,7 +11,18 @@ ROW_WARPS = 4
 
 
 @triton.jit
-def _mix_bwd_kernel(input_mix, scale_ptr, base_ptr, grad_out, grad_input, base_parts, scale_parts, rows: tl.constexpr, BLOCK: tl.constexpr, NTILES: tl.constexpr):
+def _mix_bwd_kernel(
+    input_mix,
+    scale_ptr,
+    base_ptr,
+    grad_out,
+    grad_input,
+    base_parts,
+    scale_parts,
+    rows: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NTILES: tl.constexpr,
+):
     component = tl.program_id(0)
     tile = tl.program_id(1)
     row = tile * BLOCK + tl.arange(0, BLOCK)
@@ -30,7 +41,9 @@ def _mix_bwd_kernel(input_mix, scale_ptr, base_ptr, grad_out, grad_input, base_p
 
 
 @triton.jit
-def _reduce_parts32_kernel(base_parts, scale_parts, grad_base_halves, scale_halves, NTILES: tl.constexpr):
+def _reduce_parts32_kernel(
+    base_parts, scale_parts, grad_base_halves, scale_halves, NTILES: tl.constexpr
+):
     component = tl.program_id(0)
     offsets = tl.arange(0, 32)
     b0 = tl.load(base_parts + component * NTILES + offsets)
@@ -63,19 +76,55 @@ class ModelNew(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input_mix: torch.Tensor, mhc_scale: torch.Tensor, mhc_base: torch.Tensor, grad_out: torch.Tensor):
+    def forward(
+        self,
+        input_mix: torch.Tensor,
+        mhc_scale: torch.Tensor,
+        mhc_base: torch.Tensor,
+        grad_out: torch.Tensor,
+    ):
         grad_input = torch.empty_like(input_mix)
         grad_base = torch.empty_like(mhc_base)
         parts = torch.empty((4, 64), dtype=torch.float32, device=input_mix.device)
         scale_parts = torch.empty((4, 64), dtype=torch.float32, device=input_mix.device)
-        grad_base_halves = torch.empty((4, 2), dtype=torch.float32, device=input_mix.device)
+        grad_base_halves = torch.empty(
+            (4, 2), dtype=torch.float32, device=input_mix.device
+        )
         scale_halves = torch.empty((4, 2), dtype=torch.float32, device=input_mix.device)
         scale_components = torch.empty(4, dtype=torch.float32, device=input_mix.device)
         grad_scale = torch.empty_like(mhc_scale)
         rows = input_mix.numel() // 4
-        _mix_bwd_kernel[(4, 64)](input_mix, mhc_scale, mhc_base, grad_out, grad_input, parts, scale_parts, rows=rows, BLOCK=32, NTILES=64, num_warps=1, num_stages=1)
-        _reduce_parts32_kernel[(4,)](parts, scale_parts, grad_base_halves, scale_halves, NTILES=64, num_warps=1, num_stages=1)
-        _reduce_final_kernel[(4,)](grad_base_halves, scale_halves, grad_base, scale_components, num_warps=1, num_stages=1)
+        _mix_bwd_kernel[(4, 64)](
+            input_mix,
+            mhc_scale,
+            mhc_base,
+            grad_out,
+            grad_input,
+            parts,
+            scale_parts,
+            rows=rows,
+            BLOCK=32,
+            NTILES=64,
+            num_warps=1,
+            num_stages=1,
+        )
+        _reduce_parts32_kernel[(4,)](
+            parts,
+            scale_parts,
+            grad_base_halves,
+            scale_halves,
+            NTILES=64,
+            num_warps=1,
+            num_stages=1,
+        )
+        _reduce_final_kernel[(4,)](
+            grad_base_halves,
+            scale_halves,
+            grad_base,
+            scale_components,
+            num_warps=1,
+            num_stages=1,
+        )
         _sum_scale_kernel[(1,)](scale_components, grad_scale, num_warps=1, num_stages=1)
         return grad_input, grad_scale, grad_base
 
@@ -85,7 +134,12 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(2, 1024, 4, dtype=torch.float32), torch.randn(1, dtype=torch.float32), torch.randn(4, dtype=torch.float32), torch.randn(2, 1024, 4, dtype=torch.float32)]
+    return [
+        torch.randn(2, 1024, 4, dtype=torch.float32),
+        torch.randn(1, dtype=torch.float32),
+        torch.randn(4, dtype=torch.float32),
+        torch.randn(2, 1024, 4, dtype=torch.float32),
+    ]
 
 
 def get_init_inputs():

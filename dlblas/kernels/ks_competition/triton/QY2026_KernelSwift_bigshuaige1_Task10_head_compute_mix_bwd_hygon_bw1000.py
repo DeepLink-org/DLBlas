@@ -11,7 +11,16 @@ ROW_WARPS = 2
 
 
 @triton.jit
-def _mix_bwd_single_kernel(input_mix, scale_ptr, base_ptr, grad_out, grad_input, grad_scale, grad_base, BLOCK: tl.constexpr):
+def _mix_bwd_single_kernel(
+    input_mix,
+    scale_ptr,
+    base_ptr,
+    grad_out,
+    grad_input,
+    grad_scale,
+    grad_base,
+    BLOCK: tl.constexpr,
+):
     offset = tl.arange(0, BLOCK)
     component = offset % 4
     x = tl.load(input_mix + offset).to(tl.float32)
@@ -36,7 +45,13 @@ class ModelNew(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input_mix: torch.Tensor, mhc_scale: torch.Tensor, mhc_base: torch.Tensor, grad_out: torch.Tensor):
+    def forward(
+        self,
+        input_mix: torch.Tensor,
+        mhc_scale: torch.Tensor,
+        mhc_base: torch.Tensor,
+        grad_out: torch.Tensor,
+    ):
         grad_input = torch.empty_like(input_mix)
         grad_scale = torch.empty_like(mhc_scale)
         grad_base = torch.empty_like(mhc_base)
@@ -60,7 +75,12 @@ class Model(ModelNew):
 
 
 def get_inputs():
-    return [torch.randn(2, 1024, 4, dtype=torch.float32), torch.randn(1, dtype=torch.float32), torch.randn(4, dtype=torch.float32), torch.randn(2, 1024, 4, dtype=torch.float32)]
+    return [
+        torch.randn(2, 1024, 4, dtype=torch.float32),
+        torch.randn(1, dtype=torch.float32),
+        torch.randn(4, dtype=torch.float32),
+        torch.randn(2, 1024, 4, dtype=torch.float32),
+    ]
 
 
 def get_init_inputs():

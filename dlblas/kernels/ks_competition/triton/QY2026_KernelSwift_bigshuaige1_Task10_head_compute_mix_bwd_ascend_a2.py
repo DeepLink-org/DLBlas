@@ -42,7 +42,9 @@ def _mix_bwd_chunk_kernel(
 
     c = tl.arange(0, 4)
     base_grads = tl.sum(
-        tl.where(valid[:, None] & (component[:, None] == c[None, :]), grad_z[:, None], 0.0),
+        tl.where(
+            valid[:, None] & (component[:, None] == c[None, :]), grad_z[:, None], 0.0
+        ),
         axis=0,
     )
     tl.store(partial_base + pid * 4 + c, base_grads)
@@ -62,7 +64,9 @@ def _mix_bwd_reduce_kernel(
     valid = off < n_partials
     ps = tl.load(partial_scale + off, mask=valid, other=0.0).to(tl.float32)
     c = tl.arange(0, 4)
-    pb = tl.load(partial_base + off[:, None] * 4 + c[None, :], mask=valid[:, None], other=0.0).to(tl.float32)
+    pb = tl.load(
+        partial_base + off[:, None] * 4 + c[None, :], mask=valid[:, None], other=0.0
+    ).to(tl.float32)
     tl.store(grad_scale, tl.sum(ps, axis=0))
     tl.store(grad_base + c, tl.sum(pb, axis=0))
 
@@ -75,8 +79,12 @@ class ModelNew(nn.Module):
         grad_input = torch.empty_like(input_mix)
         n_elements = input_mix.numel()
         n_partials = triton.cdiv(n_elements, PARTIAL_BLOCK)
-        partial_scale = torch.empty((n_partials,), dtype=input_mix.dtype, device=input_mix.device)
-        partial_base = torch.empty((n_partials, 4), dtype=input_mix.dtype, device=input_mix.device)
+        partial_scale = torch.empty(
+            (n_partials,), dtype=input_mix.dtype, device=input_mix.device
+        )
+        partial_base = torch.empty(
+            (n_partials, 4), dtype=input_mix.dtype, device=input_mix.device
+        )
         _mix_bwd_chunk_kernel[(n_partials,)](
             input_mix,
             mhc_scale,
