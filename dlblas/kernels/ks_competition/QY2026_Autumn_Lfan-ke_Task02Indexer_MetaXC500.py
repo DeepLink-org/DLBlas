@@ -175,30 +175,40 @@ __device__ __forceinline__ unsigned short f32_bf16(float f) {
   return (unsigned short)((u + 0x7FFFu + ((u >> 16) & 1u)) >> 16);
 }
 
-// 原地旋转 q 的末 rd 维。一 block 一个 (b,s)，块内 H*rd/2 个复数对。
-// 实部与虚部的 FMA 形式是反解出来的：换成对称写法会有 1e-5 的位差（见模块头）。
+// 一个 32 位字就是一个复数对。实虚部的 FMA 形式是反解 torch 得到的、并不对称，
+// 换成对称写法会有 1e-5 的位差，足以顺着 einsum 把 topk 的次序顶翻。
+__device__ __forceinline__ unsigned int rot(unsigned int raw, float fr, float fi) {
+  const float re = bf16_f32((unsigned short)(raw & 0xFFFFu));
+  const float im = bf16_f32((unsigned short)(raw >> 16));
+  const float o0 = __fmaf_rn(re, fr, -__fmul_rn(im, fi));
+  const float o1 = __fmaf_rn(im, fr, __fmul_rn(re, fi));
+  return ((unsigned int)f32_bf16(o1) << 16) | (unsigned int)f32_bf16(o0);
+}
+
+// 原地旋转 q 的末 rd 维。一个线程搬一个 uint4（16 字节 = 4 个复数对）：
+// 参考实现那三次 torch 调用（.float() -> 复数乘 -> copy_ 回 bf16 strided 视图）来回搬约
+// 235 MB，实测 663.7 us；一线程一个复数对是 127.0 us；一线程一个 uint4 是 88.3 us。
+// ★不要对局部 uint4 取地址（写成 `unsigned int* w = (unsigned int*)&v`）——取址会把它
+// 逼进 scratch memory，实测整题会从 2.50 掉到 2.97 ms。直接用 v.x/v.y/v.z/v.w。
 __global__ void rope_kern(unsigned short* __restrict__ q,   // [B,S,H,D] bf16
                           const float* __restrict__ fc,     // [S, rd/2, 2] fp32
-                          int S, int H, int D, int rd) {
-  __shared__ float fs[64];
+                          int S, int H, int D, int rd, int qs) {
+  extern __shared__ float fs[];                             // rd 个 float
   const int s = blockIdx.x, b = blockIdx.y;
-  const int half = rd >> 1;
   for (int i = threadIdx.x; i < rd; i += blockDim.x) fs[i] = fc[(long long)s * rd + i];
   __syncthreads();
 
-  const int n = H * half;
-  for (int tid = threadIdx.x; tid < n; tid += blockDim.x) {
-    const int h = tid / half, j = tid - h * half;
-    unsigned int* p =
-        (unsigned int*)(q + ((((long long)b * S + s) * H + h) * D + (D - rd))) + j;
-    const unsigned int raw = *p;
-    const float re = bf16_f32((unsigned short)(raw & 0xFFFFu));
-    const float im = bf16_f32((unsigned short)(raw >> 16));
-    const float fr = fs[2 * j], fi = fs[2 * j + 1];
-    const float o0 = __fmaf_rn(re, fr, -__fmul_rn(im, fi));
-    const float o1 = __fmaf_rn(im, fr, __fmul_rn(re, fi));
-    *p = ((unsigned int)f32_bf16(o1) << 16) | (unsigned int)f32_bf16(o0);
-  }
+  const int quads = rd >> 3;
+  const int h = threadIdx.x >> qs;
+  const int u = threadIdx.x & (quads - 1);
+  uint4* p = (uint4*)(q + ((((long long)b * S + s) * H + h) * D + (D - rd))) + u;
+  uint4 v = *p;
+  const float* f = fs + (u << 3);
+  v.x = rot(v.x, f[0], f[1]);
+  v.y = rot(v.y, f[2], f[3]);
+  v.z = rot(v.z, f[4], f[5]);
+  v.w = rot(v.w, f[6], f[7]);
+  *p = v;
 }
 
 void rope_inplace(torch::Tensor q, torch::Tensor fc) {
@@ -207,8 +217,12 @@ void rope_inplace(torch::Tensor q, torch::Tensor fc) {
   const int B = (int)q.size(0), S = (int)q.size(1);
   const int H = (int)q.size(2), D = (int)q.size(3);
   const int rd = (int)(fc.size(1) * fc.size(2));
-  TORCH_CHECK(rd <= 64 && (rd & 1) == 0 && D >= rd, "unsupported rope width");
-  rope_kern<<<dim3(S, B), 256>>>((unsigned short*)q.data_ptr(), fc.data_ptr<float>(), S, H, D, rd);
+  TORCH_CHECK(rd <= 64 && (rd & 7) == 0 && D >= rd, "unsupported rope width");
+  const int quads = rd >> 3;
+  int qs = 0; while ((1 << qs) < quads) ++qs;
+  TORCH_CHECK((1 << qs) == quads, "rd/8 must be a power of two");
+  rope_kern<<<dim3(S, B), H * quads, (size_t)rd * sizeof(float)>>>(
+      (unsigned short*)q.data_ptr(), fc.data_ptr<float>(), S, H, D, rd, qs);
 }
 
 // 一 block 一行 (b,s)：读 16×valid 个分数 -> 行内 top-K 索引。
@@ -217,7 +231,7 @@ __global__ void idx_reduce_topk_kernel(
     const unsigned short* __restrict__ sc4,   // [B,S,H,T] bf16
     const unsigned short* __restrict__ wt,    // [B,S,H]   bf16
     int64_t* __restrict__ out,                // [B,S,K]   int64
-    int s0, int nseg, int S, int H, int T, int K, int ratio, int offset) {
+    int s0, int nseg, int S, int H, int T, int K, int ratio, int offset, int s_base) {
   extern __shared__ unsigned int keys[];
   __shared__ float wsh[64];
 
@@ -225,7 +239,7 @@ __global__ void idx_reduce_topk_kernel(
   const int s = s0 + blockIdx.x % nseg;
   const long long row = (long long)b * S + s;
 
-  int valid = (s + 1) / ratio;
+  int valid = (s_base + s + 1) / ratio;   // s_base 让分块喂入时因果边界仍按全局 s 算
   if (valid > T) valid = T;
 
   if (valid == 0) {
@@ -259,17 +273,60 @@ __global__ void idx_reduce_topk_kernel(
 
   // 线程↔比较对：i = 由对号 p 展开出的低位。写成 i^jj 再 if(ixj>i) 会让每级一半线程空转，
   // 实测那种写法整核 1.907 ms，这种 1.371 ms。
+  // 而且只需要 top-128：P>128 时先按 128 一段各自排，再树形归并、每次只留前 128，
+  // 比较交换数 28160 -> 18368（P=1024），整核 1.384 -> 1.199 ms。
   const int npair = P >> 1;
-  for (int kk = 2; kk <= P; kk <<= 1) {
-    for (int jj = kk >> 1; jj > 0; jj >>= 1) {
-      for (int p = threadIdx.x; p < npair; p += blockDim.x) {
-        const int lo = p & (jj - 1);
-        const int i = ((p - lo) << 1) + lo;
-        const unsigned int a = keys[i], c = keys[i + jj];
-        const bool desc = ((i & kk) == 0);
-        if (desc ? (a < c) : (a > c)) { keys[i] = c; keys[i + jj] = a; }
+  int KS = 0; while ((1 << KS) < K) ++KS;          // K 是 2 的幂时才走分段归并
+  if (P <= K || (K & (K - 1)) != 0) {
+    for (int kk = 2; kk <= P; kk <<= 1)
+      for (int jj = kk >> 1; jj > 0; jj >>= 1) {
+        for (int p = threadIdx.x; p < npair; p += blockDim.x) {
+          const int lo = p & (jj - 1);
+          const int i = ((p - lo) << 1) + lo;
+          const unsigned int a = keys[i], c = keys[i + jj];
+          if (((i & kk) == 0) ? (a < c) : (a > c)) { keys[i] = c; keys[i + jj] = a; }
+        }
+        __syncthreads();
+      }
+  } else {
+    // ★段号/段内号一律用移位算：这里被执行约 2.45 亿次，换成对运行时 K 的整数除法
+    // 会让整题从 2.50 掉到 2.96 ms（GPU 没有硬件整数除法）。
+    const int HKS = KS - 1;
+    const int HK = K >> 1;                       // 每段的比较对数
+    for (int kk = 2; kk <= K; kk <<= 1)          // 每段内部各自降序，方向判据用段内下标
+      for (int jj = kk >> 1; jj > 0; jj >>= 1) {
+        for (int p = threadIdx.x; p < npair; p += blockDim.x) {
+          const int g = p >> HKS, q = p & (HK - 1);
+          const int lo = q & (jj - 1);
+          const int ii = ((q - lo) << 1) + lo;
+          const int i = ii + (g << KS);
+          const unsigned int a = keys[i], c = keys[i + jj];
+          if (((ii & kk) == 0) ? (a < c) : (a > c)) { keys[i] = c; keys[i + jj] = a; }
+        }
+        __syncthreads();
+      }
+    // C[i] = max(A[i], B[K-1-i]) 得到一个双调序列，再做 log2(K) 级降序归并
+    const int nsg = P >> KS;
+    for (int step = 1; step < nsg; step <<= 1) {
+      const int np = nsg / (step << 1);
+      for (int p = threadIdx.x; p < np * K; p += blockDim.x) {
+        const int pr = p >> KS, i = p & (K - 1);
+        const int ga = pr * (step << 1);
+        const unsigned int a = keys[(ga << KS) + i];
+        const unsigned int c = keys[((ga + step) << KS) + (K - 1 - i)];
+        if (c > a) keys[(ga << KS) + i] = c;
       }
       __syncthreads();
+      for (int jj = HK; jj > 0; jj >>= 1) {
+        for (int p = threadIdx.x; p < np * HK; p += blockDim.x) {
+          const int pr = p >> HKS, q = p & (HK - 1);
+          const int lo = q & (jj - 1);
+          const int i = ((pr * (step << 1)) << KS) + ((q - lo) << 1) + lo;
+          const unsigned int a = keys[i], c = keys[i + jj];
+          if (a < c) { keys[i] = c; keys[i + jj] = a; }
+        }
+        __syncthreads();
+      }
     }
   }
 
@@ -283,7 +340,7 @@ __global__ void idx_reduce_topk_kernel(
 static inline int pow2_ceil(int v) { int p = 1; while (p < v) p <<= 1; return p; }
 
 torch::Tensor idx_reduce_topk(torch::Tensor sc4, torch::Tensor w, int64_t K,
-                              int64_t ratio, int64_t offset) {
+                              int64_t ratio, int64_t offset, int64_t s_base) {
   TORCH_CHECK(sc4.is_cuda() && w.is_cuda(), "inputs must be on the accelerator");
   TORCH_CHECK(sc4.scalar_type() == at::kBFloat16 && w.scalar_type() == at::kBFloat16,
               "scores and weights must be bfloat16");
@@ -302,12 +359,12 @@ torch::Tensor idx_reduce_topk(torch::Tensor sc4, torch::Tensor w, int64_t K,
   // valid 随 s 单调不减，按 P = pow2_ceil(valid) 切成连续段，shared 与线程数按段给
   int s0 = 0;
   while (s0 < S) {
-    int v = (s0 + 1) / (int)ratio;
+    int v = ((int)s_base + s0 + 1) / (int)ratio;
     if (v > T) v = T;
     const int P = pow2_ceil(v > 0 ? v : 1);
     int s1 = s0 + 1;
     while (s1 < S) {
-      int v2 = (s1 + 1) / (int)ratio;
+      int v2 = ((int)s_base + s1 + 1) / (int)ratio;
       if (v2 > T) v2 = T;
       if (pow2_ceil(v2 > 0 ? v2 : 1) != P) break;
       ++s1;
@@ -316,7 +373,7 @@ torch::Tensor idx_reduce_topk(torch::Tensor sc4, torch::Tensor w, int64_t K,
     // 128 是实测甜点：64/128/256/512 分别 1.576/1.371/1.552/1.807 ms
     const int nthreads = P < 128 ? 64 : 128;
     idx_reduce_topk_kernel<<<B * nseg, nthreads, (size_t)P * sizeof(unsigned int)>>>(
-        p_sc, p_w, p_o, s0, nseg, S, H, T, (int)K, (int)ratio, (int)offset);
+        p_sc, p_w, p_o, s0, nseg, S, H, T, (int)K, (int)ratio, (int)offset, (int)s_base);
     s0 = s1;
   }
   return out;
@@ -332,7 +389,7 @@ def _mod(_cache=[]):
                 name="indexer_maca",
                 cpp_sources=(
                     "torch::Tensor idx_reduce_topk(torch::Tensor sc4, torch::Tensor w, "
-                    "int64_t K, int64_t ratio, int64_t offset);\n"
+                    "int64_t K, int64_t ratio, int64_t offset, int64_t s_base);\n"
                     "void rope_inplace(torch::Tensor q, torch::Tensor fc);"
                 ),
                 cuda_sources=_cuda_source(),
@@ -424,7 +481,7 @@ class ModelNew(torch.nn.Module):
         index_score = torch.einsum("bshd,btd->bsht", q, self.kv_cache[:bsz, : end_pos // ratio])
         k = min(self.index_topk, end_pos // ratio)
         if start_pos == 0:
-            return self._op(index_score.contiguous(), weights.contiguous(), k, ratio, offset)
+            return self._op(index_score.contiguous(), weights.contiguous(), k, ratio, offset, 0)
         index_score = (index_score.relu_() * weights.unsqueeze(-1)).sum(dim=2)
         return index_score.topk(k, dim=-1)[1] + offset
 
