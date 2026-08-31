@@ -159,6 +159,11 @@ def _mod(_cache=[]):
                 ),
                 cuda_sources=_cuda_source(),
                 functions=["norm_fn"],
+                # ★宿主侧（pybind 胶水 + main.cpp）默认是 -O0：torch 不注入 -O、cu-bridge 也不注入，
+                # 而 pybind 往返占这台机器 26 µs 硬底里的 8.9 µs。extra_cuda_cflags 加 -O3 是空操作
+                # （设备段 md5 逐字节相同，已证），真正的口子在 extra_cflags。
+                # 官方 harness 交替 A/B 五对全胜：5.475/5.473/5.477/5.430/5.511 -> 5.666/5.741/5.774/5.868/6.125
+                extra_cflags=["-O3"],
                 verbose=False,
             )
         )
