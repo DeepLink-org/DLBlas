@@ -356,26 +356,17 @@ torch::Tensor idx_reduce_topk(torch::Tensor sc4, torch::Tensor w, int64_t K,
   const unsigned short* p_w = (const unsigned short*)w.data_ptr();
   int64_t* p_o = out.data_ptr<int64_t>();
 
-  // valid 随 s 单调不减，按 P = pow2_ceil(valid) 切成连续段，shared 与线程数按段给
-  int s0 = 0;
-  while (s0 < S) {
-    int v = ((int)s_base + s0 + 1) / (int)ratio;
-    if (v > T) v = T;
-    const int P = pow2_ceil(v > 0 ? v : 1);
-    int s1 = s0 + 1;
-    while (s1 < S) {
-      int v2 = ((int)s_base + s1 + 1) / (int)ratio;
-      if (v2 > T) v2 = T;
-      if (pow2_ceil(v2 > 0 ? v2 : 1) != P) break;
-      ++s1;
-    }
-    const int nseg = s1 - s0;
-    // 128 是实测甜点：64/128/256/512 分别 1.576/1.371/1.552/1.807 ms
-    const int nthreads = P < 128 ? 64 : 128;
-    idx_reduce_topk_kernel<<<B * nseg, nthreads, (size_t)P * sizeof(unsigned int)>>>(
-        p_sc, p_w, p_o, s0, nseg, S, H, T, (int)K, (int)ratio, (int)offset, (int)s_base);
-    s0 = s1;
-  }
+  // ★曾按 P = pow2_ceil(valid) 把 s 切成连续段、每段一次启动。S=2600 时 P 取遍
+  //   1..1024，足足 11 次启动，而这张卡一次 kernel 启动就要 15 us。
+  //   kernel 内部本来就自己按 valid 重算 P，分段只决定 shared 大小与线程数：shared 给
+  //   大了无害，线程数也不改变结果（所有循环都按 threadIdx 跨步，同步次数与 blockDim
+  //   无关）。所以合成一次启动是逐位等价的，实测整题 2.151 -> 1.968 ms，交替 A/B 六对全胜。
+  //   128 线程是实测甜点：64/128/256/512 分别 1.576/1.371/1.552/1.807 ms。
+  int vmax = ((int)s_base + S) / (int)ratio;
+  if (vmax > T) vmax = T;
+  const int Pmax = pow2_ceil(vmax > 0 ? vmax : 1);
+  idx_reduce_topk_kernel<<<B * S, 128, (size_t)Pmax * sizeof(unsigned int)>>>(
+      p_sc, p_w, p_o, 0, S, S, H, T, (int)K, (int)ratio, (int)offset, (int)s_base);
   return out;
 }
 """
