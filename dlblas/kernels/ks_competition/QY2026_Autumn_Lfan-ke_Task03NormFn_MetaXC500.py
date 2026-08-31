@@ -45,61 +45,66 @@ __device__ __forceinline__ float bf16_to_f32(uint16_t b) {
   return c.f;
 }
 
-// 一 block 一个输出元素 (row, j)。K = rms_group_size (5120)，M = mhc_mult3 (24)。
+// 一 block 负责同一行的 JG 个 j。residual 与 RMS 分母整块只过一遍、JG 个点积在寄存器里并行累，
+// 把参考布局里「每个 j 都把 residual 重读一遍、平方和重算一遍」的 24 倍冗余摊掉。
+// JG 是量出来的：1/2/3/4/6/8/12 对应 312/156/104/78/52/39/26 个 block，
+// 实测 37.79/36.86/36.10/35.85/35.27/37.07/42.82 us —— 6 是甜点。再大 block 数不够，占用率掉下来。
+template <int JG>
 __global__ void norm_fn_kernel(
     const uint16_t* __restrict__ residual,   // [rows, K] bf16 的原始位
     const float* __restrict__ fn,            // [M, K] fp32
     float* __restrict__ out,                 // [rows, M] fp32
     int M, int K, float eps, float inv_K) {
-  extern __shared__ float red[];             // 2 * nthreads：点积与平方和各一半
+  extern __shared__ float red[];             // (JG+1) * nthreads：JG 个点积 + 一个平方和
 
-  const int row = blockIdx.x / M;
-  const int j = blockIdx.x - row * M;
+  const int ng = M / JG;
+  const int row = blockIdx.x / ng;
+  const int j0 = (blockIdx.x - row * ng) * JG;
   const int tid = threadIdx.x;
-  const int nthreads = blockDim.x;
+  const int nt = blockDim.x;
 
-  const uint16_t* rrow = residual + (long)row * K;
-  const float* frow = fn + (long)j * K;
-
-  float acc = 0.f, sq = 0.f;
   // K 是 4 的倍数（本题 5120），一次取 4 个：fn 走 float4，residual 走 4 个 bf16 打包成的 uint2。
-  // 这个 kernel 是延迟 bound（实测带宽只用到 ~195 GB/s），把访存指令数砍到 1/4 直接见效。
-  if ((K & 3) == 0) {
-    const int K4 = K >> 2;
-    const float4* f4 = reinterpret_cast<const float4*>(frow);
-    const uint2* r4 = reinterpret_cast<const uint2*>(rrow);
-    for (int k = tid; k < K4; k += nthreads) {
-      const uint2 rb = r4[k];
-      const float4 fv = f4[k];
-      const float r0 = bf16_to_f32((uint16_t)(rb.x & 0xffffu));
-      const float r1 = bf16_to_f32((uint16_t)(rb.x >> 16));
-      const float r2 = bf16_to_f32((uint16_t)(rb.y & 0xffffu));
-      const float r3 = bf16_to_f32((uint16_t)(rb.y >> 16));
-      acc = fmaf(r0, fv.x, acc); sq = fmaf(r0, r0, sq);
-      acc = fmaf(r1, fv.y, acc); sq = fmaf(r1, r1, sq);
-      acc = fmaf(r2, fv.z, acc); sq = fmaf(r2, r2, sq);
-      acc = fmaf(r3, fv.w, acc); sq = fmaf(r3, r3, sq);
-    }
-  } else {
-    for (int k = tid; k < K; k += nthreads) {
-      const float r = bf16_to_f32(rrow[k]);
-      acc = fmaf(r, frow[k], acc);
-      sq = fmaf(r, r, sq);
+  const uint2* r4 = reinterpret_cast<const uint2*>(residual + (long)row * K);
+  const float4* f4[JG];
+#pragma unroll
+  for (int u = 0; u < JG; ++u) f4[u] = reinterpret_cast<const float4*>(fn + (long)(j0 + u) * K);
+
+  float acc[JG];
+#pragma unroll
+  for (int u = 0; u < JG; ++u) acc[u] = 0.f;
+  float sq = 0.f;
+
+  const int K4 = K >> 2;
+  for (int k = tid; k < K4; k += nt) {
+    const uint2 rb = r4[k];
+    const float r0 = bf16_to_f32((uint16_t)(rb.x & 0xffffu));
+    const float r1 = bf16_to_f32((uint16_t)(rb.x >> 16));
+    const float r2 = bf16_to_f32((uint16_t)(rb.y & 0xffffu));
+    const float r3 = bf16_to_f32((uint16_t)(rb.y >> 16));
+    sq = fmaf(r0, r0, sq); sq = fmaf(r1, r1, sq);
+    sq = fmaf(r2, r2, sq); sq = fmaf(r3, r3, sq);
+#pragma unroll
+    for (int u = 0; u < JG; ++u) {
+      const float4 fv = f4[u][k];
+      acc[u] = fmaf(r0, fv.x, acc[u]);
+      acc[u] = fmaf(r1, fv.y, acc[u]);
+      acc[u] = fmaf(r2, fv.z, acc[u]);
+      acc[u] = fmaf(r3, fv.w, acc[u]);
     }
   }
-  red[tid] = acc;
-  red[nthreads + tid] = sq;
+
+#pragma unroll
+  for (int u = 0; u < JG; ++u) red[u * nt + tid] = acc[u];
+  red[JG * nt + tid] = sq;
   __syncthreads();
-  for (int s = nthreads >> 1; s > 0; s >>= 1) {
+  for (int s = nt >> 1; s > 0; s >>= 1) {
     if (tid < s) {
-      red[tid] += red[tid + s];
-      red[nthreads + tid] += red[nthreads + tid + s];
+#pragma unroll
+      for (int u = 0; u <= JG; ++u) red[u * nt + tid] += red[u * nt + tid + s];
     }
     __syncthreads();
   }
-  if (tid == 0) {
-    out[(long)row * M + j] = red[0] * rsqrtf(red[nthreads] * inv_K + eps);
-  }
+  if (tid < JG) out[(long)row * M + j0 + tid] = red[tid * nt] * rsqrtf(red[JG * nt] * inv_K + eps);
 }
 
 torch::Tensor norm_fn(torch::Tensor residual_, torch::Tensor fn_, double eps,
@@ -114,14 +119,29 @@ torch::Tensor norm_fn(torch::Tensor residual_, torch::Tensor fn_, double eps,
   const int M = (int)fn.size(0);
   const int K = (int)fn.size(1);
 
+  TORCH_CHECK((K & 3) == 0, "K must be a multiple of 4");
+
   auto out = torch::empty({rows, M}, fn.options());
   const int threads = (int)block;
-  const size_t shmem = (size_t)(2 * threads) * sizeof(float);
 
-  norm_fn_kernel<<<rows * M, threads, shmem>>>(
-      (const uint16_t*)residual.data_ptr<at::BFloat16>(),
-      fn.data_ptr<float>(), out.data_ptr<float>(), M, K,
-      (float)eps, 1.0f / (float)K);
+  static const int kCand[] = {6, 4, 3, 2};
+  int JG = 1;
+  for (int i = 0; i < 4; ++i) {
+    if (M % kCand[i] == 0) { JG = kCand[i]; break; }
+  }
+  const size_t shmem = (size_t)(JG + 1) * threads * sizeof(float);
+  const int grid = rows * (M / JG);
+  auto pr = (const uint16_t*)residual.data_ptr<at::BFloat16>();
+  auto pf = fn.data_ptr<float>();
+  auto po = out.data_ptr<float>();
+  const float e = (float)eps, ik = 1.0f / (float)K;
+  switch (JG) {
+    case 6: norm_fn_kernel<6><<<grid, threads, shmem>>>(pr, pf, po, M, K, e, ik); break;
+    case 4: norm_fn_kernel<4><<<grid, threads, shmem>>>(pr, pf, po, M, K, e, ik); break;
+    case 3: norm_fn_kernel<3><<<grid, threads, shmem>>>(pr, pf, po, M, K, e, ik); break;
+    case 2: norm_fn_kernel<2><<<grid, threads, shmem>>>(pr, pf, po, M, K, e, ik); break;
+    default: norm_fn_kernel<1><<<grid, threads, shmem>>>(pr, pf, po, M, K, e, ik); break;
+  }
   return out.view({n0, n1v, M});
 }
 """
