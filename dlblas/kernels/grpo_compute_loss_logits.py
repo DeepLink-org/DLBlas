@@ -36,7 +36,8 @@ def grpo_kernel(
     HAS_DELTA: tl.constexpr, # 使用编译时常量来处理delta的有无
 ):
 
-    pid = tl.program_id(axis=0)
+    # 行偏移用 64 位：pid * V 在 int32 下会回绕，BL * V 超过 2^31 后越界
+    pid = tl.program_id(axis=0).to(tl.int64)
     mask = tl.load(mask_ptr + pid)
     if mask == 0:
         tl.store(loss_i_ptr + pid, 0.0)
@@ -205,7 +206,8 @@ def grpo_bwd_kernel(
     BLOCK_SIZE_V: tl.constexpr,
     HAS_DELTA: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
+    # 行偏移用 64 位：pid * V 在 int32 下会回绕，BL * V 超过 2^31 后越界
+    pid = tl.program_id(axis=0).to(tl.int64)
     mask = tl.load(mask_ptr + pid)
     if mask == 0:
         grad_ptr = grad_new_logits_ptr + pid * V
