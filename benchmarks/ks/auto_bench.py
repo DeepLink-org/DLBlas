@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-
+try:
+      import torch_npu
+except ImportError:
+      pass
 
 class KsCompareError(Exception):
     pass
@@ -479,7 +482,7 @@ def _first_input_device(inputs):
 def _detect_target_device(model, model_new, v0_inputs, v1_inputs):
     """Pick a non-CPU device from models/inputs, or auto-detect one.
 
-    Priority: model device > input device > auto-detect (cuda → npu).
+    Priority: model device > input device > auto-detect (cuda 闂佹剚鍋撻幏锟� npu).
     Raises KsCompareError if no accelerator is available.
     """
     for m in (model, model_new):
