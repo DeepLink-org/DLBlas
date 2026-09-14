@@ -1,5 +1,6 @@
 import argparse
 import ast
+import contextlib
 import importlib.util
 import statistics
 import sys
@@ -52,6 +53,15 @@ def parse_args():
         "--full-traceback",
         action="store_true",
         help="Print full Python traceback for load/run failures.",
+    )
+    parser.add_argument(
+        "--math-sdpa",
+        action="store_true",
+        help=(
+            "Force PyTorch scaled-dot-product attention to its math backend. "
+            "Useful when an installed FlashAttention plugin is incompatible with "
+            "the current PyTorch/ROCm runtime."
+        ),
     )
     return parser.parse_args()
 
@@ -387,9 +397,14 @@ def build_case(v0_path: Path, v1_path: Path, seed: int):
         f"{v1_path}: get_init_inputs()",
     )
 
+    # Model constructors may initialise trainable parameters from the RNG.  Build
+    # both variants from the same RNG state so correctness compares equivalent
+    # weights rather than two unrelated random models.
+    set_seed(seed)
     model = call_with_context(
         lambda: model_cls(*v0_init_args), f"{v0_path}: Model(...)"
     )
+    set_seed(seed)
     model_new = call_with_context(
         lambda: model_new_cls(*v1_init_args), f"{v1_path}: ModelNew(...)"
     )
@@ -403,17 +418,12 @@ def build_case(v0_path: Path, v1_path: Path, seed: int):
         call_with_context(v0_get_inputs, f"{v0_path}: get_inputs()"),
         f"{v0_path}: get_inputs()",
     )
-    set_seed(seed)
-    v1_inputs = as_args(
-        call_with_context(v1_get_inputs, f"{v1_path}: get_inputs()"),
-        f"{v1_path}: get_inputs()",
-    )
-
-    if len(v0_inputs) != len(v1_inputs):
-        raise KsCompareError(
-            f"get_inputs argument count mismatch: {v0_path} returns {len(v0_inputs)} "
-            f"args, {v1_path} returns {len(v1_inputs)} args."
-        )
+    # v0/reference inputs are the canonical comparison data.  Generating a
+    # separate v1 input can yield different values even under the same seed
+    # when the files use different device RNGs (CPU vs CUDA).  Clone the
+    # canonical data instead; compare_case later moves both copies to the same
+    # accelerator before executing either implementation.
+    v1_inputs = clone_value(v0_inputs)
     return model, model_new, v0_inputs, v1_inputs
 
 
@@ -511,31 +521,49 @@ def _move_to_device(value, device):
     return value
 
 
+def _move_model_to_device(model, device, description):
+    """Move a torch module's parameters and buffers to the target device."""
+    if not isinstance(model, torch.nn.Module):
+        return model
+    try:
+        return model.to(device)
+    except Exception as exc:
+        raise KsCompareError(
+            f"{description}: failed to move model to {device}: {exc}"
+        ) from exc
+
+
 def compare_case(name, v0_path, v1_path, args):
     model, model_new, v0_inputs, v1_inputs = build_case(v0_path, v1_path, args.seed)
 
     target_device = _detect_target_device(model, model_new, v0_inputs, v1_inputs)
-
     try:
         model_new.load_state_dict(model.state_dict())
     except Exception:
         pass
 
-    if hasattr(model, "to"):
-        model = model.to(target_device)
-    if hasattr(model_new, "to"):
-        model_new = model_new.to(target_device)
-
+    model = _move_model_to_device(model, target_device, f"{name}: v0")
+    model_new = _move_model_to_device(model_new, target_device, f"{name}: v1")
     v0_inputs = _move_to_device(v0_inputs, target_device)
     v1_inputs = _move_to_device(v1_inputs, target_device)
     v1_inputs = clone_value(v0_inputs)
 
-    v0_output = run_forward(model, v0_inputs, args.seed, f"{name}: v0")
-    v1_output = run_forward(model_new, v1_inputs, args.seed, f"{name}: v1")
-    compare_values(v0_output, v1_output, "output", args.atol, args.rtol)
+    # The context covers both correctness and timed calls.  This only changes
+    # PyTorch SDPA dispatch; custom Triton kernels remain the executed v1 path.
+    sdpa_context = (
+        torch.backends.cuda.sdp_kernel(
+            enable_flash=False, enable_math=True, enable_mem_efficient=False
+        )
+        if args.math_sdpa
+        else contextlib.nullcontext()
+    )
+    with sdpa_context:
+        v0_output = run_forward(model, v0_inputs, args.seed, f"{name}: v0")
+        v1_output = run_forward(model_new, v1_inputs, args.seed, f"{name}: v1")
+        compare_values(v0_output, v1_output, "output", args.atol, args.rtol)
 
-    v0_ms = time_forward(model, v0_inputs, args.seed, args.warmup, args.repeat)
-    v1_ms = time_forward(model_new, v1_inputs, args.seed, args.warmup, args.repeat)
+        v0_ms = time_forward(model, v0_inputs, args.seed, args.warmup, args.repeat)
+        v1_ms = time_forward(model_new, v1_inputs, args.seed, args.warmup, args.repeat)
     speedup = v0_ms / v1_ms if v1_ms > 0 else float("inf")
     return CaseResult(name=name, passed=True, v0_ms=v0_ms, v1_ms=v1_ms, speedup=speedup)
 
