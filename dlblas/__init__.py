@@ -6,6 +6,9 @@ from torch import Tensor
 
 # this import all kernels dynamically
 import dlblas.kernels  # noqa
+
+# this register operators to PyTorch (torch.ops.dlblas.xxx)
+import dlblas.torch_ops  # noqa
 from dlblas.utils import get_op
 
 __version__ = "0.0.7"
@@ -147,3 +150,20 @@ def flash_attention_v2(q, k, v):
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids_1d):
     op = get_op("apply_rotary_pos_emb", (q, k, cos, sin, position_ids_1d))
     return op(q, k, cos, sin, position_ids_1d)
+
+
+def vector_add(a: Tensor, b: Tensor) -> Tensor:
+    """Vector addition: c = a + b
+
+    Can be called via:
+    - dlblas.vector_add(a, b)
+    - torch.ops.dlblas.vector_add(a, b)
+
+    Args:
+        a: First input tensor (1D)
+        b: Second input tensor (1D)
+
+    Returns:
+        Output tensor (a + b)
+    """
+    return torch.ops.dlblas.vector_add(a, b)
