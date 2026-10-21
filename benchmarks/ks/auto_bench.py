@@ -71,7 +71,53 @@ def _is_safe_literal(node):
     return False
 
 
+def _triton_constexpr_names(tree):
+    """Resolve constexpr spellings from imports, including import aliases."""
+    names = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "triton.language":
+                    names.add(f"{alias.asname or alias.name}.constexpr")
+                elif alias.name == "triton":
+                    names.add(f"{alias.asname or alias.name}.language.constexpr")
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if node.module == "triton.language" and alias.name == "constexpr":
+                    names.add(alias.asname or alias.name)
+                elif node.module == "triton" and alias.name == "language":
+                    names.add(f"{alias.asname or alias.name}.constexpr")
+    return names
+
+
+def _is_constant_initializer(node, constexpr_names):
+    """Keep literal constexpr wrappers without allowing arbitrary call assignments.
+
+    This is a definition-loading policy, not a sandbox: imports, decorators and
+    class bodies already execute when loading a submission.
+    """
+    if _is_safe_literal(node):
+        return True
+    if not isinstance(node, ast.Call) or node.keywords or len(node.args) != 1:
+        return False
+    if ast.unparse(node.func) not in constexpr_names:
+        return False
+    value = node.args[0]
+    if _is_safe_literal(value):
+        return True
+    # Common sentinels include tl.constexpr(float("-inf")).
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == "float"
+        and not value.keywords
+        and len(value.args) == 1
+        and _is_safe_literal(value.args[0])
+    )
+
+
 def _filter_module_ast(tree):
+    constexpr_names = _triton_constexpr_names(tree)
     kept_nodes = []
     for node in tree.body:
         if isinstance(
@@ -85,12 +131,12 @@ def _filter_module_ast(tree):
             ),
         ):
             kept_nodes.append(node)
-        elif isinstance(node, ast.Assign) and _is_safe_literal(node.value):
+        elif isinstance(node, ast.Assign) and _is_constant_initializer(node.value, constexpr_names):
             kept_nodes.append(node)
         elif (
             isinstance(node, ast.AnnAssign)
             and node.value is not None
-            and _is_safe_literal(node.value)
+            and _is_constant_initializer(node.value, constexpr_names)
         ):
             kept_nodes.append(node)
     tree.body = kept_nodes
