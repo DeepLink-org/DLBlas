@@ -131,7 +131,9 @@ def _filter_module_ast(tree):
             ),
         ):
             kept_nodes.append(node)
-        elif isinstance(node, ast.Assign) and _is_constant_initializer(node.value, constexpr_names):
+        elif isinstance(node, ast.Assign) and _is_constant_initializer(
+            node.value, constexpr_names
+        ):
             kept_nodes.append(node)
         elif (
             isinstance(node, ast.AnnAssign)
