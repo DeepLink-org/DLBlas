@@ -13,18 +13,58 @@ it improves over Triton's autotuner in the following ways:
 - **caching** the best operator implementation and kernel configurations are cached for the input tensors. It is shape, dtype, device specific.
 
 ## Latest News
+
 - 04/24/2026 🚀: The [KernelSwift](https://deeplink.org.cn/kernelswift) fully automatic intelligent operator generation system achieves 100% correctness on NV chips and an average of over 75% correctness on domestic chips, with an average speedup ratio of 3.4x. After manual refinement of the automatically generated operators, an average of 100% correctness is attained on domestic chips, significantly boosting the efficiency of operator development and migration.
 
 ## Install
 
-```
+```bash
 cd DLBlas
 python setup.py install
 ```
-## Getting Started
-There are a couple of ways to apply dlblas kernels.
-1. get op from dlblas
+
+### cute_gemm: CuTe-DSL operator library (vendored)
+
+`dlblas/kernels/cute_gemm/` contains the complete CuTe-DSL operator library
+(upstream: [Truth-Ke/DLKernel](https://github.com/Truth-Ke/DLKernel), renamed
+to `cute_gemm` in this repository), copied in verbatim as regular files of
+this repository — nothing is ever fetched from the upstream repository, and
+installs use this local directory only. DLBlas itself is Triton-based;
+cute_gemm is a self-contained CuTe-DSL library that keeps its own operators,
+autotuner, tune/artifact caches, docs, tests and benchmarks. It is not wired
+into DLBlas's OpRegistry or cache.
+
+Install it in addition to DLBlas (from the repository root):
+
+```bash
+pip install -e ./dlblas/kernels/cute_gemm
+# or install both at once:
+bash scripts/install_with_cute_gemm.sh
 ```
+
+Use it through the DLBlas namespace (pure forwarding, no extra tuning or
+copying). The adapter falls back to the in-repo copy when cute_gemm is not
+installed:
+
+```python
+import dlblas.cute_gemm as cute
+
+out = cute.gemm(a, b)
+out = cute.rmsnorm(x, weight, eps=1e-6)
+```
+
+cute_gemm's caches are its own (`DLKERNEL_CACHE_DIR`,
+`DLKERNEL_ARTIFACT_CACHE_DIR`; see `dlblas/kernels/cute_gemm/docs/`) and are
+independent of the DLBlas cache. cute_gemm is licensed under Apache-2.0
+(`dlblas/kernels/cute_gemm/LICENSE`); the rest of DLBlas is BSD 3-Clause.
+
+## Getting Started
+
+There are a couple of ways to apply dlblas kernels.
+
+1. get op from dlblas
+
+```python
 from dlblas.utils import get_op
 args = parse_args()
 dtype = torch.float16
@@ -50,20 +90,24 @@ if torch.allclose(out, ref_out, **tol):
     print('✅ Triton and Torch match')
 else:
     print('❌ Triton and Torch differ')
+```
 
-```
-2. import kernel functions from the kernel file
-```
+1. import kernel functions from the kernel file
+
+```python
 from dlblas.kernels.rms_norm import rms_norm
 rms_norm(...)
+```
 
-```
-3. import dlblas and use the kernels directly
-```
+1. import dlblas and use the kernels directly
+
+```python
 import dlblas
 dlblas.topk_gating(...)
 ```
+
 ## Low-level APIs
+
 | Kernel              | API                                                                  |
 |:-------------------:|:--------------------------------------------------------------------:|
 | silu_and_mul        | from dlblas.kernels.activation import silu_and_mul                   |

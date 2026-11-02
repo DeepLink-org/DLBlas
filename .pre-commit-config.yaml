@@ -1,29 +1,43 @@
 repos:
+  # dlblas/kernels/cute_gemm is the vendored cute_gemm operator library and keeps
+  # its own toolchain (see dlblas/kernels/cute_gemm/.pre-commit-config.yaml);
+  # DLBlas hooks must not rewrite it.
   - repo: https://github.com/PyCQA/flake8
     rev: 5.0.4
     hooks:
       - id: flake8
         args: ["--max-line-length=120"]
+        exclude: ^dlblas/kernels/cute_gemm/
   - repo: https://github.com/PyCQA/isort
     rev: 5.11.5
     hooks:
       - id: isort
         args: ["--line-length=120"]
+        exclude: ^dlblas/kernels/cute_gemm/
   - repo: https://github.com/google/yapf
     rev: v0.43.0
     hooks:
       - id: yapf
         args: ['-i', '--style={based_on_style: pep8, column_limit: 120}']
+        exclude: ^dlblas/kernels/cute_gemm/
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: check-yaml
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: end-of-file-fixer
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: requirements-txt-fixer
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: double-quote-string-fixer
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: check-merge-conflict
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: fix-encoding-pragma
         args: ["--remove"]
+        exclude: ^dlblas/kernels/cute_gemm/
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: ^dlblas/kernels/cute_gemm/

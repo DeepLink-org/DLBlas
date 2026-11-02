@@ -1,0 +1,842 @@
+import argparse
+import time
+
+import torch
+from triton.testing import do_bench
+
+import cutlass
+
+from cute_gemm.cute_dsl_utils import get_device_capacity, torch2cute_dtype_map
+from cute_gemm.gemm import gemm as dlkernel_gemm
+from cute_gemm.gemm_default_epi import GemmDefaultSm100
+
+# SplitKMode from gemm_config, not gemm_interface (same object): gemm_interface
+# pulls in the blockscaled modules, which would defeat the deferred import in
+# _run_blockscaled and cost every dense run ~0.5s of startup.
+from cute_gemm.gemm_config import SplitKMode
+
+"""
+GEMM benchmark using cute_gemm.gemm.gemm() for both the dense path and the SM100
+blockscaled path (mx/nv fp8/fp6/fp4, mixed A/B formats), including blockscaled
+varlen_m. Blockscaled is selected by passing --sf_dtype, --sf_vec_size and/or
+per-operand --bs_format_a/--bs_format_b registry names; everything
+runs through the same unified cute_gemm.gemm.gemm() dispatch (with SFA/SFB), so
+the tile/cluster flags apply identically and the timings include the real
+dispatch overhead users pay.
+
+Usage (dense):
+    python benchmarks/benchmark_gemm.py --mnkl 512,7168,2048,256 \
+        --tile_shape_mnk 256,256 --cluster_shape_mnk 2,1 --persistent \
+        --varlen_m --gather_A --use_tma_gather --skip_ref_check
+
+Usage (blockscaled MXFP8, with cuBLAS comparison):
+    python benchmarks/benchmark_gemm.py --mnkl 4096,4096,4096,1 \
+        --tile_shape_mnk 256,256 --cluster_shape_mnk 2,1 --sf_vec_size 32
+
+NOTE: --tile_shape_mnk/--cluster_shape_mnk default to the SM100 shape (128,256).
+On SM120 (RTX 50) the blockscaled config that blockscaled_default_config picks --
+and the only one competitive with cuBLAS -- is (128,128) pingpong + dynamic
+persistent, so pass those flags explicitly or the numbers mean nothing:
+    python benchmarks/benchmark_gemm.py --mnkl 4096,4096,4096,1 --sf_vec_size 32 \
+        --tile_shape_mnk 128,128 --pingpong --dynamic_persistent
+
+Usage (blockscaled MXFP4):
+    python benchmarks/benchmark_gemm.py --mnkl 4096,4096,4096,1 \
+        --ab_dtype Float4E2M1FN --sf_dtype Float8E8M0FNU --sf_vec_size 32
+
+Usage (blockscaled NVFP4):
+    python benchmarks/benchmark_gemm.py --mnkl 4096,4096,4096,1 \
+        --ab_dtype Float4E2M1FN --sf_dtype Float8E4M3FN --sf_vec_size 16
+
+Usage (blockscaled with mixed A/B formats):
+    python benchmarks/benchmark_gemm.py --mnkl 4096,4096,4096,1 \
+        --bs_format_a mxfp4 --bs_format_b mxfp8_e4m3
+"""
+
+
+def _bench_and_report(
+    name: str, fn, flops: int, warmup: int, rep: int, gbps_bytes: int = 0
+) -> float:
+    """Run do_bench and print a standardized timing + TFLOPS (+ GB/s) line.
+    Returns the timing in ms."""
+    time.sleep(0.5)
+    t = do_bench(fn, warmup=warmup, rep=rep)
+    tflops = flops / (t * 1e9)
+    if gbps_bytes:
+        gbps = gbps_bytes / (t * 1e6)
+        print(f"{name}: {t:.3f} ms,  {tflops:7.1f} TFLOP/s,  {gbps:.0f} GB/s")
+    else:
+        print(f"{name}: {t:.3f} ms,  {tflops:7.1f} TFLOP/s")
+    return t
+
+
+_TORCH_DTYPE_MAP = {
+    "BFloat16": torch.bfloat16,
+    "bfloat16": torch.bfloat16,
+    "bf16": torch.bfloat16,
+    "Float16": torch.float16,
+    "float16": torch.float16,
+    "fp16": torch.float16,
+    "half": torch.float16,
+    "Float32": torch.float32,
+    "float32": torch.float32,
+    "fp32": torch.float32,
+    "float": torch.float32,
+}
+
+
+def _torch_dtype(name: str) -> torch.dtype:
+    if name not in _TORCH_DTYPE_MAP:
+        raise argparse.ArgumentTypeError(
+            f"Unsupported dtype: {name}. Choose from {sorted(_TORCH_DTYPE_MAP.keys())}"
+        )
+    return _TORCH_DTYPE_MAP[name]
+
+
+def parse_comma_separated_ints(s: str):
+    try:
+        return tuple([int(x.strip()) for x in s.split(",")])
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            "Invalid format. Expected comma-separated integers."
+        ) from e
+
+
+def parse_cluster_shape_mnk(s: str):
+    shape = parse_comma_separated_ints(s)
+    if len(shape) == 2:
+        return (*shape, 1)
+    if len(shape) == 3:
+        return shape
+    raise argparse.ArgumentTypeError("Invalid format. Expected M,N or M,N,K.")
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="GEMM benchmark using cute_gemm.gemm.gemm()")
+
+    parser.add_argument(
+        "--mnkl",
+        type=parse_comma_separated_ints,
+        default=(4096, 4096, 4096, 1),
+        help="mnkl dimensions (comma-separated)",
+    )
+    parser.add_argument(
+        "--tile_shape_mnk",
+        "--tile_shape_mn",
+        dest="tile_shape_mnk",
+        type=parse_comma_separated_ints,
+        default=(128, 256),
+        help="CTA tile shape M,N[,K] (comma-separated); K defaults to kernel default",
+    )
+    parser.add_argument(
+        "--cluster_shape_mnk",
+        type=parse_cluster_shape_mnk,
+        default=(1, 1, 1),
+        help="Cluster shape M,N[,K] (comma-separated); K defaults to 1",
+    )
+    parser.add_argument("--tolerance", type=float, default=3e-02, help="Tolerance for validation")
+    parser.add_argument("--warmup_iterations", type=int, default=5, help="Warmup iterations")
+    parser.add_argument("--iterations", type=int, default=30, help="Benchmark iterations")
+    parser.add_argument("--persistent", action="store_true", help="Persistent kernel")
+    parser.add_argument("--dynamic_persistent", action="store_true", help="Dynamic persistent")
+    parser.add_argument("--pingpong", action="store_true", help="Pingpong kernel")
+    parser.add_argument(
+        "--split_k", type=int, default=1, help="Split the K dim over this many CTAs per tile"
+    )
+    parser.add_argument(
+        "--split_k_mode",
+        choices=["serial", "parallel", "separate"],
+        default="serial",
+        help="serial: turnstile-ordered f32 partial commits, last split finalizes "
+        "(deterministic); parallel: partial commits in arrival order (nondeterministic); "
+        "separate: f32 workspace + reduction kernel applying the epilogue",
+    )
+    parser.add_argument("--varlen_m", action="store_true", help="Variable length M dimension")
+    parser.add_argument("--varlen_k", action="store_true", help="Variable length K dimension")
+    parser.add_argument("--gather_A", action="store_true", help="Gather A")
+    parser.add_argument("--use_tma_gather", action="store_true", help="Use TMA gather4 for A")
+    parser.add_argument("--max_swizzle_size", type=int, default=8, help="Max swizzle size")
+    parser.add_argument("--skip_ref_check", action="store_true", help="Skip reference checking")
+    # Dtype flags. Blockscaled path is selected automatically when any of
+    # --sf_dtype/--sf_vec_size/--bs_format_a/--bs_format_b is passed.
+    parser.add_argument(
+        "--ab_dtype",
+        type=str,
+        default=None,
+        help="A/B input dtype. Default: BFloat16 for dense, auto-detected for "
+        "blockscaled (MXFP8 if sf=E8M0/vec=32, NVFP4 if sf=E4M3FN/vec=16). "
+        "Dense: BFloat16/Float16/Float32. "
+        "Blockscaled: Float8E4M3FN/Float8E5M2/Float4E2M1FN/"
+        "Float6E2M3FN/Float6E3M2FN.",
+    )
+    parser.add_argument(
+        "--sf_dtype",
+        type=str,
+        default=None,
+        help="Scale-factor dtype. Setting this or --sf_vec_size enables blockscaled: "
+        "Float8E8M0FNU (MX) or Float8E4M3FN (NVFP4). "
+        "Auto-inferred from --sf_vec_size if omitted.",
+    )
+    parser.add_argument(
+        "--sf_vec_size",
+        type=int,
+        default=None,
+        help="Blockscaled scale vector size (32 for MX, 16 for NVFP4). "
+        "Setting this enables the blockscaled path.",
+    )
+    parser.add_argument(
+        "--bs_format_a",
+        type=str,
+        default=None,
+        help="Blockscaled format for A (BlockScaledFormat registry name: mxfp8_e4m3/"
+        "mxfp8_e5m2/mxfp4/nvfp4/mxfp6_e2m3_packed/mxfp6_e3m2_packed). "
+        "Setting this enables the blockscaled path. Default: the format resolved from "
+        "--ab_dtype/--sf_dtype/--sf_vec_size. A and B may carry different formats "
+        "(nvfp4 pairs only with itself).",
+    )
+    parser.add_argument(
+        "--bs_format_b",
+        type=str,
+        default=None,
+        help="Blockscaled format for B; see --bs_format_a.",
+    )
+    parser.add_argument(
+        "--d_dtype",
+        type=str,
+        default="BFloat16",
+        help="Output dtype: BFloat16/Float16/Float32 (applies to both dense and blockscaled).",
+    )
+    parser.add_argument(
+        "--quant_out",
+        type=str,
+        default=None,
+        choices=["mxfp8", "mxfp4", "nvfp4"],
+        help="Quantize the output in the epilogue (SFD generation): fp8/fp4 D plus blocked "
+        "scale factors. Overrides --d_dtype. Blockscaled path, SM100 only; when the input "
+        "format matches, a cublasLt D-out-scale baseline is benchmarked and bit-compared.",
+    )
+    parser.add_argument(
+        "--c_dtype",
+        type=str,
+        default=None,
+        help="Optional C-tensor dtype (for alpha*A@B + beta*C). Default: no C tensor.",
+    )
+    parser.add_argument(
+        "--a_major",
+        type=str,
+        default=None,
+        choices=["k", "m"],
+        help="A operand major mode. Blockscaled: 8-bit formats support k/m; "
+        "packed fp4/fp6 formats require k. Dense: varlen_k forces m, others default "
+        "to k if omitted.",
+    )
+    parser.add_argument(
+        "--b_major",
+        type=str,
+        default=None,
+        choices=["k", "n"],
+        help="B operand major mode. Blockscaled: 8-bit formats support k/n; "
+        "packed fp4/fp6 formats require k. Dense: varlen_k forces n, others default "
+        "to k if omitted.",
+    )
+
+    args = parser.parse_args()
+    if len(args.mnkl) != 4:
+        parser.error("--mnkl must contain exactly 4 values")
+    if len(args.tile_shape_mnk) not in [2, 3]:
+        parser.error("--tile_shape_mnk must contain exactly 2 or 3 values")
+    return args
+
+
+def _quantize_dense_operand(l, mn, k, mn_major, fmt):
+    """Quantize a random (l, mn, k) bf16 tensor with ``fmt`` and return
+    (ref_mkl, q, scale_contig):
+      ref_mkl: (mn, k, l) fp32 dequantized reference
+      q:       (l, mn, k_storage) quantized operand in the format's storage
+               dtype, K- or MN-major on the trailing two dims
+      scale_contig: (l, rm, rk, 32, 4, 4) blocked scale factors
+    """
+    from cute_gemm.blockscaled.operand import BlockScaledOperand
+
+    x = (torch.randn(l, mn, k, device="cuda", dtype=torch.bfloat16) * k**-0.5).contiguous()
+    op = BlockScaledOperand.quantize(x, fmt)
+    ref_mkl = op.dequantize(torch.float32).permute(1, 2, 0).contiguous()
+    q = op.qdata  # (l, mn, k_storage) contiguous, K innermost
+    if mn_major:
+        # 8-bit formats only (sub-byte operands are rejected as MN-major
+        # upstream): rebuild the same codes with mn innermost.
+        q = q.transpose(1, 2).contiguous().permute(0, 2, 1)
+    return ref_mkl, q, op.scale
+
+
+def _run_blockscaled(args):
+    """Blockscaled (mx/nv fp8/fp6/fp4) path; A and B may carry different formats.
+
+    Both dense and varlen_m run through the unified cute_gemm.gemm.gemm() dispatch
+    (SFA/SFB tensors, dynamic-shape compile cache).
+    """
+    # Deferred on purpose: the only blockscaled-only module here that the top of
+    # the file doesn't already pull in transitively. It drags in
+    # cute_gemm.blockscaled.operand + .quantize for ~0.5s -- ~30% of startup that
+    # dense runs would pay for nothing. See the SplitKMode import note above.
+    from cute_gemm.blockscaled.utils import (
+        create_blockscaled_varlen_m_operands,
+        scale_blocked_for_cublas,
+        torch_dtype_for_cutlass,
+    )
+
+    sm_major = get_device_capacity(torch.device("cuda"))[0]
+    assert sm_major in (10, 11, 12), (
+        f"Blockscaled GEMM requires SM100 (B200/B300), SM110, or SM120 (RTX 50); got SM{sm_major}x."
+    )
+
+    if args.varlen_k or args.gather_A:
+        raise NotImplementedError(
+            "blockscaled + varlen_k/gather is not wired up yet. "
+            "Only same-format --varlen_m is currently supported for blockscaled."
+        )
+
+    m, n, k, l = args.mnkl
+    mma_tiler_mnk = args.tile_shape_mnk
+    cluster_shape_mnk = args.cluster_shape_mnk
+    cluster_shape_mn = cluster_shape_mnk[:2]
+    if cluster_shape_mnk[2] != 1:
+        raise NotImplementedError("blockscaled benchmark path only supports cluster_shape_mnk K=1")
+    if len(mma_tiler_mnk) == 3:
+        raise NotImplementedError(
+            "blockscaled derives tile K from the MMA instruction; pass --tile_shape_mnk M,N"
+        )
+    d_dtype = cutlass.dtype(args.d_dtype)
+    from cute_gemm.blockscaled.operand import BlockScaledFormat
+
+    quant_fmt = None
+    if args.quant_out is not None:
+        if args.varlen_m:
+            raise NotImplementedError("--quant_out does not support varlen_m in this bench yet")
+        quant_fmt = BlockScaledFormat.from_name(
+            "mxfp8_e4m3" if args.quant_out == "mxfp8" else args.quant_out
+        )
+        d_dtype = quant_fmt.to_cutlass_dtype()
+
+    def _format_from_dtype_triple():
+        """Resolve the (--ab_dtype, --sf_dtype, --sf_vec_size) triple to a format
+        descriptor - the fallback for operands without an explicit --bs_format_a/b."""
+        # Default sf_vec_size: 32 (MX). Auto-pick sf_dtype / ab_dtype from (sf_vec_size, ab_dtype).
+        sf_vec_size = args.sf_vec_size if args.sf_vec_size is not None else 32
+        if args.sf_dtype is None:
+            if sf_vec_size == 32:
+                sf_dtype = cutlass.Float8E8M0FNU  # MXFP8 / MXFP4
+            elif sf_vec_size == 16:
+                sf_dtype = cutlass.Float8E4M3FN  # NVFP4
+            else:
+                raise ValueError(
+                    f"Cannot auto-pick sf_dtype for sf_vec_size={sf_vec_size}. Pass --sf_dtype."
+                )
+        else:
+            sf_dtype = cutlass.dtype(args.sf_dtype)
+        # Auto-pick ab_dtype if user didn't set it.
+        if args.ab_dtype is None:
+            if sf_dtype == cutlass.Float8E8M0FNU and sf_vec_size == 32:
+                ab_dtype = cutlass.Float8E4M3FN  # MXFP8 default (user can override -> MXFP4)
+            elif sf_dtype == cutlass.Float8E4M3FN and sf_vec_size == 16:
+                ab_dtype = cutlass.Float4E2M1FN  # NVFP4
+            else:
+                raise ValueError(
+                    f"Cannot auto-detect --ab_dtype for sf_dtype={sf_dtype}, "
+                    f"sf_vec_size={sf_vec_size}. Pass --ab_dtype explicitly."
+                )
+        else:
+            ab_dtype = cutlass.dtype(args.ab_dtype)
+        return BlockScaledFormat.from_cutlass_dtypes(ab_dtype, sf_dtype, sf_vec_size)
+
+    # Per-operand formats: explicit --bs_format_a/--bs_format_b win; each unset
+    # side falls back to the dtype-triple format, so existing single-format
+    # invocations behave identically.
+    fallback = None
+    if args.bs_format_a is None or args.bs_format_b is None:
+        fallback = _format_from_dtype_triple()
+    fmt_a = BlockScaledFormat.from_name(args.bs_format_a) if args.bs_format_a else fallback
+    fmt_b = BlockScaledFormat.from_name(args.bs_format_b) if args.bs_format_b else fallback
+
+    a_major = args.a_major if args.a_major is not None else "k"
+    b_major = args.b_major if args.b_major is not None else "k"
+    # Sub-byte (fp4/fp6) operands must be K-major; 8-bit formats support m/n-major.
+    for name, fmt, major in (("A", fmt_a, a_major), ("B", fmt_b, b_major)):
+        if fmt.elem_bits < 8 and major != "k":
+            raise ValueError(f"{fmt.name} requires a K-major {name} operand; got major={major!r}")
+    # Any pair with a sub-byte operand other than both-fp4 runs kind::mxf8f6f4
+    # with TMA-unpacked packed storage: the ALIGN16B unpack tensormap granule
+    # requires the contiguous K extent to be a multiple of 128 elements.
+    both_fp4 = fmt_a.elem_bits == 4 and fmt_b.elem_bits == 4
+    if (fmt_a.elem_bits < 8 or fmt_b.elem_bits < 8) and not both_fp4 and k % 128 != 0:
+        raise ValueError(
+            f"{fmt_a.name} x {fmt_b.name} has a TMA-unpacked sub-byte operand and "
+            f"requires K divisible by 128 (unpack tensormap granule); got K={k}"
+        )
+    if not GemmDefaultSm100.can_implement(
+        fmt_a,
+        fmt_b,
+        cutlass.Float32,
+        d_dtype,
+        mma_tiler_mnk,
+        cluster_shape_mn,
+        m,
+        n,
+        k,
+        l,
+        a_major,
+        b_major,
+        "n",
+    ):
+        raise TypeError(
+            f"Unsupported blockscaled config: A={fmt_a.name}, B={fmt_b.name}, "
+            f"d={d_dtype}, tiler={mma_tiler_mnk}, cluster={cluster_shape_mn}, "
+            f"a_major={a_major}, b_major={b_major}"
+        )
+
+    assert k % fmt_a.sf_vec_size == 0 and k % fmt_b.sf_vec_size == 0, (
+        f"k ({k}) must be divisible by the scale vec sizes "
+        f"({fmt_a.sf_vec_size} / {fmt_b.sf_vec_size})"
+    )
+    if args.varlen_m:
+        # varlen_m: l is num_experts, m is per-expert m, total_m = m * l.
+        # Supports every kernel-ready same-format operand pair. Packed fp4/fp6
+        # operands must be K-major.
+        # A must stay k-major in varlen_m (the per-expert padded SF offset
+        # targets the M axis); B can be k- or n-major for 8-bit formats.
+        if fmt_a.name != fmt_b.name:
+            raise NotImplementedError(
+                f"blockscaled varlen_m benchmarking supports a single format for A and B; "
+                f"got {fmt_a.name} x {fmt_b.name}"
+            )
+        assert a_major == "k", f"varlen_m currently requires a_major=k; got a={a_major}"
+        total_m = m * l
+        a_ref_dq, b_ref_dq, mA, mB, a_sc_contig, b_sc_contig, cu_seqlens_m = (
+            create_blockscaled_varlen_m_operands(
+                l,
+                m,
+                n,
+                k,
+                fmt_a.sf_vec_size,
+                fmt_a.to_cutlass_dtype(),
+                torch2cute_dtype_map[fmt_a.scale_dtype],
+                b_major=b_major,
+            )
+        )
+        mSFA, mSFB = a_sc_contig, b_sc_contig  # (1, padded_rm, rk, 32, 4, 4), (l, rn, rk, 32, 4, 4)
+        mD = torch.empty(total_m, n, dtype=torch_dtype_for_cutlass(d_dtype), device="cuda")
+        # Unified dispatch takes a (l, n, k) B view (zero-copy permute of the
+        # (n, k_storage, l) kernel-layout tensor); A/D stay 2D.
+        B = mB.permute(2, 0, 1)
+
+        def fn():
+            dlkernel_gemm(
+                mA,
+                B,
+                mD,
+                None,
+                tile_count_semaphore=None,
+                tile_M=mma_tiler_mnk[0],
+                tile_N=mma_tiler_mnk[1],
+                cluster_M=cluster_shape_mn[0],
+                cluster_N=cluster_shape_mn[1],
+                pingpong=args.pingpong,
+                persistent=True,
+                is_dynamic_persistent=args.dynamic_persistent,
+                max_swizzle_size=args.max_swizzle_size,
+                cu_seqlens_m=cu_seqlens_m,
+                SFA=mSFA,
+                SFB=mSFB,
+                bs_format_a=fmt_a.name,
+                bs_format_b=fmt_b.name,
+            )
+    else:
+        # Each operand is quantized with its own format; the unified dispatch
+        # takes the (l, m, k_storage) / (l, n, k_storage) qdata tensors and
+        # (l, rm, rk, 32, 4, 4) blocked scales as-is, plus (l, m, n) D.
+        a_ref, A, mSFA = _quantize_dense_operand(l, m, k, a_major == "m", fmt_a)
+        b_ref, B, mSFB = _quantize_dense_operand(l, n, k, b_major == "n", fmt_b)
+        mSFD = None
+        if quant_fmt is not None:
+            n_stored = n // 2 if quant_fmt.qdata_dtype == torch.float4_e2m1fn_x2 else n
+            mD_q = torch.empty(l, m, n_stored, dtype=quant_fmt.qdata_dtype, device="cuda")
+            vec_d = quant_fmt.sf_vec_size
+            mSFD = torch.empty(
+                l,
+                -(-m // 128),
+                -(-n // (4 * vec_d)),
+                32,
+                4,
+                4,
+                dtype=quant_fmt.scale_dtype,
+                device="cuda",
+            )
+            mD = mD_q  # (l, m, n_stored); the SFD dequant owns the ref check
+        else:
+            mD = torch.empty(
+                l, m, n, dtype=torch_dtype_for_cutlass(d_dtype), device="cuda"
+            ).permute(1, 2, 0)
+
+        def fn():
+            dlkernel_gemm(
+                A,
+                B,
+                mD.permute(2, 0, 1) if quant_fmt is None else mD,
+                None,
+                tile_count_semaphore=None,
+                tile_M=mma_tiler_mnk[0],
+                tile_N=mma_tiler_mnk[1],
+                cluster_M=cluster_shape_mn[0],
+                cluster_N=cluster_shape_mn[1],
+                pingpong=args.pingpong,
+                persistent=True,
+                is_dynamic_persistent=args.dynamic_persistent,
+                max_swizzle_size=args.max_swizzle_size,
+                SFA=mSFA,
+                SFB=mSFB,
+                bs_format_a=fmt_a.name,
+                bs_format_b=fmt_b.name,
+                SFD=mSFD,
+            )
+
+    if not args.skip_ref_check:
+        fn()
+        torch.cuda.synchronize()
+        tol = 5e-3 if d_dtype != cutlass.Float32 else 5e-4
+        if args.varlen_m:
+            # Per-expert matmul reference using dequantized operands
+            ref = torch.cat(
+                [a_ref_dq[cu_seqlens_m[i] : cu_seqlens_m[i + 1]] @ b_ref_dq[i].T for i in range(l)]
+            )
+            torch.testing.assert_close(mD.float(), ref, atol=tol, rtol=1e-3)
+        elif quant_fmt is not None:
+            # Dequantize (D, SFD) and bound the error by the quantization step.
+            from cute_gemm.blockscaled.quantize import dequant_operand, unpack_scale_blocked_to_2d
+
+            vec_d = quant_fmt.sf_vec_size
+            ref = torch.einsum("mkl,nkl->lmn", a_ref, b_ref)
+            sf_2d = unpack_scale_blocked_to_2d(mSFD, m, -(-n // vec_d)).float()
+            vals = (
+                torch.stack([dequant_operand(mD[i]) for i in range(l)])
+                if quant_fmt.qdata_dtype == torch.float4_e2m1fn_x2
+                else mD.float()
+            )
+            scale = sf_2d.repeat_interleave(vec_d, -1)[..., :n]
+            half_gap = 16.0 if quant_fmt.qdata_dtype == torch.float8_e4m3fn else 1.0
+            err = (vals * scale - ref).abs()
+            bound = scale * half_gap * 1.05 + 1e-2
+            assert (err <= bound).all(), (
+                f"quant-out ref check failed: max err {err.max().item():.4f}"
+            )
+        else:
+            # a_ref / b_ref are each dequantized with their own format.
+            ref = torch.einsum("mkl,nkl->mnl", a_ref, b_ref)
+            torch.testing.assert_close(mD.float(), ref, atol=tol, rtol=1e-3)
+        print("Ref check PASSED")
+
+    print(f"Running SM{sm_major}0 Blockscaled GEMM with:")
+    print(f"mnkl: {args.mnkl}")
+    print(f"tile_shape_mnk: {mma_tiler_mnk}, cluster_shape_mnk: {cluster_shape_mnk}")
+    print(f"format A: {fmt_a.name}, format B: {fmt_b.name}, d_dtype: {args.d_dtype}")
+    print(f"a_major: {a_major}, b_major: {b_major}")
+
+    flops = 2 * m * n * k * l
+    timing = _bench_and_report("cute_gemm ", fn, flops, args.warmup_iterations, args.iterations)
+
+    if args.varlen_m:
+        print("(skipping cuBLAS: varlen_m not supported)")
+        return
+    if l != 1:
+        # F.scaled_mm is 2D-only and torch._scaled_grouped_mm needs a specific layout
+        # with per-group swizzled scales we don't build here. Looping F.scaled_mm per
+        # batch would be an unfair comparison (hides batching potential), so skip.
+        print("(skipping cuBLAS: batched blockscaled mm not supported via a single call)")
+        return
+    if a_major != "k" or b_major != "k":
+        # F.scaled_mm requires A (M,K) row-major and B (K,N) col-major —
+        # i.e. both operands K-contiguous. Skip for m/n-major to avoid an
+        # apples-vs-oranges copy+transpose.
+        print(
+            f"(skipping cuBLAS: F.scaled_mm needs a_major=k, b_major=k; got a={a_major}, b={b_major})"
+        )
+        return
+    if quant_fmt is not None:
+        # cublasLt quantized-output baseline: the D-out scale-generation
+        # epilogue (CUBLASLT_MATMUL_DESC_D_OUT_SCALE_*), not exposed by torch.
+        if fmt_a.name != fmt_b.name or fmt_a.name != quant_fmt.name:
+            print(
+                f"(skipping cuBLAS: quant-out baseline needs input format == output format; "
+                f"got {fmt_a.name} x {fmt_b.name} -> {quant_fmt.name})"
+            )
+            return
+        from cute_gemm.bench.cublaslt_quant_out import CublasLtQuantOutGemm
+
+        g = CublasLtQuantOutGemm(
+            A[0].contiguous(),
+            mSFA[0].contiguous(),
+            B[0].contiguous(),
+            mSFB[0].contiguous(),
+            m,
+            n,
+            k,
+            args.quant_out,
+        )
+        if not args.skip_ref_check:
+            D_cub, SFD_cub = g.run()
+            torch.cuda.synchronize()
+            vals_eq = torch.equal(D_cub.view(torch.uint8), mD[0].view(torch.uint8))
+            sf_eq = torch.equal(SFD_cub.view(torch.uint8), mSFD[0].view(torch.uint8))
+            print(f"cute_gemm vs cuBLAS quant-out: values bit_exact={vals_eq}  SF bit_exact={sf_eq}")
+        t_cublas = _bench_and_report(
+            "cuBLAS", g.run, flops, args.warmup_iterations, args.iterations
+        )
+        print(f"  (cute_gemm speedup vs cuBLAS: {t_cublas / timing:.2f}x)")
+        return
+    if fmt_a.name != fmt_b.name or fmt_a.elem_bits == 6:
+        # F.scaled_mm takes one scaling recipe per fp8/fp4 operand dtype; mixed
+        # A/B formats and packed fp6 have no comparable single-call path.
+        print(f"(skipping cuBLAS: F.scaled_mm has no {fmt_a.name} x {fmt_b.name} path)")
+        return
+    from torch.nn.functional import scaled_mm, ScalingType, SwizzleType
+
+    sf_vec_size = fmt_a.sf_vec_size
+    scaling_recipe_map = {32: ScalingType.BlockWise1x32, 16: ScalingType.BlockWise1x16}
+    if sf_vec_size not in scaling_recipe_map:
+        print(f"(skipping cuBLAS: unsupported sf_vec_size={sf_vec_size})")
+        return
+    recipe = scaling_recipe_map[sf_vec_size]
+    a_cub = A[0].contiguous()
+    b_cub = B[0].contiguous()
+    a_sc_cub = scale_blocked_for_cublas(mSFA, m, k // sf_vec_size, 0)
+    b_sc_cub = scale_blocked_for_cublas(mSFB, n, k // sf_vec_size, 0)
+    out_dtype_t = _torch_dtype(args.d_dtype) if args.d_dtype != "Float32" else torch.bfloat16
+
+    def fn_cublas():
+        return scaled_mm(
+            a_cub,
+            b_cub.t(),
+            a_sc_cub,
+            recipe,
+            b_sc_cub,
+            recipe,
+            swizzle_a=SwizzleType.SWIZZLE_32_4_4,
+            swizzle_b=SwizzleType.SWIZZLE_32_4_4,
+            output_dtype=out_dtype_t,
+        )
+
+    if not args.skip_ref_check:
+        out_cublas = fn_cublas()
+        torch.cuda.synchronize()
+        err = (mD.squeeze(-1).float() - out_cublas.float()).abs().max().item()
+        same_dtype = mD.dtype == out_cublas.dtype
+        exact = same_dtype and torch.equal(mD.squeeze(-1), out_cublas)
+        print(f"cute_gemm vs cuBLAS: max_abs_err={err:.3e}  bit_exact={exact}")
+
+    t_cublas = _bench_and_report(
+        "cuBLAS", fn_cublas, flops, args.warmup_iterations, args.iterations
+    )
+    print(f"  (cute_gemm speedup vs cuBLAS: {t_cublas / timing:.2f}x)")
+
+
+def run(args):
+    if (
+        args.sf_dtype is not None
+        or args.sf_vec_size is not None
+        or args.bs_format_a is not None
+        or args.bs_format_b is not None
+    ):
+        return _run_blockscaled(args)
+    if args.quant_out is not None:
+        raise NotImplementedError(
+            "--quant_out is wired for the blockscaled path only; pass matching input "
+            "formats too (e.g. --sf_vec_size 32 for mxfp8, or --ab_dtype Float4E2M1FN "
+            "--sf_dtype Float8E4M3FN --sf_vec_size 16 for nvfp4)"
+        )
+    m, n, k, l = args.mnkl
+    tile_M, tile_N = args.tile_shape_mnk[:2]
+    tile_K = args.tile_shape_mnk[2] if len(args.tile_shape_mnk) == 3 else None
+    cluster_M, cluster_N, cluster_K = args.cluster_shape_mnk
+    persistent = args.persistent or args.dynamic_persistent
+    varlen_m, varlen_k, gather_A = args.varlen_m, args.varlen_k, args.gather_A
+    warmup, repeats = args.warmup_iterations, args.iterations
+    tolerance = args.tolerance
+    ab_dtype = _torch_dtype(args.ab_dtype) if args.ab_dtype is not None else torch.bfloat16
+    d_dtype = _torch_dtype(args.d_dtype)
+
+    device_capacity = get_device_capacity(torch.device("cuda"))
+    if device_capacity[0] in [10, 11]:
+        persistent = True
+
+    # a_major / b_major control the memory order. Defaults: varlen_k -> m/n
+    # (kernel requirement), everything else -> k.
+    if varlen_k:
+        a_major = args.a_major if args.a_major is not None else "m"
+        b_major = args.b_major if args.b_major is not None else "n"
+        assert a_major == "m" and b_major == "n", (
+            f"dense varlen_k requires a_major=m, b_major=n; got a={a_major}, b={b_major}"
+        )
+    else:
+        a_major = args.a_major if args.a_major is not None else "k"
+        b_major = args.b_major if args.b_major is not None else "k"
+        if varlen_m:
+            assert a_major == "k", f"dense varlen_m requires a_major=k; got a={a_major}"
+
+    print("Running Dense GEMM with:")
+    print(f"mnkl: {args.mnkl}")
+    print(f"Tile Shape MNK: {args.tile_shape_mnk}, Cluster Shape MNK: {args.cluster_shape_mnk}")
+    print(f"a_major: {a_major}, b_major: {b_major}")
+    print(f"Use TMA gather: {args.use_tma_gather}")
+    print(f"Warmup iterations: {warmup}")
+    print(f"Iterations: {repeats}")
+    print(f"Skip reference checking: {args.skip_ref_check}")
+
+    torch.manual_seed(1111)
+    device = "cuda"
+
+    # ── Tensor creation ───────────────────────────────────────────────────────
+    # cute_gemm.gemm.gemm() conventions:
+    #   A: (l, m, k) or (total_m, k) if varlen_m
+    #   B: (l, n, k)
+    #   D: (l, m, n) or (total_m, n) if varlen_m — n-major
+    cu_seqlens_m, cu_seqlens_k, A_idx = None, None, None
+    tile_count_semaphore = (
+        torch.zeros(1, dtype=torch.int32, device=device)
+        if args.dynamic_persistent and torch.cuda.get_device_capability()[0] == 9
+        else None
+    )
+
+    def _make_a_non_varlen(l_, m_, k_, major):
+        """(l, m, k) with requested major. k-major: contig; m-major: transposed."""
+        if major == "k":
+            return torch.randn(l_, m_, k_, dtype=ab_dtype, device=device) / (k_**0.5)
+        else:  # m-major: stride (m*k, 1, m)
+            return torch.randn(l_, k_, m_, dtype=ab_dtype, device=device).transpose(1, 2) / (
+                k_**0.5
+            )
+
+    def _make_b_non_varlen(l_, n_, k_, major):
+        """(l, n, k) with requested major. k-major: contig; n-major: transposed."""
+        if major == "k":
+            return torch.randn(l_, n_, k_, dtype=ab_dtype, device=device) / (k_**0.5)
+        else:  # n-major: stride (n*k, 1, n)
+            return torch.randn(l_, k_, n_, dtype=ab_dtype, device=device).transpose(1, 2) / (
+                k_**0.5
+            )
+
+    if varlen_m:
+        total_m = m * l
+        cu_seqlens_m = torch.arange(0, l + 1, dtype=torch.int32, device=device) * m
+        A = torch.randn(total_m, k, dtype=ab_dtype, device=device) / (k**0.5)
+        if gather_A:
+            A_idx = torch.randperm(total_m, dtype=torch.int32, device=device)
+        B = _make_b_non_varlen(l, n, k, b_major)
+        D = torch.empty(total_m, n, dtype=d_dtype, device=device)
+    elif varlen_k:
+        total_k = k * l
+        cu_seqlens_k = torch.arange(0, l + 1, dtype=torch.int32, device=device) * k
+        # m-major A, n-major B for varlen_k (enforced above).
+        if gather_A:
+            larger_k = total_k * 2
+            A = torch.randn(larger_k, m, dtype=ab_dtype, device=device).T
+            A_idx = torch.randperm(larger_k, dtype=torch.int32, device=device)[:total_k]
+        else:
+            A = torch.randn(total_k, m, dtype=ab_dtype, device=device).T
+        B = torch.randn(total_k, n, dtype=ab_dtype, device=device).T
+        D = torch.empty(l, m, n, dtype=d_dtype, device=device)
+    else:
+        A = _make_a_non_varlen(l, m, k, a_major)
+        B = _make_b_non_varlen(l, n, k, b_major)
+        D = torch.empty(l, m, n, dtype=d_dtype, device=device)
+
+    C = None
+    if args.c_dtype is not None:
+        c_dtype_torch = _torch_dtype(args.c_dtype)
+        c_shape = D.shape
+        C = torch.randn(c_shape, dtype=c_dtype_torch, device=device) / (k**0.5)
+
+    # ── Run / ref check ───────────────────────────────────────────────────────
+    def fn():
+        dlkernel_gemm(
+            A,
+            B,
+            D,
+            C=C,
+            tile_count_semaphore=tile_count_semaphore,
+            tile_M=tile_M,
+            tile_N=tile_N,
+            tile_K=tile_K,
+            cluster_M=cluster_M,
+            cluster_N=cluster_N,
+            cluster_K=cluster_K,
+            pingpong=args.pingpong,
+            persistent=persistent,
+            is_dynamic_persistent=args.dynamic_persistent,
+            max_swizzle_size=args.max_swizzle_size,
+            cu_seqlens_m=cu_seqlens_m,
+            cu_seqlens_k=cu_seqlens_k,
+            A_idx=A_idx,
+            use_tma_gather=args.use_tma_gather,
+            split_k=args.split_k,
+            split_k_mode=SplitKMode[args.split_k_mode.upper()],
+        )
+        if tile_count_semaphore is not None:
+            tile_count_semaphore.zero_()
+
+    if not args.skip_ref_check:
+        fn()
+        torch.cuda.synchronize()
+        if varlen_m:
+            ref = torch.cat(
+                [
+                    (
+                        A[A_idx[cu_seqlens_m[i] : cu_seqlens_m[i + 1]]]
+                        if gather_A
+                        else A[cu_seqlens_m[i] : cu_seqlens_m[i + 1]]
+                    )
+                    @ B[i].T
+                    for i in range(l)
+                ]
+            )
+        elif varlen_k:
+            ref = torch.stack(
+                [
+                    (
+                        A[:, A_idx[cu_seqlens_k[i] : cu_seqlens_k[i + 1]]]
+                        if gather_A
+                        else A[:, cu_seqlens_k[i] : cu_seqlens_k[i + 1]]
+                    )
+                    @ B[:, cu_seqlens_k[i] : cu_seqlens_k[i + 1]].T
+                    for i in range(l)
+                ]
+            )
+        else:
+            ref = torch.bmm(A, B.mT)
+        if C is not None:
+            ref = ref + C.float()
+        torch.testing.assert_close(D, ref.to(d_dtype), atol=tolerance, rtol=1e-3)
+        print("Ref check PASSED")
+
+    # ── Benchmark ─────────────────────────────────────────────────────────────
+    flops = 2 * m * n * k * l
+    bytes_A = m * k * l * ab_dtype.itemsize
+    bytes_B = n * k * l * ab_dtype.itemsize
+    bytes_D = m * n * l * d_dtype.itemsize
+    bytes_C = (m * n * l * C.dtype.itemsize) if C is not None else 0
+    total_bytes = bytes_A + bytes_B + bytes_D + bytes_C
+
+    fn_cublas = None
+    if not (varlen_m or varlen_k) and not gather_A:
+        fn_cublas = lambda: torch.bmm(A, B.mT)
+        _bench_and_report("cuBLAS", fn_cublas, flops, warmup, repeats)
+
+    timing = _bench_and_report("cute_gemm ", fn, flops, warmup, repeats, gbps_bytes=total_bytes)
+    fn()
+
+    if fn_cublas is not None:
+        _bench_and_report("cuBLAS", fn_cublas, flops, warmup, repeats)
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    run(args)
+    print("PASS")
