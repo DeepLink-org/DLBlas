@@ -1,0 +1,222 @@
+name: GPU Test
+description: Pull SIF from Docker Hub (cached by tag), compile and run tests
+inputs:
+  cuda:
+    description: cu129 or cu132 — selects which image to run for this job
+    required: true
+  gpu:
+    description: >-
+      Runner GPU label (h100, b300). Used to pick driver-version-specific
+      apptainer flags — the cu13.2 image bundles a CUDA 13.1 libcuda.so.590
+      compat shim that's needed on the h100 runner's 575 kernel driver but
+      mismatches the b300 runner's 595 kernel driver (CUDA error 803). On
+      b300 we override LD_LIBRARY_PATH so apptainer's host-injected libcuda
+      wins instead.
+    required: true
+  image_cu129:
+    description: Docker image for the cu129 variant (e.g. <owner>/dl-kernels:cu12.9-DATE)
+    required: true
+  image_cu132:
+    description: Docker image for the cu132 variant (e.g. <owner>/dl-kernels:cu13.2-DATE)
+    required: true
+  arch:
+    description: >-
+      Optional DLKERNEL_ARCH override (e.g. "120"). When set, cute_gemm dispatches to
+      that arch's kernel implementations while still compiling/running on the
+      host GPU. DLKERNEL_ARTIFACT_CACHE_DIR, DLKERNEL_CACHE_DIR,
+      TORCHINDUCTOR_CACHE_DIR, and TRITON_CACHE_DIR are all suffixed with both
+      the cuda variant and the arch (e.g. .dlkernel_artifacts_cu132_sm120), so
+      different (cuda, arch) pairs don't share
+      a cache directory on the same self-hosted runner. See the in-line
+      comment near the cache exports for why TORCHINDUCTOR_/TRITON_ isolation
+      matters (cross-toolchain cubin collisions → cuModuleLoad SEGV).
+    required: false
+    default: ''
+  gpu_wait_seconds:
+    description: >-
+      Maximum time to wait for a GPU with at least 50 GB free when contention
+      races with runner assignment.
+    required: false
+    default: '300'
+  gpu_poll_seconds:
+    description: Seconds between GPU availability checks.
+    required: false
+    default: '15'
+
+runs:
+  using: composite
+  steps:
+    - name: Pull SIF (cached) and prune stale variants
+      shell: bash
+      env:
+        CUDA: ${{ inputs.cuda }}
+        IMAGE_CU129: ${{ inputs.image_cu129 }}
+        IMAGE_CU132: ${{ inputs.image_cu132 }}
+      run: |
+        # IMAGE_* come from the DLKERNEL_IMAGE_REPO repository variable; an unset
+        # variable degrades to a bare ":tag" image ref, which docker/apptainer
+        # reject with a confusing error.
+        for img in "$IMAGE_CU129" "$IMAGE_CU132"; do
+          case "$img" in
+            :*|"") echo "::error::set the DLKERNEL_IMAGE_REPO repository variable (see .github/workflows/_test.yml)"; exit 2 ;;
+          esac
+          case "$img" in
+            *[A-Z]*) echo "::error::DLKERNEL_IMAGE_REPO must be lowercase (docker rejects uppercase namespaces): '$img'"; exit 2 ;;
+          esac
+          case "${img%%:*}" in
+            */*) : ;;
+            *) echo "::error::DLKERNEL_IMAGE_REPO must be a '<namespace>/dl-kernels' repo, e.g. 'myuser/dl-kernels' (got '$img')"; exit 2 ;;
+          esac
+        done
+
+        WORK_DIR="${CI_WORK_DIR:-$HOME}"
+        mkdir -p "$WORK_DIR/apptainer_cache" /tmp/apptainer_tmp
+
+        sif_path() { echo "$WORK_DIR/$(echo "$1" | tr '/: ' '---').sif"; }
+        SIF_CU129=$(sif_path "$IMAGE_CU129")
+        SIF_CU132=$(sif_path "$IMAGE_CU132")
+
+        if [ "$CUDA" = "cu129" ]; then
+          ACTIVE_IMAGE="$IMAGE_CU129"; ACTIVE_SIF="$SIF_CU129"
+        else
+          ACTIVE_IMAGE="$IMAGE_CU132"; ACTIVE_SIF="$SIF_CU132"
+        fi
+
+        if [ ! -f "$ACTIVE_SIF" ]; then
+          echo "Pulling docker://$ACTIVE_IMAGE → $ACTIVE_SIF"
+          # Pull to .tmp and rename atomically so an interrupted pull doesn't
+          # leave a partial SIF that the next run would silently reuse.
+          APPTAINER_TMPDIR="/tmp/apptainer_tmp" \
+          APPTAINER_CACHEDIR="$WORK_DIR/apptainer_cache" \
+            apptainer pull "$ACTIVE_SIF.tmp" "docker://$ACTIVE_IMAGE"
+          mv "$ACTIVE_SIF.tmp" "$ACTIVE_SIF"
+        else
+          echo "Using cached SIF: $ACTIVE_SIF"
+        fi
+
+        # Cleanup: delete *only* old dl-kernels SIFs left from previous image
+        # bumps. The pattern matches the slug this action/build.sh produce
+        # ("<namespace>-dl-kernels-<tag>-<date>.sif") so unrelated SIFs sharing
+        # $WORK_DIR (when CI_WORK_DIR is unset and $WORK_DIR == $HOME, the runner
+        # user's personal SIFs, e.g. "~/dl-kernels.sif") are never touched.
+        # The legacy pattern covers SIFs pulled before the project rename; drop
+        # it once every runner has been through a CI run.
+        find "$WORK_DIR" -maxdepth 1 \( -name "*-dl-kernels-*.sif" -o -name "*quack-kernels*.sif" \) \
+          ! -name "$(basename "$SIF_CU129")" \
+          ! -name "$(basename "$SIF_CU132")" \
+          -delete
+
+        echo "DLKERNEL_SIF=$ACTIVE_SIF" >> "$GITHUB_ENV"
+
+    - name: Compile and run tests
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        CUDA: ${{ inputs.cuda }}
+        GPU: ${{ inputs.gpu }}
+        GPU_WAIT_SECONDS: ${{ inputs.gpu_wait_seconds }}
+        GPU_POLL_SECONDS: ${{ inputs.gpu_poll_seconds }}
+      run: |
+        if ! [[ "$GPU_WAIT_SECONDS" =~ ^[0-9]+$ && "$GPU_POLL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::gpu_wait_seconds must be non-negative and gpu_poll_seconds must be positive"
+          exit 2
+        fi
+
+        # Runner placement checks the host before the listener starts, but a
+        # tenant can allocate memory between that check and job assignment.
+        # Absorb short races here instead of immediately failing the CI leg.
+        # 50000 MiB covers the measured ~45 GiB peak of the largest fp32
+        # forward/backward RMSNorm case with a small safety margin.
+        GPU_DEADLINE=$(( $(date +%s) + GPU_WAIT_SECONDS ))
+        while :; do
+          FREE_GPUS=$(
+            nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits 2>/dev/null |
+              awk -F', ' '$2 >= 50000 {print $1}' |
+              paste -sd,
+          ) || true
+          if [ -n "$FREE_GPUS" ]; then
+            break
+          fi
+
+          NOW=$(date +%s)
+          if (( NOW >= GPU_DEADLINE )); then
+            echo "::error::No GPUs with >= 50GB free memory after waiting ${GPU_WAIT_SECONDS}s"
+            nvidia-smi --query-gpu=index,memory.used,memory.free \
+              --format=csv,noheader,nounits || true
+            exit 1
+          fi
+          REMAINING=$(( GPU_DEADLINE - NOW ))
+          echo "No GPU has >= 50GB free; retrying in ${GPU_POLL_SECONDS}s (${REMAINING}s remaining)"
+          sleep "$GPU_POLL_SECONDS"
+        done
+
+        NUM_GPUS=$(tr ',' '\n' <<< "$FREE_GPUS" | wc -l)
+        echo "Running tests on GPUs: $FREE_GPUS"
+
+        # The cu13.2 image's Dockerfile bakes LD_LIBRARY_PATH=/usr/local/cuda/compat
+        # so its libcuda.so.590 forward-compat shim wins over apptainer's
+        # host-injected libcuda in /.singularity.d/libs. That's correct on h100
+        # (driver 575, CUDA 12.9 — needs the 590 shim to run cu13 cute-dsl) but
+        # wrong on b300 (driver 595, CUDA 13.2 — the 590 shim is OLDER than the
+        # kernel module and triggers CUDA error 803). Override so b300 uses the
+        # host libcuda instead. cu129 image doesn't set LD_LIBRARY_PATH, so the
+        # override is a harmless no-op there.
+        EXTRA_APPTAINER_ENV=""
+        if [ "$GPU" = "b300" ]; then
+          EXTRA_APPTAINER_ENV="--env LD_LIBRARY_PATH=/.singularity.d/libs"
+        fi
+        # PYTHONNOUSERSITE=1 — apptainer bind-mounts $HOME by default, so without
+        # this Python inside the SIF picks up packages from the runner user's
+        # ~/.local/lib/python3.12/site-packages, shadowing the SIF's copies.
+        apptainer exec --nv --writable-tmpfs \
+          --env PYTHONNOUSERSITE=1 \
+          --env FREE_GPUS="$FREE_GPUS" \
+          --env NUM_GPUS="$NUM_GPUS" \
+          $EXTRA_APPTAINER_ENV "$DLKERNEL_SIF" bash -c "
+          # Editable-install over the container's baked-in cute_gemm so any code
+          # that reads install metadata (importlib.metadata.version, etc.) sees
+          # the PR's version, not the image's snapshot.
+          pip install --break-system-packages --no-deps -q -e . &&
+          # Per-leg cache directories. apptainer --writable-tmpfs does NOT
+          # isolate /tmp (the host /tmp is bind-mounted in), and HOME is
+          # bound by default too — so without explicit overrides every CI
+          # leg shares torch's defaults (/tmp/torchinductor_<user> and
+          # ~/.triton/cache) across all (cuda, arch, Python, Triton, torch)
+          # combinations. A stale Inductor entry pointing at a cubin that
+          # was compiled by a different toolchain produces a SIGSEGV inside
+          # cuModuleLoad (via Triton's cuda_utils.so) when the next leg
+          # loads it. Suffixing with the cuda variant (and sm-arch when set)
+          # gives each leg its own pair of caches so cross-toolchain
+          # collisions cannot happen; cache-warmup speedups within a leg are
+          # preserved.
+          if [ -n '$ARCH' ]; then
+            export DLKERNEL_ARCH='$ARCH' &&
+            export DLKERNEL_ARTIFACT_CACHE_DIR=\$HOME/.dlkernel_artifacts_${CUDA}_sm$ARCH &&
+            export DLKERNEL_CACHE_DIR=\$HOME/.dlkernel_winners_${CUDA}_sm$ARCH &&
+            export TORCHINDUCTOR_CACHE_DIR=\$HOME/.torchinductor_cache_${CUDA}_sm$ARCH &&
+            export TRITON_CACHE_DIR=\$HOME/.triton_cache_${CUDA}_sm$ARCH &&
+            echo \"Using DLKERNEL_ARCH=\$DLKERNEL_ARCH, DLKERNEL_ARTIFACT_CACHE_DIR=\$DLKERNEL_ARTIFACT_CACHE_DIR, DLKERNEL_CACHE_DIR=\$DLKERNEL_CACHE_DIR, TORCHINDUCTOR_CACHE_DIR=\$TORCHINDUCTOR_CACHE_DIR, TRITON_CACHE_DIR=\$TRITON_CACHE_DIR\"
+          else
+            export DLKERNEL_ARTIFACT_CACHE_DIR=\$HOME/.dlkernel_artifacts_${CUDA} &&
+            export DLKERNEL_CACHE_DIR=\$HOME/.dlkernel_winners_${CUDA} &&
+            export TORCHINDUCTOR_CACHE_DIR=\$HOME/.torchinductor_cache_${CUDA} &&
+            export TRITON_CACHE_DIR=\$HOME/.triton_cache_${CUDA}
+          fi &&
+          mkdir -p \"\$DLKERNEL_ARTIFACT_CACHE_DIR\" \"\$DLKERNEL_CACHE_DIR\" \"\$TORCHINDUCTOR_CACHE_DIR\" \"\$TRITON_CACHE_DIR\" &&
+          # Remove interrupted exports from the actual .o cache. Fingerprint
+          # directory mtime does not record cache hits, so age-based directory
+          # deletion would repeatedly discard a hot cache and could race a
+          # different CI run using the same directory.
+          ( find \"\$DLKERNEL_ARTIFACT_CACHE_DIR\" -type f -name '*.o.tmp.*' -mmin +1440 -delete || true ) &&
+          # --max-worker-restart N spawns a replacement worker after a worker
+          # death so the rest of the suite still runs. The test that was in
+          # flight when the worker died is reported as a failure (no retry, so
+          # crashes are never masked).
+          #
+          # --async-compile=24: single-pass workflow. Cold kernel-compile
+          # misses are shipped to a pool of CPU workers (24 total, split
+          # across the xdist workers) while the tests defer and retry; warm
+          # runs pay nothing. Replaces the old two-pass
+          # \"--compile-only then real run\" strategy.
+          CUDA_VISIBLE_DEVICES=\$FREE_GPUS pytest tests/ -n \$NUM_GPUS --dist worksteal --max-worker-restart \$NUM_GPUS --async-compile=24
+        "

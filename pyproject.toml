@@ -27,3 +27,23 @@ Homepage="https://github.com/DeepLink-org/DLBlas"
 where = ["."]
 exclude = ["benchmarks", "csrc", "examples"]
 namespaces = false
+
+[tool.pytest.ini_options]
+# dlblas/kernels/cute_gemm is a vendored, self-contained project with its own
+# pytest configuration and ~18k tests; run them from that directory. Keeping it
+# out of the default recursion also avoids a collection error, because its
+# conftest declares pytest_plugins, which pytest only allows in a top-level
+# conftest. Default norecursedirs are repeated here because setting the option
+# replaces pytest's defaults.
+norecursedirs = [
+    "*.egg",
+    ".*",
+    "_darcs",
+    "build",
+    "CVS",
+    "dist",
+    "node_modules",
+    "venv",
+    "{arch}",
+    "dlblas/kernels/cute_gemm",
+]

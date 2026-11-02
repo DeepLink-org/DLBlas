@@ -23,6 +23,7 @@ jobs:
       id: changed-files
       with:
         files: '**/*.md'
+        files_ignore: 'dlblas/kernels/cute_gemm/**'  # vendored cute_gemm keeps its own lint rules
         separator: ','
     - name: MarkdownLint
       if: steps.changed-files.outputs.any_changed == 'true'
@@ -40,7 +41,7 @@ jobs:
         id: cpp-lint
         with:
           style: file
-          ignore: 'third_party/*'
+          ignore: 'third_party/*|dlblas/kernels/cute_gemm/**'  # pipe-separated; vendored cute_gemm keeps its own toolchain
           tidy-checks: '-*' # disable clang tidy at this stage
           version: 17
       - name: Fail test

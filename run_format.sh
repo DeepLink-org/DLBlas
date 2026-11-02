@@ -31,15 +31,21 @@ check_cmd_version() {
   fi
 }
 
+# Vendored cute_gemm (dlblas/kernels/cute_gemm) keeps its own toolchain
+# (ruff + its own pre-commit config); DLBlas formatters must not touch it.
+vendored_cute_gemm='^dlblas/kernels/cute_gemm/'
+
 # format all C/C++ files in current git repository with clang-format
 check_cmd_version clang-format 17.x
 git ls-files |\
   grep -E '^.+\.(c|h|cpp|cc|cxx|hpp|hh|hxx)$' |
-  xargs clang-format -i --style=file
+  grep -Ev "$vendored_cute_gemm" |
+  xargs -r clang-format -i --style=file
 
 check_cmd_version black 24.x
 # format all Python files in current git repository with black
 # now only for dipu
 git ls-files |\
   grep -E '^.+\.py$' |\
-  xargs black
+  grep -Ev "$vendored_cute_gemm" |\
+  xargs -r black

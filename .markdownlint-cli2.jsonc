@@ -1,0 +1,9 @@
+{
+  // The existing READMEs use long prose/table lines and start at h2 by
+  // design, so keep those two stylistic rules off repo-wide. All structural
+  // rules (blank lines, fence languages, list numbering) stay enabled.
+  "config": {
+    "MD013": false,
+    "MD041": false
+  }
+}
