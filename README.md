@@ -34,12 +34,12 @@ cute_gemm is a self-contained CuTe-DSL library that keeps its own operators,
 autotuner, tune/artifact caches, docs, tests and benchmarks. It is not wired
 into DLBlas's OpRegistry or cache.
 
-Install it in addition to DLBlas (from the repository root):
+`python setup.py install` also installs it when an NVIDIA GPU is detected;
+other accelerators (for example Ascend) skip it. To install it manually on
+such a host (from the repository root):
 
 ```bash
 pip install -e ./dlblas/kernels/cute_gemm
-# or install both at once:
-bash scripts/install_with_cute_gemm.sh
 ```
 
 Use it through the DLBlas namespace (pure forwarding, no extra tuning or
