@@ -32,12 +32,11 @@ cute_gemm 是一个自成体系的 CuTe-DSL 算子库，拥有自己的算子实
 Autotuner、Tune/编译缓存、文档、测试和 Benchmark，不接入 DLBlas 的
 OpRegistry 和缓存。
 
-在安装 DLBlas 之外单独安装它（在仓库根目录执行）：
+`python setup.py install` 检测到 NVIDIA GPU 时会一并安装它；其他加速器
+（例如 Ascend）会跳过。在 NVIDIA 机器上也可手动安装（在仓库根目录执行）：
 
 ```bash
 pip install -e ./dlblas/kernels/cute_gemm
-# 或一条命令安装两者：
-bash scripts/install_with_cute_gemm.sh
 ```
 
 通过 DLBlas 命名空间使用（纯转发，不引入额外调优或拷贝）；未安装

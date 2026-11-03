@@ -31,16 +31,6 @@ include = ["cute_gemm*"]
 [tool.setuptools.dynamic]
 version = {attr = "cute_gemm.__version__"}
 
-[[tool.uv.index]]
-name = "pytorch-cu132"
-url = "https://download.pytorch.org/whl/cu132"
-explicit = true
-
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-cu132", marker = "extra == 'cu13'" },
-]
-
 [tool.pytest.ini_options]
 # Disable pytest plugins we don't need. These add per-test hook dispatch and
 # session-end work that costs ~1-2s on a 2k-test file with no functional
