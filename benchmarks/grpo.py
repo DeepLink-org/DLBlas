@@ -2,7 +2,7 @@
 
 import torch
 import triton
-from dlblas.kernel.grpo_compute_loss_logits import GRPO_Loss_Optimized, grpo_compute_loss_torch
+from dlblas.kernels.grpo_compute_loss_logits import GRPO_Loss_Optimized, grpo_compute_loss_torch
 
 def run_benchmark():
   
