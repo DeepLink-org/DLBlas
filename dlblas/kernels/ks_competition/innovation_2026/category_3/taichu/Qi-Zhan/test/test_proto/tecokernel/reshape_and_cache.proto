@@ -1,0 +1,7 @@
+syntax = "proto2";
+package testpt;
+
+message ReshapeAndCacheParam{
+    // reshape_and_cache 没有额外参数，所有参数从 tensor shape 推导
+    // 占位 proto，保持框架兼容性
+}
