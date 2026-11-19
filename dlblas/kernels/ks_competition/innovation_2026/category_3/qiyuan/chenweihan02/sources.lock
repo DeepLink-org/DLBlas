@@ -1,0 +1,13 @@
+# 仓库地址、上游基线、原 PR 验证提交及其 Git 树；单题树以同一基线为起点。
+ntops.url https://github.com/InfiniTensor/ntops.git
+ntops.base 9ae4166ad342e4745f0eed13a5a20d069e994fc0
+ntops.verified_commit 080910d3624c94526dc2cac20e6b2643cd956f6d
+ntops.all.tree 02c7f9f5bea6cacac65ffa0f9a69e28a11590a74
+ntops.T1.tree 9d875e1fd9bf5c7f5b2f3343cf7002209465761f
+ntops.T2.tree 2067e87d38fe92a63197697796d663bbef15edd7
+ntops.T3.tree 425ad96a0a93f0bbad6d59a4edfcca43811328ce
+ntops.T4.tree 32923d55975c6b02be8b44fd70ac5759acc85f05
+ninetoothed.url https://github.com/InfiniTensor/ninetoothed.git
+ninetoothed.base b77f930dc6c8b016e09adf33570d55a7bc8376c1
+ninetoothed.verified_commit 6b7920323aec73e2a59e49beb177df335b13ab32
+ninetoothed.tree c2f3dd19335c21857dc07c646baf940cbc20ca35
