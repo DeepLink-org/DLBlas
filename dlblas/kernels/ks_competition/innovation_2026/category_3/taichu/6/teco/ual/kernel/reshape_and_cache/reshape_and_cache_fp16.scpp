@@ -1,0 +1,534 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+// reshape_and_cache: 将 key/value 按 slot_mapping 写入 paged KV cache
+//
+// 输入: key   [num_tokens, num_kv_heads, head_size] (HBM)
+//       value [num_tokens, num_kv_heads, head_size] (HBM)
+// 输出: key_cache   [num_blocks, num_kv_heads, block_size, head_size]
+//       value_cache [num_blocks, num_kv_heads, block_size, head_size]
+//
+// 三个分支由 findReshapeAndCacheBranch 选择（size_per_head%16==0 -> SIMD；
+// num_tokens>=64 -> merged；否则原始 memcpy）
+//
+// 分支 0：原始实现，32 SPE 按 token 维度并行，逐 head 做 HBM→HBM 阻塞式 memcpy
+//   - 不经过 SPM，直接用 memcpy 的 Global→Global 方向
+//   - reshape 通过每个 head 写入时的 stride offset 实现
+
+#include <simd.h>
+#include <slave.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+__global__ void teco_slave_reshape_and_cache_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_bytes = D * sizeof(half);
+
+    for (int t = tid; t < T; t += CORE_NUM) {
+        int64_t slot = slot_mapping[t];
+        if (slot < 0) continue;
+
+        int block_id  = slot / block_size;
+        int block_off = slot % block_size;
+
+        const half *src_key   = key   + t * key_stride / sizeof(half);
+        const half *src_value = value + t * value_stride / sizeof(half);
+
+        char *cache_key_base = (char *)key_cache
+            + block_id * block_stride + block_off * entry_stride;
+        char *cache_value_base = (char *)value_cache
+            + block_id * block_stride + block_off * entry_stride;
+
+        for (int h = 0; h < H; h++) {
+            // HBM → HBM 直传，阻塞式 memcpy
+            memcpy(cache_key_base + h * head_stride,
+                   (char *)src_key + h * head_bytes,
+                   head_bytes);
+
+            memcpy(cache_value_base + h * head_stride,
+                   (char *)src_value + h * head_bytes,
+                   head_bytes);
+        }
+    }
+}
+
+// 分支 1：合并 memcpy —— K/V 各用一次 memcpy_stride 写完全部 head
+//   - 源侧按 head 连续（key_stride 内 H*D 个 half 连续），目标侧按
+//     head_stride 步进，一次调用完成 2H 次 memcpy 的事务合并
+//   - 适用于 num_tokens >= 64 的 prefill 场景（吞吐优先）
+__global__ void teco_slave_reshape_and_cache_merged_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_bytes = D * sizeof(half);
+
+    for (int t = tid; t < T; t += CORE_NUM) {
+        int64_t slot = slot_mapping[t];
+        if (slot < 0) continue;
+
+        int block_id  = slot / block_size;
+        int block_off = slot % block_size;
+
+        const half *src_key   = key   + t * key_stride / sizeof(half);
+        const half *src_value = value + t * value_stride / sizeof(half);
+
+        char *cache_key_base = (char *)key_cache
+            + block_id * block_stride + block_off * entry_stride;
+        char *cache_value_base = (char *)value_cache
+            + block_id * block_stride + block_off * entry_stride;
+
+        // K/V: 源连续（advance 0），目标按 head_stride 步进
+        memcpy_stride(cache_key_base, src_key,
+                      H * head_bytes, head_bytes,
+                      {static_cast<size_t>(head_stride), 0});
+        memcpy_stride(cache_value_base, src_value,
+                      H * head_bytes, head_bytes,
+                      {static_cast<size_t>(head_stride), 0});
+    }
+}
+
+// 分支 2：SIMD 向量化 —— 16-wide halfv16 读写，消除 head 循环标量开销
+//   - 分支选择保证 size_per_head % 16 == 0 才进入
+//     （OneGenomeRice head_size=64，天然命中）
+//   - 首地址/步长均为 32B 对齐（key_stride/entry_stride/head_stride 皆
+//     为 16-half 倍数），simd_load/store 对齐访问安全
+//
+// 分支 3：blocked copy —— vLLM prefill 的 slot_mapping 是"块内连续"的
+// （slot = block_table[t/BS]*BS + t%BS，同一逻辑块 32 个 token 落在同一
+// 物理块、offset 连续），此时 K/V 一整块在 src 和 dst 都是连续 8KB：
+//   src: key[t0 .. t0+BS) 连续（key_stride=H*D*2，token 主序）
+//   dst: cache[block_id][*][*][*] 连续（block_stride=H*BS*D*2）
+// 单次 G→G memcpy 即可完成，把每 token 32B 的散写（实测 ~4.5GB/s）换成
+// 整块连续拷贝（~270GB/s 量级）。块内不连续（decode 散 slot、-1 padding、
+// 跨物理块）时逐 block 回退到分支 2 的逐 token 逻辑，语义逐位一致。
+__global__ void teco_slave_reshape_and_cache_simd_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+    constexpr int VEC = 16;  // halfv16 宽度（half 数）
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_stride_half = head_stride / sizeof(half);
+
+    for (int t = tid; t < T; t += CORE_NUM) {
+        int64_t slot = slot_mapping[t];
+        if (slot < 0) continue;
+
+        int block_id  = slot / block_size;
+        int block_off = slot % block_size;
+
+        const half *src_key   = key   + t * key_stride / sizeof(half);
+        const half *src_value = value + t * value_stride / sizeof(half);
+
+        half *cache_key_base = (half *)((char *)key_cache
+            + block_id * block_stride + block_off * entry_stride);
+        half *cache_value_base = (half *)((char *)value_cache
+            + block_id * block_stride + block_off * entry_stride);
+
+        for (int h = 0; h < H; h++) {
+            // K: 向量化拷贝 head h
+            const half *sk = src_key + h * D;
+            half *dk = cache_key_base + h * head_stride_half;
+            int i = 0;
+            for (; i + VEC <= D; i += VEC) {
+                halfv16 vh;
+                simd_load(vh, sk + i);
+                simd_store(vh, dk + i);
+            }
+            for (; i < D; i++) dk[i] = sk[i];
+
+            // V: 向量化拷贝 head h
+            const half *sv = src_value + h * D;
+            half *dv = cache_value_base + h * head_stride_half;
+            i = 0;
+            for (; i + VEC <= D; i += VEC) {
+                halfv16 vh;
+                simd_load(vh, sv + i);
+                simd_store(vh, dv + i);
+            }
+            for (; i < D; i++) dv[i] = sv[i];
+        }
+    }
+}
+
+// rac6b 辅助：SPM 内 SIMD 转置 [BS][H][D] → [H][BS][D]（元素 = D 个
+// half，D 维保持连续）。src/dst 均为 SPM 地址，用 halfv16 向量拷贝。
+__device__ __always_inline void rac_transpose_block(
+    half *dst, const half *src, int BS, int H, int D) {
+    for (int h = 0; h < H; h++) {
+        for (int t = 0; t < BS; t++) {
+            const half *s = src + ((size_t)t * H + h) * D;
+            half *d = dst + ((size_t)h * BS + t) * D;
+            int i = 0;
+            for (; i + 16 <= D; i += 16) {
+                halfv16 vh;
+                simd_load(vh, s + i);
+                simd_store(vh, d + i);
+            }
+            for (; i < D; i++) d[i] = s[i];
+        }
+    }
+}
+
+// 分支 3：blocked copy（见文件头注释）。每 SPE 处理若干"逻辑块"（BS 个
+// 连续 token）；块内 slot 连续且块首对齐时才走整块 G→G memcpy，否则该块
+// 回退到逐 token 向量化拷贝（与分支 2 相同，语义逐位一致）。
+__global__ void teco_slave_reshape_and_cache_blocked_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+    constexpr int VEC = 16;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int BS = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_bytes = D * sizeof(half);
+    int head_stride_half = head_stride / sizeof(half);
+
+    // 形状检查只做一次（所有块的对齐/步长相同；末块 size 更小，通过则必
+    // 安全）。check_memcpy_stride 在循环内每块 2H 次调用会吃掉大量周期。
+    size_t sec = (size_t)D * sizeof(half);            // D*2 字节
+    size_t full_total = (size_t)BS * sec;
+    size_t src_gap = (size_t)key_stride - sec;        // 同 token 内跨 head
+    MemoryStride probe{0, src_gap};
+    // probe 用 (key_cache, key) 异源缓冲探测（size/步长/对齐与真实拷贝
+    // 相同，src!=dst 避免 overlap 误判）：所有块共享同一 stride 结构，
+    // 且 block_stride/key_stride 均为 sec 的倍数 -> 一次探测覆盖全部块。
+    bool shape_ok =
+        (check_memcpy_stride(key_cache, key, full_total, sec, probe) == MEMCPY_SUCC) &&
+        (check_memcpy_stride(value_cache, value, full_total, sec, probe) == MEMCPY_SUCC);
+
+    // rac5：整块（cnt==BS）合并拷贝快速路径。仅当 H==1 时整块 K/V 在 src
+    // 与 dst 两侧才都是连续的一段（src [T][1][D] token 主序与 dst
+    // [B][1][BS][D] head 主序字节序相同；H>1 时 src 是 [t][h] 交织、
+    // dst 是 [h][t] 分块，直接 memcpy 语义错误），故一次阻塞 memcpy(G2G)
+    // 取代 2H 次 memcpy_stride（引擎事务数减半、突发更长）。逐位语义与
+    // memcpy_stride 完全一致。形状/对齐用 check_memcpy 探测一次（0 号块
+    // 基址，所有块对齐性质相同），不通过一律回退原路径。
+    // env TECOOPS_RAC_BSMEM=0 关（A/B 用）。
+    bool bsmem_ok = false;
+    if (args.bsmem && H == 1 && shape_ok && sec > 0 &&
+        (size_t)key_stride == (size_t)H * sec &&
+        (size_t)head_stride == (size_t)BS * sec &&
+        (size_t)entry_stride == sec) {
+        size_t block_bytes = (size_t)BS * sec * H;
+        bsmem_ok =
+            (check_memcpy(key_cache, key, block_bytes) == MEMCPY_SUCC) &&
+            (check_memcpy(value_cache, value, block_bytes) == MEMCPY_SUCC);
+    }
+
+    // rac6b：SPM 中转 + SIMD 转置整块快速路径（cnt==BS 时）。阻塞 memcpy
+    // G2S 整块 [BS][H][D]（src 连续 8KB）→ SPM 内 SIMD 转置成
+    // [H][BS][D] → 阻塞 memcpy S2G 整块 8KB。全程 DRAM 连续突发。
+    // 实测（同窗口探针）：阻塞 G2G 连续 ~200GB/s（diag=2 比 rac3 快 4×），
+    // 而 rac3 步进 G2G 有效带宽仅 ~54GB/s（128B 节/256B 节距）、异步
+    // G2S/S2G 中转 ~100GB/s 且流量 2× —— 故用阻塞 memcpy 做两段中转。
+    // 探测失败/非整块回退 rac3（逐位一致）。env TECOOPS_RAC_SPM=0 关
+    // （A/B 用）。TECOOPS_RAC_DIAG=3/4/5/6 = 中转 passthrough 探针
+    // （语义错误，仅计时分解；3=async+async、4=async+blocking、
+    // 5=blocking+async、6=blocking+blocking）；=1 跳过拷贝；=2 G2G
+    // 连续探针。
+    bool spm_ok = false;
+    half *spm_k = nullptr;
+    half *spm_v = nullptr;
+    half *spm_ko = nullptr;
+    half *spm_vo = nullptr;
+    const int diag_mode = args.diag_mode;
+    const bool diag_pass = (diag_mode >= 3 && diag_mode <= 6);
+    if (args.racspm && shape_ok && sec > 0 && H > 0 &&
+        (size_t)key_stride == (size_t)H * sec &&
+        (size_t)head_stride == (size_t)BS * sec &&
+        (size_t)entry_stride == sec) {
+        size_t blk_bytes = (size_t)BS * sec * H;
+        spm_k = (half *)rt_spm_malloc(blk_bytes);
+        spm_v = (half *)rt_spm_malloc(blk_bytes);
+        spm_ko = (half *)rt_spm_malloc(blk_bytes);
+        spm_vo = (half *)rt_spm_malloc(blk_bytes);
+        // 两段各自按"阻塞/异步"分别探测（仅探测当前模式需要的段，
+        // 省 launch 开销）；diag=3: async+async, diag=4: async+blocking,
+        // diag=5: blocking+async, diag=6: blocking+blocking, 默认: async+async。
+        const bool g2s_need_async = (diag_mode != 5 && diag_mode != 6);
+        const bool s2g_need_async = (diag_mode != 4 && diag_mode != 6);
+        const bool g2s_need_blk = (diag_mode == 5 || diag_mode == 6);
+        const bool s2g_need_blk = (diag_mode == 4 || diag_mode == 6);
+        bool g2s_blk = true, g2s_async = true, s2g_blk = true, s2g_async = true;
+        if (g2s_need_blk) {
+            g2s_blk =
+                (check_memcpy(spm_k, key, blk_bytes) == MEMCPY_SUCC) &&
+                (check_memcpy(spm_v, value, blk_bytes) == MEMCPY_SUCC);
+        }
+        if (s2g_need_blk) {
+            s2g_blk =
+                (check_memcpy(key_cache, spm_ko, blk_bytes) == MEMCPY_SUCC) &&
+                (check_memcpy(value_cache, spm_vo, blk_bytes) == MEMCPY_SUCC);
+        }
+        if (g2s_need_async) {
+            MemcpyHandle hk, hv;
+            g2s_async =
+                (check_memcpy_async(spm_k, key, blk_bytes,
+                                    MemcpyGlobalToSpm, hk) == MEMCPY_ASYNC_SUCC) &&
+                (check_memcpy_async(spm_v, value, blk_bytes,
+                                    MemcpyGlobalToSpm, hv) == MEMCPY_ASYNC_SUCC);
+        }
+        if (s2g_need_async) {
+            MemcpyHandle hk, hv;
+            s2g_async =
+                (check_memcpy_async(key_cache, spm_ko, blk_bytes,
+                                    MemcpySpmToGlobal, hk) == MEMCPY_ASYNC_SUCC) &&
+                (check_memcpy_async(value_cache, spm_vo, blk_bytes,
+                                    MemcpySpmToGlobal, hv) == MEMCPY_ASYNC_SUCC);
+        }
+        spm_ok = (diag_mode == 3) ? (g2s_async && s2g_async)
+               : (diag_mode == 4) ? (g2s_async && s2g_blk)
+               : (diag_mode == 5) ? (g2s_blk && s2g_async)
+               : (diag_mode == 6) ? (g2s_blk && s2g_blk)
+               : (g2s_async && s2g_async);   // 默认 rac6c：异步两段
+    }
+    const bool blk_layout_ok =
+        (size_t)key_stride == (size_t)H * sec &&
+        (size_t)head_stride == (size_t)BS * sec &&
+        (size_t)entry_stride == sec;
+
+    int nblocks = (T + BS - 1) / BS;
+    for (int b = tid; b < nblocks; b += CORE_NUM) {
+        int t0 = b * BS;
+        int cnt = (T - t0 < BS) ? (T - t0) : BS;
+
+        // 块内连续性检查：slot_mapping[t0+i] == s0 + i，且 s0 块首对齐。
+        // 注意：连续 slot 只在"同一物理块内"保证 dst 连续（跨块时 cache
+        // 布局 [B][H][BS][D] 的 block_stride = H*BS*entry，head h 跨块有
+        // (H-1)*BS*entry 的间隙）——所以只能按块做 memcpy_stride，不能
+        // 跨块合并成一次调用。
+        int64_t s0 = slot_mapping[t0];
+        bool contig = (s0 >= 0) && (s0 % BS == 0);
+        if (contig) {
+            for (int i = 1; i < cnt; i++) {
+                if (slot_mapping[t0 + i] != s0 + i) {
+                    contig = false;
+                    break;
+                }
+            }
+        }
+
+        if (contig && shape_ok) {
+            // 布局说明：key 是 [T][H][D] token 主序，cache 是 [B][H][BS][D]
+            // head 主序。同一物理块、同一 head 的 cnt 个 token 在 dst 是
+            // 连续 cnt*D*2 字节；src 侧每个 token 的 head 段（D*2 字节）以
+            // key_stride 步进。因此每个 (block, head) 用一次 memcpy_stride：
+            //   节 = D*2 字节（一个 token 的一个 head）
+            //   dst 节间距 = entry_stride - D*2 == 0（连续）
+            //   src 节间距 = key_stride - D*2（跳过同 token 的其他 head）
+            // 相比逐 token 32B 散写（~4.5GB/s），每次调用搬运 4KB 连续段。
+            // 形状检查已在循环外完成（所有块同一 stride 结构）。
+            int64_t block_id = s0 / BS;
+            char *k_dst_base = (char *)key_cache + (size_t)block_id * block_stride;
+            char *v_dst_base = (char *)value_cache + (size_t)block_id * block_stride;
+            const char *k_src_base = (const char *)key + (size_t)t0 * key_stride;
+            const char *v_src_base = (const char *)value + (size_t)t0 * value_stride;
+            size_t total = (size_t)cnt * sec;
+
+            // rac5 快速路径：整块（cnt==BS，H==1 已由探测保证布局一致）+
+            // 合并探测通过时，每张量一次阻塞 memcpy 完成整块，取代 2H 次
+            // memcpy_stride。语义逐位一致。
+            if (bsmem_ok && cnt == BS) {
+                memcpy(k_dst_base, k_src_base, (size_t)BS * sec * H);
+                memcpy(v_dst_base, v_src_base, (size_t)BS * sec * H);
+                continue;
+            }
+
+            // diag=2 探针：整块用两次阻塞 memcpy G2G（连续 8KB，语义错误，
+            // 仅测"连续 G2G 带宽上限"）。
+            if (diag_mode == 2 && cnt == BS && blk_layout_ok) {
+                size_t blk_bytes = (size_t)BS * sec * H;
+                memcpy(k_dst_base, k_src_base, blk_bytes);
+                memcpy(v_dst_base, v_src_base, blk_bytes);
+                continue;
+            }
+
+            // rac6b 快速路径（含 diag=3/6 passthrough 探针）：整块 G2S
+            // 连续 8KB → SPM（diag 无转置，语义错误仅计时；默认 SIMD
+            // 转置 [BS][H][D]→[H][BS][D]）→ S2G 连续 8KB。语义与 rac3
+            // memcpy_stride 逐位一致。
+            if (spm_ok && cnt == BS) {
+                size_t blk_bytes = (size_t)BS * sec * H;
+                // 默认 rac6c：两段异步（实测 async/async 24.3us vs
+                // blk/blk 39.2us @2048）；diag=4/5/6 强制阻塞组合。
+                const bool g2s_async = (diag_mode != 5 && diag_mode != 6);
+                const bool s2g_async = (diag_mode != 4 && diag_mode != 6);
+                MemcpyHandle hk, hv;
+                if (g2s_async) {
+                    memcpy_async(spm_k, k_src_base, blk_bytes,
+                                 MemcpyGlobalToSpm, hk);
+                    memcpy_async(spm_v, v_src_base, blk_bytes,
+                                 MemcpyGlobalToSpm, hv);
+                    memcpy_wait(hk);
+                    memcpy_wait(hv);
+                } else {
+                    memcpy(spm_k, k_src_base, blk_bytes);
+                    memcpy(spm_v, v_src_base, blk_bytes);
+                }
+                half *ko = diag_pass ? spm_k : spm_ko;
+                half *vo = diag_pass ? spm_v : spm_vo;
+                if (!diag_pass) {
+                    rac_transpose_block(spm_ko, spm_k, BS, H, D);
+                    rac_transpose_block(spm_vo, spm_v, BS, H, D);
+                }
+                if (s2g_async) {
+                    memcpy_async(k_dst_base, ko, blk_bytes,
+                                 MemcpySpmToGlobal, hk);
+                    memcpy_async(v_dst_base, vo, blk_bytes,
+                                 MemcpySpmToGlobal, hv);
+                    memcpy_wait(hk);
+                    memcpy_wait(hv);
+                } else {
+                    memcpy(k_dst_base, ko, blk_bytes);
+                    memcpy(v_dst_base, vo, blk_bytes);
+                }
+                continue;
+            }
+            if (diag_mode == 1) continue;
+
+            MemoryStride ks{0, src_gap};
+            MemoryStride vs{0, src_gap};
+            for (int h = 0; h < H; h++) {
+                memcpy_stride(k_dst_base + (size_t)h * head_stride,
+                              k_src_base + (size_t)h * sec, total, sec, ks);
+                memcpy_stride(v_dst_base + (size_t)h * head_stride,
+                              v_src_base + (size_t)h * sec, total, sec, vs);
+            }
+            continue;
+        }
+        {
+            // 回退：逐 token（与分支 2 相同语义）
+            for (int i = 0; i < cnt; i++) {
+                int t = t0 + i;
+                int64_t slot = slot_mapping[t];
+                if (slot < 0) continue;
+
+                int block_id  = slot / BS;
+                int block_off = slot % BS;
+
+                const half *src_key   = key   + t * key_stride / sizeof(half);
+                const half *src_value = value + t * value_stride / sizeof(half);
+
+                half *cache_key_base = (half *)((char *)key_cache
+                    + block_id * block_stride + block_off * entry_stride);
+                half *cache_value_base = (half *)((char *)value_cache
+                    + block_id * block_stride + block_off * entry_stride);
+
+                for (int h = 0; h < H; h++) {
+                    const half *sk = src_key + h * D;
+                    half *dk = cache_key_base + h * head_stride_half;
+                    int j = 0;
+                    for (; j + VEC <= D; j += VEC) {
+                        halfv16 vh;
+                        simd_load(vh, sk + j);
+                        simd_store(vh, dk + j);
+                    }
+                    for (; j < D; j++) dk[j] = sk[j];
+
+                    const half *sv = src_value + h * D;
+                    half *dv = cache_value_base + h * head_stride_half;
+                    j = 0;
+                    for (; j + VEC <= D; j += VEC) {
+                        halfv16 vh;
+                        simd_load(vh, sv + j);
+                        simd_store(vh, dv + j);
+                    }
+                    for (; j < D; j++) dv[j] = sv[j];
+                }
+            }
+        }
+    }
+}
