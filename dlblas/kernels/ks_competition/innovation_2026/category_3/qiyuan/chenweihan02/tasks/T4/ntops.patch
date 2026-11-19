@@ -1,0 +1,1944 @@
+diff --git a/benchmarks/benchmark_mla_rope_cache.py b/benchmarks/benchmark_mla_rope_cache.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..574fa01afedf0c02ed1538e897c5d76c6f8096f8
+--- /dev/null
++++ b/benchmarks/benchmark_mla_rope_cache.py
+@@ -0,0 +1,207 @@
++"""Compare fused NineToothed MLA RoPE/cache write against the vLLM chain."""
++
++import argparse
++import statistics
++import time
++
++import torch
++
++import ntops
++import ntops.kernels.mla_rope_cache as primary_kernel
++import ntops.kernels.mla_rope_cache_pair as pair_kernel
++from ntops.torch.mla_rope_cache_pair import mla_rope_cache_pair
++
++
++def _import_vllm_mla():
++    """Import the unchanged vLLM MLA operators on supported vendor stacks."""
++    # CoreX exposes its CUDA-compatible device through NVML.  Hiding that
++    # device makes older vendor vLLM builds fall back to an unspecified
++    # platform, so preserve the normal discovery path on IX-ML.
++    if getattr(torch, "corex", False):
++        from vllm import _custom_ops as ops
++        from vllm.model_executor.layers.rotary_embedding import get_rope
++
++        return ops, get_rope
++
++    # Some BW images expose both ROCm SMI and an NVML compatibility shim.
++    # vLLM then detects two built-in platforms and aborts during import.  Hide
++    # only the spurious CUDA discovery while vLLM resolves its platform; the
++    # timed RoPE and concat/cache operators remain the unmodified vLLM code.
++    try:
++        from vllm.utils import import_pynvml
++    except ImportError:
++        from vllm.utils.import_utils import import_pynvml
++
++    pynvml = import_pynvml()
++    original = pynvml.nvmlDeviceGetCount
++    pynvml.nvmlDeviceGetCount = lambda: 0
++
++    try:
++        from vllm import _custom_ops as ops
++        from vllm.model_executor.layers.rotary_embedding import get_rope
++
++        return ops, get_rope
++    finally:
++        pynvml.nvmlDeviceGetCount = original
++
++
++def _rotate_interleaved(value, cos_sin):
++    cos, sin = cos_sin.chunk(2, dim=-1)
++    cos = cos.repeat_interleave(2, dim=-1).unsqueeze(-2).float()
++    sin = sin.repeat_interleave(2, dim=-1).unsqueeze(-2).float()
++    even = value[..., 0::2].float()
++    odd = value[..., 1::2].float()
++    output = torch.empty_like(value, dtype=torch.float32)
++    output[..., 0::2] = even * cos[..., 0::2] - odd * sin[..., 0::2]
++    output[..., 1::2] = odd * cos[..., 1::2] + even * sin[..., 1::2]
++    return output.to(value.dtype)
++
++
++def _time(function, iterations):
++    torch.cuda.synchronize()
++    started = time.perf_counter()
++
++    for _ in range(iterations):
++        function()
++
++    torch.cuda.synchronize()
++    return (time.perf_counter() - started) * 1000 / iterations
++
++
++def _paired_median(first, second, warmup=100, iterations=1000, rounds=9):
++    for _ in range(warmup):
++        first()
++        second()
++
++    timings = ([], [])
++
++    for round_index in range(rounds):
++        order = (0, 1) if round_index % 2 == 0 else (1, 0)
++
++        for index in order:
++            function = first if index == 0 else second
++            timings[index].append(_time(function, iterations))
++
++    return tuple(statistics.median(values) for values in timings)
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--num-heads", type=int, default=32)
++    parser.add_argument(
++        "--implementation",
++        choices=("primary", "pair"),
++        default="primary",
++    )
++    parser.add_argument("--num-warps", type=int)
++    parser.add_argument("--tokens", type=int, choices=(1, 16, 128))
++    args = parser.parse_args()
++    if args.num_warps is not None:
++        primary_kernel.NUM_WARPS = args.num_warps
++        pair_kernel.NUM_WARPS = args.num_warps
++    submission_op = (
++        ntops.torch.mla_rope_cache
++        if args.implementation == "primary"
++        else mla_rope_cache_pair
++    )
++
++    ops, get_rope = _import_vllm_mla()
++    torch.manual_seed(0)
++    dtype = torch.bfloat16
++    rope_dim = 64
++    kv_lora_rank = 512
++    num_heads = args.num_heads
++    max_position = 16384
++    rope = get_rope(
++        rope_dim,
++        rope_dim,
++        max_position,
++        10000.0,
++        is_neox_style=False,
++        dtype=dtype,
++    )
++    rope.cos_sin_cache = rope.cos_sin_cache.to(device="cuda", dtype=dtype)
++
++    cases = ((1, 16), (16, 16), (128, 64))
++    if args.tokens is not None:
++        cases = tuple(case for case in cases if case[0] == args.tokens)
++
++    for tokens, block_size in cases:
++        num_blocks = 64
++        positions = torch.randperm(max_position, device="cuda")[:tokens]
++        slots = torch.randperm(num_blocks * block_size, device="cuda")[:tokens]
++        q_input = torch.randn(
++            tokens, num_heads, rope_dim, device="cuda", dtype=dtype
++        )
++        k_input = torch.randn(tokens, 1, rope_dim, device="cuda", dtype=dtype)
++        kv_c = torch.randn(tokens, kv_lora_rank, device="cuda", dtype=dtype)
++        cache_shape = (num_blocks, block_size, kv_lora_rank + rope_dim)
++        scale = torch.ones(1, device="cuda", dtype=torch.float32)
++
++        cos_sin = rope.cos_sin_cache.index_select(0, positions)
++        expected_q = _rotate_interleaved(q_input, cos_sin)
++        expected_k = _rotate_interleaved(k_input, cos_sin).squeeze(1)
++        expected_cache = torch.zeros(cache_shape, device="cuda", dtype=dtype)
++        combined = torch.cat((kv_c, expected_k), dim=-1)
++
++        for token, slot in enumerate(slots.tolist()):
++            expected_cache[slot // block_size, slot % block_size] = combined[token]
++
++        q_vllm = q_input.clone()
++        k_vllm = k_input.clone()
++        # IX-ML's vLLM ABI retains the singleton KV-head dimension, while the
++        # ROCm vLLM ABI accepts the equivalent flattened PE row.
++        k_vllm_cache = (
++            k_vllm if getattr(torch, "corex", False) else k_vllm.squeeze(1)
++        )
++        cache_vllm = torch.zeros(cache_shape, device="cuda", dtype=dtype)
++        rope.forward_cuda(positions, q_vllm, k_vllm)
++        ops.concat_and_cache_mla(
++            kv_c, k_vllm_cache, cache_vllm, slots, "auto", scale
++        )
++        torch.testing.assert_close(q_vllm, expected_q, rtol=2e-2, atol=2e-2)
++        torch.testing.assert_close(cache_vllm, expected_cache, rtol=2e-2, atol=2e-2)
++
++        q_nt = q_input.clone()
++        cache_nt = torch.zeros(cache_shape, device="cuda", dtype=dtype)
++        submission_op(
++            q_nt,
++            k_input,
++            kv_c,
++            positions,
++            rope.cos_sin_cache,
++            slots,
++            cache_nt,
++        )
++        torch.testing.assert_close(q_nt, expected_q, rtol=2e-2, atol=2e-2)
++        torch.testing.assert_close(cache_nt, expected_cache, rtol=2e-2, atol=2e-2)
++
++        def vllm_baseline():
++            rope.forward_cuda(positions, q_vllm, k_vllm)
++            ops.concat_and_cache_mla(
++                kv_c, k_vllm_cache, cache_vllm, slots, "auto", scale
++            )
++
++        def submission():
++            submission_op(
++                q_nt,
++                k_input,
++                kv_c,
++                positions,
++                rope.cos_sin_cache,
++                slots,
++                cache_nt,
++            )
++
++        vllm_ms, submission_ms = _paired_median(vllm_baseline, submission)
++        print(
++            f"shape=seq{tokens}_heads{num_heads}_block{block_size} "
++            f"correctness=pass vllm_ms={vllm_ms:.6f} "
++            f"submission_ms={submission_ms:.6f} "
++            f"formal_speedup={vllm_ms / submission_ms:.4f}",
++            flush=True,
++        )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmarks/benchmark_mla_rope_cache_warps.py b/benchmarks/benchmark_mla_rope_cache_warps.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea06e1b5cdb6b43739c16147ef19a286191d031f
+--- /dev/null
++++ b/benchmarks/benchmark_mla_rope_cache_warps.py
+@@ -0,0 +1,99 @@
++"""Sweep Triton warp counts for the fused MLA RoPE/cache kernel."""
++
++import argparse
++import importlib
++import statistics
++import time
++
++import torch
++
++import ntops
++from ntops.torch import utils
++
++kernel_module = importlib.import_module("ntops.kernels.mla_rope_cache")
++wrapper_module = importlib.import_module("ntops.torch.mla_rope_cache")
++
++
++def _median(function, *, warmup=100, iterations=1000, rounds=5):
++    for _ in range(warmup):
++        function()
++
++    timings = []
++
++    for _ in range(rounds):
++        torch.cuda.synchronize()
++        started = time.perf_counter()
++
++        for _ in range(iterations):
++            function()
++
++        torch.cuda.synchronize()
++        timings.append((time.perf_counter() - started) * 1000 / iterations)
++
++    return statistics.median(timings)
++
++
++def _reset_wrapper():
++    utils._cached_make.cache_clear()
++    wrapper_module._LAST_VALIDATED = None
++    wrapper_module._LAST_VIEWS = None
++    wrapper_module._LAST_KERNEL = None
++    wrapper_module._LAST_CALL = None
++
++
++def _inputs(tokens, block_size, num_heads):
++    dtype = torch.bfloat16
++    rope_dim = 64
++    kv_lora_rank = 512
++    max_position = 16384
++    num_blocks = 64
++    frequencies = 1.0 / (
++        10000.0
++        ** (torch.arange(0, rope_dim, 2, device="cuda").float() / rope_dim)
++    )
++    angles = torch.outer(
++        torch.arange(max_position, device="cuda").float(), frequencies
++    )
++    cos_sin_cache = torch.cat((angles.cos(), angles.sin()), dim=-1).to(dtype)
++    positions = torch.randperm(max_position, device="cuda")[:tokens]
++    slots = torch.randperm(num_blocks * block_size, device="cuda")[:tokens]
++    q = torch.randn(tokens, num_heads, rope_dim, device="cuda", dtype=dtype)
++    k = torch.randn(tokens, 1, rope_dim, device="cuda", dtype=dtype)
++    kv_c = torch.randn(tokens, kv_lora_rank, device="cuda", dtype=dtype)
++    cache = torch.zeros(
++        num_blocks,
++        block_size,
++        kv_lora_rank + rope_dim,
++        device="cuda",
++        dtype=dtype,
++    )
++    return q, k, kv_c, positions, cos_sin_cache, slots, cache
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--num-heads", type=int, default=32)
++    args = parser.parse_args()
++
++    torch.manual_seed(0)
++
++    for warps in (1, 2, 4, 8):
++        kernel_module.NUM_WARPS = warps
++
++        for tokens, block_size in ((1, 16), (16, 16), (128, 64)):
++            _reset_wrapper()
++            inputs = _inputs(tokens, block_size, args.num_heads)
++
++            def submission():
++                ntops.torch.mla_rope_cache(*inputs)
++
++            latency_ms = _median(submission)
++            print(
++                f"warps={warps} seq={tokens} heads={args.num_heads} "
++                f"latency_ms={latency_ms:.6f}",
++                flush=True,
++            )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmarks/run_kernelswift_t4.sh b/benchmarks/run_kernelswift_t4.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..2cd14a75ea9563a8bea3058374727503ddd43073
+--- /dev/null
++++ b/benchmarks/run_kernelswift_t4.sh
+@@ -0,0 +1,126 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++NTOPS_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
++NINETOOTHED_ROOT="${NINETOOTHED_ROOT:-${NTOPS_ROOT}/../ninetoothed}"
++NINETOOTHED_ROOT="$(cd -- "${NINETOOTHED_ROOT}" && pwd)"
++
++timestamp="$(date +%Y%m%d_%H%M%S)"
++RESULT_DIR="${1:-${NTOPS_ROOT}/results/kernelswift_t4_${timestamp}}"
++
++if [[ -e "${RESULT_DIR}" ]]; then
++    echo "结果目录已存在，拒绝复用缓存或覆盖日志：${RESULT_DIR}" >&2
++    exit 2
++fi
++
++mkdir -p "${RESULT_DIR}/logs" "${RESULT_DIR}/ninetoothed-cache"
++
++export PYTHONPATH="${NTOPS_ROOT}/src:${NINETOOTHED_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
++export NINETOOTHED_CACHE_DIR="${RESULT_DIR}/ninetoothed-cache"
++
++is_corex=0
++if python -c 'import torch; raise SystemExit(0 if getattr(torch, "corex", False) else 1)'; then
++    is_corex=1
++fi
++
++if [[ "${is_corex}" == 1 ]]; then
++    export NINETOOTHED_BACKEND="${NINETOOTHED_BACKEND:-cuda}"
++    export CUDA_HOME="${CUDA_HOME:-/usr/local/corex}"
++    export NINETOOTHED_CUDA_COMPILER="${NINETOOTHED_CUDA_COMPILER:-${CUDA_HOME}/bin/clang++}"
++    export NINETOOTHED_CUDA_LANGUAGE="${NINETOOTHED_CUDA_LANGUAGE:-ivcore}"
++else
++    export NINETOOTHED_BACKEND="${NINETOOTHED_BACKEND:-triton}"
++fi
++
++python - <<'PY' | tee "${RESULT_DIR}/logs/environment.log"
++import platform
++
++import torch
++import triton
++import vllm
++
++print("python", platform.python_version())
++print("torch", torch.__version__)
++print("triton", triton.__version__)
++print("vllm", vllm.__version__)
++print("corex", bool(getattr(torch, "corex", False)))
++print("cuda_available", torch.cuda.is_available())
++if not torch.cuda.is_available():
++    raise SystemExit("没有可用的 CUDA 兼容 GPU")
++print("device", torch.cuda.get_device_name(0))
++x = torch.ones(1, device="cuda")
++torch.cuda.synchronize()
++print("gpu_health", x.item())
++PY
++
++(
++    cd "${NTOPS_ROOT}"
++    python -m ruff check \
++        benchmarks/benchmark_mla_rope_cache.py \
++        src/ntops/kernels/mla_rope_cache.py \
++        src/ntops/kernels/mla_rope_cache_pair.py \
++        src/ntops/torch/mla_rope_cache.py \
++        src/ntops/torch/mla_rope_cache_pair.py \
++        tests/test_mla_rope_cache.py
++) 2>&1 | tee "${RESULT_DIR}/logs/ruff_ntops.log"
++
++(
++    cd "${NINETOOTHED_ROOT}"
++    python -m ruff check \
++        src/ninetoothed/backends/emitters/ssa.py \
++        src/ninetoothed/backends/materializers/cuda.py \
++        src/ninetoothed/backends/toolchain.py \
++        tests/test_compiler_cache_runtime.py \
++        tests/test_backend_registry.py
++) 2>&1 | tee "${RESULT_DIR}/logs/ruff_ninetoothed.log"
++
++(
++    cd "${NTOPS_ROOT}"
++    python -m pytest -q tests/test_mla_rope_cache.py
++) 2>&1 | tee "${RESULT_DIR}/logs/correctness.log"
++
++(
++    cd "${NINETOOTHED_ROOT}"
++    python -m pytest -q \
++        tests/test_ssa_first_backend_lowering.py \
++        tests/test_triton_runtime_auto_tuning.py \
++        tests/test_ssa_scalar_argument_emission.py \
++        tests/test_static_layout_bounds.py \
++        tests/test_static_tensor_strides.py \
++        tests/test_compiler_cache_runtime.py \
++        tests/test_backend_registry.py
++) 2>&1 | tee "${RESULT_DIR}/logs/compiler_regression.log"
++
++for heads in 32 128; do
++    (
++        cd "${NTOPS_ROOT}"
++        python benchmarks/benchmark_mla_rope_cache.py --num-heads "${heads}"
++    ) 2>&1 | tee "${RESULT_DIR}/logs/benchmark_heads${heads}.log"
++done
++
++(
++    cd "${NTOPS_ROOT}"
++    sha256sum \
++        src/ntops/kernels/mla_rope_cache.py \
++        src/ntops/kernels/mla_rope_cache_pair.py \
++        src/ntops/torch/mla_rope_cache.py \
++        src/ntops/torch/mla_rope_cache_pair.py \
++        benchmarks/benchmark_mla_rope_cache.py \
++        tests/test_mla_rope_cache.py
++    cd "${NINETOOTHED_ROOT}"
++    sha256sum \
++        src/ninetoothed/backends/emitters/ssa.py \
++        src/ninetoothed/backends/materializers/cuda.py \
++        src/ninetoothed/backends/toolchain.py \
++        tests/test_compiler_cache_runtime.py \
++        tests/test_backend_registry.py
++) > "${RESULT_DIR}/SHA256SUMS"
++
++grep -hE 'shape=.*correctness=pass' \
++    "${RESULT_DIR}/logs/benchmark_heads32.log" \
++    "${RESULT_DIR}/logs/benchmark_heads128.log" \
++    | tee "${RESULT_DIR}/FORMAL_SPEEDUP_SUMMARY"
++
++echo "T4 构建、正确性、回归和正式 vLLM benchmark 已完成。"
++echo "结果目录：${RESULT_DIR}"
+diff --git a/docs/KERNELSWIFT_T4_REPORT.md b/docs/KERNELSWIFT_T4_REPORT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..5eac3707325d89e0428b8885299aeb5f418d773a
+--- /dev/null
++++ b/docs/KERNELSWIFT_T4_REPORT.md
+@@ -0,0 +1,305 @@
++# KernelSwift T4：MLA RoPE 与压缩 KV Cache 写入融合算子—编译协同优化
++
++**报告日期**：2026-08-31
++
++**赛题**：T4 MLA RoPE 与压缩 KV Cache 写入融合
++
++**作品形态**：A（NineToothed 算子）+ B（通用编译器/平台后端）统一构建与评测
++
++**当前状态**：统一源码使用本 PR 的最终 `ntops` HEAD 与 `ninetoothed@6b79203`，已在海光 BW 与天数智芯天垓150通过 T4 正确性、相关编译器回归和 12 个 vLLM 性能 case；全部 `speedup > 1`
++
++## 1. 摘要
++
++T4 面向 MLA 解码和长上下文推理，将 query/key 的 RoPE 与压缩 KV Cache 写入融合为一个 NineToothed 算子。公开接口保持为：
++
++```python
++ntops.torch.mla_rope_cache(
++    q_pe,
++    k_pe,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++)
++```
++
++`q_pe` 和 `kv_cache` 原地更新，数学语义、输入输出和原接口保持不变。实现没有读取 case 标识或隐藏数据，没有建立公开 shape 答案表，也没有绕过 NineToothed 编译链调用未申报闭源算子。
++
++当前统一 A+B 结果为：
++
++- 天数旧版天垓150：T4 正确性 `26 passed`、编译器/后端定向回归 `122 passed`，6 个正式 case 全部
++  `speedup > 1`，平均 speedup `1.5766×`；
++- 海光 BW DTK25.04：T4 正确性 `26 passed`、编译器/后端定向回归 `122 passed`，6 个正式 case 全部
++  `speedup > 1`，平均 speedup `2.199483×`；
++- 两个平台均使用最终统一提交完成独立结果目录和 SHA-256 记录；
++
++### 1.1 代码版本与复现锚点
++
++结果对应本次 PR 中的提交链。以下记录官方基线 commit、本题提交和统一验证锚点，便于从 PR 历史复现。
++
++| 仓库 | 官方基线 commit | 本题提交/验证锚点 |
++|---|---|---|
++| ntops | `9ae4166` | 本 PR 的 T4 题目 commit；统一验证使用本 PR 最终 HEAD |
++| ninetoothed | `b77f930` | T4 MLA cache 后端支持 `0dbe0e9`；统一验证锚点 `6b79203` |
++
++## 2. 修改内容与动机
++
++### 2.1 A 部分：NineToothed 算子实现
++
++| 文件 | 修改 | 动机 |
++|---|---|---|
++| `src/ntops/kernels/mla_rope_cache.py` | 保留低启动成本的融合 scalar-lane 路径 | decode 和短 prefill 主要受 launch 开销影响 |
++| `src/ntops/kernels/mla_rope_cache_pair.py` | 新增 one-thread-per-RoPE-pair 布局 | 大 query 域复用同一 pair 的 cos/sin，并减少线程数 |
++| `src/ntops/torch/mla_rope_cache_pair.py` | 构造 stride-2 even/odd view，缓存稳定 launch | 避免完整中间张量和重复 ABI 准备 |
++| `src/ntops/torch/mla_rope_cache.py` | 按后端能力和工作量统一分派 | 同时保护小 workload 启动延迟和大 workload 吞吐 |
++
++pair 路径只在以下条件成立时启用：
++
++```text
++NINETOOTHED_BACKEND=cuda
++q_pe.numel() >= 2^18
++q_pairs_per_token >= cache_width
++```
++
++条件来自后端能力、query 工作量和 cache 行宽，不包含 case 编号、公开 shape 身份或预计算答案。其他情况自动回退到原始融合路径。
++
++### 2.2 B 部分：通用 SSA 与目标后端
++
++| 文件 | 层次 | 修改 |
++|---|---|---|
++| `ninetoothed/backends/emitters/ssa.py` | 通用 SSA emitter | 对 C-style masked store 做 producer sinking，并统一 mixed-dtype `where` 分支类型 |
++| `ninetoothed/backends/materializers/cuda.py` | CUDA 目标后端 | 预校验后缓存 device pointer 和标量 ABI，每次调用只重新获取当前 PyTorch stream 并启动 kernel |
++| `ninetoothed/backends/materializers/cuda.py` | CoreX 相关后端处理 | 检测 `torch.corex` 的外部 kernel 空 CUDA Graph 行为，回退到正确的快速直接 launch |
++| `ninetoothed/backends/toolchain.py` | 通用工具链接口 | 允许通过环境变量配置 CUDA 兼容编译器和源语言，使 CoreX 使用 clang/ivcore |
++
++通用分析放在 SSA emitter，硬件运行时差异放在 CUDA materializer，编译器路径通过通用环境接口配置。代码没有把某个 T4 shape 直接写进海光或天数后端。
++
++## 3. 方案与实现
++
++### 3.1 融合数据流
++
++单次 kernel 完成：
++
++1. 根据 `positions` 加载 token 对应的 cos/sin；
++2. 对所有 query heads 执行 interleaved RoPE，并原地写回 `q_pe`；
++3. 对单个 key head 执行 RoPE；
++4. 将 `kv_c` 与旋转后的 key 拼成压缩 cache 行；
++5. 根据 `slot_mapping` 写入目标 block/slot；
++6. `slot_mapping=-1` 时屏蔽 cache 写入。
++
++旋转后的 key 不落到独立全局中间张量，因此减少一次 kernel launch 和中间内存流量。
++
++### 3.2 Pair layout 与别名安全
++
++大 workload 将连续的 RoPE 通道拆成两个 stride-2 view：
++
++```text
++q_even = q[..., 0::2]
++q_odd  = q[..., 1::2]
++```
++
++一个线程同时负责 even/odd 通道并复用 cos/sin。因为两个输出 view 与输入别名，必须在任一 store 前物化两个输入 SSA 值：
++
++```python
++original_even = q_even + 0.0
++original_odd = q_odd + 0.0
++```
++
++否则第二个通道可能重新读取已经更新的第一个通道。动态索引测试和 BF16/FP16 全矩阵验证了该处理。
++
++### 3.3 Masked producer sinking
++
++原 C-style emitter 先生成 store value，再计算/应用 mask。融合 query 与窄 cache 行时，超出 cache 行的 lane 虽不能写入，仍会执行 key、cos/sin load 和算术。
++
++修改后先物化 mask，并将纯 producer slice 与 store 一起放进同一条件块。该优化位于通用 SSA emitter，对所有具有同类 masked-store 结构的 C-style 后端生效，不依赖 T4 名称。
++
++### 3.4 低开销 CUDA launch
++
++推理循环通常重复使用同一批 tensor 对象。公开入口首次调用仍执行完整契约检查，随后绑定并缓存：
++
++- tensor device pointer；
++- 标量 ABI 转换；
++- keepalive 对象；
++- device index。
++
++每次调用只查询当前 PyTorch stream 并调用生成的 host launcher，既保留 stream 语义，也消除 Python ABI 热路径开销。若后端不提供绑定能力，则回退到原 checked launch。
++
++CoreX 4.4 对外部 CUDA kernel 的 graph capture 会报告成功但生成空图，因此不能把空 graph replay 当作正确执行。该平台通过 `torch.corex` 能力标记禁用外部 graph replay，改用上述预校验快速 launch。
++
++### 3.5 CoreX 工具链
++
++天数旧版镜像同时存在 NVIDIA 兼容 `nvcc 10.2` 和 CoreX 原生 clang。系统 `nvcc` 可能返回零但不产生可加载 `.so`，因此统一构建显式使用：
++
++```text
++CUDA_HOME=/usr/local/corex
++NINETOOTHED_CUDA_COMPILER=/usr/local/corex/bin/clang++
++NINETOOTHED_CUDA_LANGUAGE=ivcore
++NINETOOTHED_BACKEND=cuda
++```
++
++代码只新增通用可配置接口，不把 `/usr/local/corex` 硬编码进编译器实现。
++
++## 4. 实验与效果
++
++### 4.1 天数环境
++
++```text
++GPU：Iluvatar BI-V150（32 GiB）
++IX-ML：4.4.0
++PyTorch：2.7.1
++Triton：3.1.0
++vLLM：0.11.2
++CoreX clang：18.1.8（IX-ML 4.4.0）
++```
++
++### 4.2 正式基线与计时
++
++未修改 vLLM 基线：
++
++```text
++rope.forward_cuda + ops.concat_and_cache_mla
++```
++
++NineToothed 提交路径：
++
++```text
++ntops.torch.mla_rope_cache
++```
++
++两条路径使用相同输入、BF16 dtype 和数学语义，并在计时前分别检查结果。计时交替预热 100 次，每轮 1000 次，共 9 轮，分别报告 wall-clock 样本中位数：
++
++| Case | vLLM (ms) | NineToothed (ms) | 正式 speedup |
++|---|---:|---:|---:|
++| seq1 / 32 heads | 0.010055 | 0.005535 | 1.8165× |
++| seq16 / 32 heads | 0.010477 | 0.006512 | 1.6090× |
++| seq128 / 32 heads | 0.015783 | 0.008670 | 1.8204× |
++| seq1 / 128 heads | 0.010707 | 0.005885 | 1.8194× |
++| seq16 / 128 heads | 0.011055 | 0.009491 | 1.1648× |
++| seq128 / 128 heads | 0.017988 | 0.014631 | 1.2295× |
++
++以上均为相对 vLLM 的正式 speedup，不是 eager 对比。
++
++### 4.3 分派消融
++
++同一台天数主机上的设计空间对照：
++
++| Case | 强制 scalar | 强制 pair | 统一分派 |
++|---|---:|---:|---:|
++| seq1 / 32 heads | 1.8174× | 0.8190× | 1.8482× |
++| seq16 / 32 heads | 1.6044× | 0.8481× | 1.5850× |
++| seq128 / 32 heads | 1.1917× | 1.2676× | 1.7932× |
++| seq1 / 128 heads | 1.8336× | 0.8433× | 1.8000× |
++| seq16 / 128 heads | 1.1458× | 0.9005× | 1.1668× |
++| seq128 / 128 heads | 0.8693× | 1.2126× | 1.2228× |
++
++强制 pair 会伤害小 workload，强制 scalar 在最大 case 低于 1。统一分派使 6 个 case 全部大于 1，说明双路径是必要的工程取舍。
++
++### 4.4 Launch 消融
++
++32-head 路径禁用可复用快速 launch 后，三个 case 的 speedup 分别为：
++
++```text
++0.2435× / 0.2453× / 0.3751×
++```
++
++这说明微秒级融合算子的主要瓶颈之一是运行时 launch/ABI 开销，B 部分的预校验绑定是端到端收益的关键来源。
++
++### 4.5 海光 BW DTK25.04 最终统一复测
++
++最终统一提交在 BW DTK25.04 的全新结果目录中完成复测：
++
++```text
++ntops@PR-final-HEAD
++ninetoothed@6b79203
++```
++
++环境为 BW/gfx936、Python 3.10.12、PyTorch 2.5.1、HIP 6.3.25405、Triton 3.1、vLLM 0.9.2。
++结果如下：
++
++| Case | vLLM (ms) | NineToothed (ms) | 正式 speedup |
++|---|---:|---:|---:|
++| seq1 / 32 heads | 0.023896 | 0.010660 | 2.2417× |
++| seq16 / 32 heads | 0.023658 | 0.011924 | 1.9842× |
++| seq128 / 32 heads | 0.047728 | 0.010604 | 4.5007× |
++| seq1 / 128 heads | 0.022710 | 0.015884 | 1.4298× |
++| seq16 / 128 heads | 0.022176 | 0.015493 | 1.4313× |
++| seq128 / 128 heads | 0.035463 | 0.022038 | 1.6092× |
++
++本轮 T4 正确性为 `26 passed in 46.08s`，NineToothed 编译器回归为
++`122 passed in 193.52s`，ntops 和 ninetoothed 的 Ruff 均通过。6 个正式 case 全部
++`correctness=pass`，BW 平台 speedup 算术平均为 `2.199483×`。
++
++完整证据位于：
++
++```text
++<results-root>/t4/bw/
++```
++
++### 4.6 双平台性能汇总
++
++天数旧版天垓150的 6 个正式 case 平均 speedup 为 `1.5766×`，BW DTK25.04 的 6 个正式 case
++平均 speedup 为 `2.199483×`。
++
++## 5. 工程质量与适用边界
++
++### 5.1 测试覆盖
++
++T4 `26 passed` 覆盖：
++
++- BF16/FP16；
++- INT32/INT64 positions 和 slot mapping；
++- 1/16/128 tokens；
++- 32/128 query heads；
++- padding slot；
++- 重复调用和动态运行时索引。
++
++NineToothed `122 passed` 覆盖 SSA lowering、masked producer sinking、混合 dtype `where`、运行时缓存、标量 ABI、静态布局/stride、backend registry 和 Triton runtime。T4 直接相关代码 ruff 全部通过。
++
++### 5.2 接口与架构边界
++
++- 公共算子接口和数学语义未修改；
++- pair 路径是内部实现，不新增用户必传参数；
++- producer sinking 位于通用 SSA 层；
++- 可配置编译器/语言位于通用 toolchain；
++- launch 优化和 CoreX graph 差异位于 CUDA materializer；
++- 平台选择基于后端能力，不基于赛题 case 身份。
++
++### 5.3 已知限制
++
++- pair 路径要求 CUDA 兼容后端、连续输入、偶数 RoPE width 和 FP16/BF16；
++- 非匹配 workload 回退原 scalar 融合路径；
++- 当前 CoreX 阈值来自天数实测，换硬件后应通过 profile 重新验证；
++- BW 最终复测使用 DTK25.04 的 Triton 路径；DTK26.04 的默认环境缺少 Triton/vLLM，未作为本次正式
++  BW 结果环境；
++
++### 5.4 第三方来源
++
++实现未复制第三方 kernel 源码。vLLM 仅作为公开接口语义和正式性能基线，PyTorch 用于 tensor/runtime 接口；各自许可证随其原项目。
++
++## 6. 复现与结果证据
++
++一键入口：
++
++```bash
++bash benchmarks/run_kernelswift_t4.sh /path/to/fresh/result-dir
++```
++
++详细说明见 `docs/KERNELSWIFT_T4_REPRODUCE.md`。本轮天数原始日志位于：
++
++```text
++<results-root>/t4/tiangai150/
++```
++
++关键文件位于 `<results-root>/t4/tiangai150/`，包括 `FORMAL_SPEEDUP_SUMMARY`、`SHA256SUMS`
++和 `logs/`。
++
++BW DTK25.04 最终统一复测结果位于：
++
++```text
++<results-root>/t4/bw/
++```
++
++其中 `FORMAL_SPEEDUP_SUMMARY`、`SHA256SUMS` 和 `logs/` 分别记录正式 speedup、参与测试的
++源码摘要以及环境、正确性、编译器回归和两个 head 配置的完整输出。复现时必须为每次运行
++指定新的结果目录；脚本会拒绝复用已有目录和缓存。
+diff --git a/docs/KERNELSWIFT_T4_REPRODUCE.md b/docs/KERNELSWIFT_T4_REPRODUCE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbee69eec9cf28546ce0bd51d066a14e8520704e
+--- /dev/null
++++ b/docs/KERNELSWIFT_T4_REPRODUCE.md
+@@ -0,0 +1,191 @@
++# KernelSwift T4 一键构建与评测说明
++
++## 1. 适用范围
++
++本说明用于 T4“MLA RoPE 与压缩 KV Cache 写入融合”的统一 A+B 构建和评测。
++
++正式性能基线为未修改 vLLM 的：
++
++```text
++RoPE.forward_cuda + concat_and_cache_mla
++```
++
++脚本不修改 vLLM、测试、计时逻辑或基线代码，不报告 eager 对比。
++
++统一复现版本为本 PR 最终 `ntops` HEAD 与 `ninetoothed@6b79203`。T4 使用的 MLA cache 后端支持由 `0dbe0e9` 引入，最终正确性、回归和性能记录均使用 `6b79203`。
++
++## 2. 目录和依赖
++
++将两个仓库放在同一父目录：
++
++```text
++workspace/
++├── ninetoothed/
++└── ntops/
++```
++
++远程环境需要：
++
++- 可用的海光或天数智芯 GPU；
++- Python、PyTorch、vLLM、Triton、pytest 和 ruff；
++- 本 PR 最终 `ntops` HEAD 与 `ninetoothed@6b79203`；
++- 天数 CoreX 环境中的 `/usr/local/corex/bin/clang++`，或通过环境变量指定等价编译器。
++
++仓库根目录的 `.gitattributes` 将 shell 脚本声明为 `eol=lf`。在 Windows 上编辑或打包后，应确认
++`benchmarks/run_kernelswift_t4.sh` 仍为 LF 行尾，以保证 Linux Bash 能直接执行。
++
++NineToothed 为 JIT 编译。首次正确性调用会从 SSA 生成并编译目标 kernel，因此不需要绕过九齿编译链调用外部闭源算子。
++
++## 3. 一键执行
++
++在远程 GPU 主机执行：
++
++```bash
++cd /path/to/workspace/ntops
++bash benchmarks/run_kernelswift_t4.sh /path/to/fresh/t4-result-dir
++```
++
++如果两个仓库不是同级目录：
++
++```bash
++cd /path/to/ntops
++NINETOOTHED_ROOT=/path/to/ninetoothed \
++    bash benchmarks/run_kernelswift_t4.sh /path/to/fresh/t4-result-dir
++```
++
++脚本拒绝复用已存在的结果目录，以避免不同赛题、A/B 构建或不同平台共享生成文件和缓存。
++
++### 天数 CoreX
++
++脚本检测到 `torch.corex` 后默认配置：
++
++```bash
++NINETOOTHED_BACKEND=cuda
++CUDA_HOME=/usr/local/corex
++NINETOOTHED_CUDA_COMPILER=/usr/local/corex/bin/clang++
++NINETOOTHED_CUDA_LANGUAGE=ivcore
++```
++
++如正式镜像路径不同，可在命令前覆盖这些变量。不要退回系统 NVIDIA `nvcc`；旧版天数镜像中的兼容 `nvcc 10.2` 可能返回成功但不生成 CoreX 可加载的 `.so`。
++
++### 海光 BW
++
++海光默认使用 NineToothed Triton 后端：
++
++```bash
++NINETOOTHED_BACKEND=triton \
++    bash benchmarks/run_kernelswift_t4.sh /path/to/fresh/bw-t4-result-dir
++```
++
++## 4. 脚本执行内容
++
++脚本依次完成：
++
++1. GPU 分配与同步健康检查；
++2. 记录 Python、PyTorch、Triton、vLLM、设备和平台信息；
++3. 对 T4 直接代码运行 ruff；
++4. 运行 T4 26 项正确性矩阵；
++5. 运行 120 项 SSA、materializer、布局和运行时定向回归；
++6. 对 32 和 128 query heads 各运行 3 个正式 case；
++7. 保存统一代码 SHA-256 和正式 speedup 汇总。
++
++关键输出：
++
++```text
++<result-dir>/
++├── FORMAL_SPEEDUP_SUMMARY
++├── SHA256SUMS
++├── ninetoothed-cache/
++└── logs/
++    ├── environment.log
++    ├── correctness.log
++    ├── compiler_regression.log
++    ├── ruff_ntops.log
++    ├── ruff_ninetoothed.log
++    ├── benchmark_heads32.log
++    └── benchmark_heads128.log
++```
++
++## 5. 正确性判定
++
++正式 benchmark 在计时前分别校验 vLLM 路径和 NineToothed 路径。测试矩阵额外覆盖：
++
++- BF16 和 FP16；
++- `positions`/`slot_mapping` 的 INT32 和 INT64；
++- 1、16、128 tokens；
++- 32、128 query heads；
++- 16、64 block size；
++- `slot_mapping=-1` 的 padding 语义；
++- 重复调用时动态更新 position/slot，防止运行时索引被错误固化。
++
++只有正确性、编译器回归和全部正式 case 均通过，结果才可写入报告。
++
++## 6. 性能计算
++
++每个 case 使用：
++
++```text
++speedup = vLLM_latency / NineToothed_latency
++```
++
++计时过程为交替预热 100 次、每轮 1000 次、共 9 轮，分别取两条路径 wall-clock 样本中位数。脚本运行的是默认统一分派路径，不强制实验性的 scalar-only 或 pair-only 实现。
++
++## 7. 本轮天数复现结果
++
++验证目录：
++
++```text
++<results-root>/t4/tiangai150
++```
++
++环境：Iluvatar BI-V150、IX-ML 4.4.0、PyTorch 2.7.1、Triton 3.1.0、vLLM 0.11.2、CoreX clang 18.1.8。
++
++结果：
++
++```text
++T4 correctness: 26 passed
++backend regression: 122 passed
++ruff: passed
++```
++
++6 个正式 case 的最新完整复测均 `correctness=pass` 且 `formal_speedup > 1`。原始日志为：
++
++```text
++<results-root>/t4/tiangai150/FORMAL_SPEEDUP_SUMMARY
++```
++
++## 8. 本轮海光 BW DTK25.04 复测结果
++
++验证目录：
++
++```text
++<results-root>/t4/bw
++```
++
++环境：BW/gfx936、Python 3.10.12、PyTorch 2.5.1、HIP 6.3.25405、Triton 3.1、vLLM 0.9.2。
++本轮使用本 PR 最终统一验证锚点 `ntops` HEAD 与 `ninetoothed@6b79203`，baseline 仍为未修改的
++vLLM `RoPE.forward_cuda + concat_and_cache_mla`。
++
++```text
++T4 correctness: 26 passed in 46.08s
++compiler regression: 122 passed in 193.52s
++ruff: passed
++```
++
++六个正式 case 均为 `correctness=pass`：
++
++| Case | vLLM ms | NineToothed ms | formal speedup |
++|---|---:|---:|---:|
++| seq1 / 32 heads | 0.023896 | 0.010660 | 2.2417× |
++| seq16 / 32 heads | 0.023658 | 0.011924 | 1.9842× |
++| seq128 / 32 heads | 0.047728 | 0.010604 | 4.5007× |
++| seq1 / 128 heads | 0.022710 | 0.015884 | 1.4298× |
++| seq16 / 128 heads | 0.022176 | 0.015493 | 1.4313× |
++| seq128 / 128 heads | 0.035463 | 0.022038 | 1.6092× |
++
++BW 六个 case 的 speedup 算术平均为 `2.199483×`。
++
++## 9. 双平台结果汇总
++
++天数旧版天垓150和海光 BW DTK25.04 均完成同一 T4 测试矩阵。天数六个 case 的平均 speedup
++为 `1.5766×`，BW 六个 case 的平均 speedup 为 `2.199483×`。
+diff --git a/src/ntops/kernels/__init__.py b/src/ntops/kernels/__init__.py
+index 12d337bb6864de07132ab03d18eae57750bd2155..0f56caa0f7255880517d589bd987a8e9ee7a2c65 100644
+--- a/src/ntops/kernels/__init__.py
++++ b/src/ntops/kernels/__init__.py
+@@ -74,6 +74,7 @@ from ntops.kernels import (
+     lp_pool2d,
+     lp_pool3d,
+     max,
++    mla_rope_cache,
+ )
+ 
+ __all__ = [
+@@ -152,4 +153,5 @@ __all__ = [
+     "lp_pool2d",
+     "lp_pool3d",
+     "max",
++    "mla_rope_cache",
+ ]
+diff --git a/src/ntops/kernels/mla_rope_cache.py b/src/ntops/kernels/mla_rope_cache.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..514ff8244bd50fcb6de105afda4b84e1d7f2c6a1
+--- /dev/null
++++ b/src/ntops/kernels/mla_rope_cache.py
+@@ -0,0 +1,180 @@
++"""Fused MLA RoPE and compressed paged-KV-cache write."""
++
++import functools
++
++import ninetoothed.language as ntl
++from ninetoothed import Tensor
++
++# A runtime warp sweep is counterproductive for this launch-bound fused
++# operator: all supported shapes use the same one-row-per-program schedule,
++# while CoreX may spend minutes benchmarking otherwise equivalent candidates.
++# Two warps is legal on both target backends and was the best or statistically
++# tied configuration across the representative decode/prefill shapes on BW.
++NUM_WARPS = 2
++NUM_STAGES = 1
++
++
++def arrangement(
++    q_pe,
++    k_pe,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++    *,
++    q_width,
++    rope_dim,
++    kv_lora_rank,
++):
++    def row(tensor, width):
++        tiled = tensor.tile((1, width))
++        tiled.dtype = tiled.dtype.squeeze(0)
++        return tiled
++
++    def padded_row(tensor, width, padding):
++        """Pad the per-program value tile while preserving the token grid."""
++        tiled = tensor.tile((1, width))
++        tiled.dtype = tiled.dtype.squeeze(0).pad((padding,))
++        return tiled
++
++    def scalar(tensor):
++        tiled = tensor.tile((1,))
++        tiled.dtype = tiled.dtype.squeeze(0)
++        return tiled
++
++    # Align every value tile with the already existing q application domain.
++    # Triton block tensors require power-of-two dimensions; keeping a separate
++    # 576-wide cache value would otherwise force an illegal ``arange(0, 576)``
++    # when the backend maps one complete token to one program.  The physical
++    # cache is still 576 elements wide and its source-layout bounds mask drops
++    # all right-padding lanes.
++    cache_width = kv_lora_rank + rope_dim
++    alignment_padding = q_width - cache_width
++
++    if alignment_padding < 0:
++        raise ValueError("q_width must cover the compressed MLA cache row.")
++
++    k_row = padded_row(k_pe, rope_dim, (kv_lora_rank, alignment_padding))
++    kv_c_row = padded_row(
++        kv_c,
++        kv_lora_rank,
++        (0, rope_dim + alignment_padding),
++    )
++    cache_row = padded_row(kv_cache, cache_width, (0, alignment_padding))
++    return (
++        row(q_pe, q_width),
++        k_row,
++        kv_c_row,
++        scalar(positions),
++        row(cos_sin_cache, rope_dim),
++        scalar(slot_mapping),
++        cache_row,
++    )
++
++
++def application(
++    q_pe,
++    k_pe,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++):
++    rope_dim = cos_sin_cache.shape[0]
++    half_rope_dim = rope_dim // 2
++    # ``kv_cache`` is logically padded to the q width by the arrangement;
++    # derive the real compressed rank from the physical kv_c source instead.
++    kv_lora_rank = kv_c.source.shape[-1]
++
++    # The application sees one value tile per token.  ``offsets(-1)`` selects
++    # the original feature dimension; ``offsets(0)`` would select the outer
++    # token dimension and incorrectly rotate adjacent tokens instead of
++    # adjacent RoPE channels.
++    q_offsets = q_pe.offsets(-1)
++    q_pair_offsets = q_offsets ^ 1
++    q_frequency = (q_offsets % rope_dim) // 2
++    q_pair = ntl.gather(q_pe, q_pair_offsets, 0)
++    q_cos = cos_sin_cache.source[positions, q_frequency]
++    q_sin = cos_sin_cache.source[positions, q_frequency + half_rope_dim]
++    q_sign = ntl.where(q_offsets % 2 == 0, -1.0, 1.0)
++    q_pe = q_pe * q_cos + q_pair * q_sin * q_sign  # noqa: F841
++
++    # The left-padded k view maps logical lanes [512, 576) to source offsets
++    # [0, 64).  Its feature offset is therefore already local to k_pe.
++    k_offsets = k_pe.offsets(-1)
++    k_local_offsets = ntl.maximum(k_offsets, 0)
++    k_pair_offsets = ntl.minimum(
++        (k_local_offsets ^ 1) + kv_lora_rank,
++        kv_cache.shape[0] - 1,
++    )
++    k_frequency = k_local_offsets // 2
++    k_pair = ntl.gather(k_pe, k_pair_offsets, 0)
++    k_cos = cos_sin_cache.source[positions, k_frequency]
++    k_sin = cos_sin_cache.source[positions, k_frequency + half_rope_dim]
++    k_sign = ntl.where(k_local_offsets % 2 == 0, -1.0, 1.0)
++    rotated_k = k_pe * k_cos + k_pair * k_sin * k_sign
++
++    combined = ntl.where(
++        kv_cache.offsets(-1) < kv_lora_rank,
++        kv_c,
++        rotated_k,
++    )
++    kv_cache.source[slot_mapping] = combined
++
++
++def premake(
++    q_shape,
++    k_shape,
++    kv_c_shape,
++    positions_shape,
++    cos_sin_shape,
++    slots_shape,
++    cache_shape,
++    q_dtype,
++    k_dtype,
++    kv_c_dtype,
++    positions_dtype,
++    cos_sin_dtype,
++    slots_dtype,
++    cache_dtype,
++    q_strides,
++    k_strides,
++    kv_c_strides,
++    positions_strides,
++    cos_sin_strides,
++    slots_strides,
++    cache_strides,
++):
++    q_width = q_shape[1]
++    rope_dim = k_shape[1]
++    kv_lora_rank = kv_c_shape[1]
++    arrangement_ = functools.partial(
++        arrangement,
++        q_width=q_width,
++        rope_dim=rope_dim,
++        kv_lora_rank=kv_lora_rank,
++    )
++
++    def tensor(shape, strides, dtype, *, other=None):
++        return Tensor(
++            shape=tuple(shape),
++            strides=tuple(strides),
++            dtype=dtype,
++            other=other,
++        )
++
++    tensors = (
++        tensor(q_shape, q_strides, q_dtype, other=0),
++        tensor(k_shape, k_strides, k_dtype, other=0),
++        tensor(kv_c_shape, kv_c_strides, kv_c_dtype, other=0),
++        tensor(positions_shape, positions_strides, positions_dtype),
++        tensor(cos_sin_shape, cos_sin_strides, cos_sin_dtype, other=0),
++        tensor(slots_shape, slots_strides, slots_dtype),
++        tensor(cache_shape, cache_strides, cache_dtype),
++    )
++    return arrangement_, application, tensors
++
++
++__all__ = ["premake"]
+diff --git a/src/ntops/kernels/mla_rope_cache_pair.py b/src/ntops/kernels/mla_rope_cache_pair.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e9edaaa93fcdecfea80f15012dc8df3dc859aea
+--- /dev/null
++++ b/src/ntops/kernels/mla_rope_cache_pair.py
+@@ -0,0 +1,192 @@
++"""Pair-layout candidate for the fused MLA RoPE/cache kernel.
++
++This module is intentionally kept separate while the layout is being
++validated on vendor hardware.  It stores the even and odd RoPE channels in
++two stride-2 views and assigns both views from one pair lane, so each CUDA
++thread reuses the pair inputs and frequency values without an in-place race.
++"""
++
++import functools
++
++import ninetoothed.language as ntl
++from ninetoothed import Tensor
++
++NUM_WARPS = 2
++NUM_STAGES = 1
++
++
++def _row(tensor, width):
++    arranged = tensor.tile((1, width))
++    arranged.dtype = arranged.dtype.squeeze(0)
++    return arranged
++
++
++def _padded_row(tensor, width, padding):
++    arranged = tensor.tile((1, width))
++    arranged.dtype = arranged.dtype.squeeze(0).pad((padding,))
++    return arranged
++
++
++def _scalar(tensor):
++    arranged = tensor.tile((1,))
++    arranged.dtype = arranged.dtype.squeeze(0)
++    return arranged
++
++
++def arrangement(
++    q_even,
++    q_odd,
++    k_even,
++    k_odd,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++    *,
++    q_pairs,
++    rope_dim,
++    kv_lora_rank,
++):
++    cache_width = kv_lora_rank + rope_dim
++    padding = q_pairs - cache_width
++    k_padding = q_pairs - kv_lora_rank - rope_dim // 2
++    if padding < 0:
++        raise ValueError("q pair width must cover the MLA cache row.")
++    if k_padding < 0:
++        raise ValueError("q pair width must cover the padded RoPE pair row.")
++
++    return (
++        _row(q_even, q_pairs),
++        _row(q_odd, q_pairs),
++        _padded_row(
++            k_even,
++            rope_dim // 2,
++            (kv_lora_rank, k_padding),
++        ),
++        _padded_row(
++            k_odd,
++            rope_dim // 2,
++            (kv_lora_rank, k_padding),
++        ),
++        _padded_row(kv_c, kv_lora_rank, (0, q_pairs - kv_lora_rank)),
++        _scalar(positions),
++        _row(cos_sin_cache, rope_dim),
++        _scalar(slot_mapping),
++        _padded_row(kv_cache, cache_width, (0, padding)),
++    )
++
++
++def application(
++    q_even,
++    q_odd,
++    k_even,
++    k_odd,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++):
++    rope_dim = cos_sin_cache.shape[0]
++    half_rope_dim = rope_dim // 2
++    kv_lora_rank = kv_c.source.shape[-1]
++
++    q_offsets = q_even.offsets(-1)
++    q_frequency = q_offsets % half_rope_dim
++    q_cos = cos_sin_cache.source[positions, q_frequency]
++    q_sin = cos_sin_cache.source[positions, q_frequency + half_rope_dim]
++    # Materialize both source values in SSA before either aliased stride-2
++    # output view is written.  A plain Python alias would let the second store
++    # reload the already updated even channel from memory.
++    original_even = q_even + 0.0
++    original_odd = q_odd + 0.0
++    q_even = original_even * q_cos - original_odd * q_sin  # noqa: F841
++    q_odd = original_odd * q_cos + original_even * q_sin  # noqa: F841
++
++    cache_offsets = kv_cache.offsets(-1)
++    cache_pair = ntl.maximum(
++        (cache_offsets - kv_lora_rank) // 2,
++        0,
++    )
++    cache_k_index = cache_pair + kv_lora_rank
++    raw_even = ntl.gather(k_even, cache_k_index, 0)
++    raw_odd = ntl.gather(k_odd, cache_k_index, 0)
++    cache_frequency = cache_pair % half_rope_dim
++    cache_cos = cos_sin_cache.source[positions, cache_frequency]
++    cache_sin = cos_sin_cache.source[
++        positions, cache_frequency + half_rope_dim
++    ]
++    rotated_even = raw_even * cache_cos - raw_odd * cache_sin
++    rotated_odd = raw_odd * cache_cos + raw_even * cache_sin
++    rotated = ntl.where(
++        cache_offsets % 2 == 0,
++        rotated_even,
++        rotated_odd,
++    )
++    combined = ntl.where(cache_offsets < kv_lora_rank, kv_c, rotated)
++    kv_cache.source[slot_mapping] = combined
++
++
++def premake(
++    q_even_shape,
++    q_odd_shape,
++    k_even_shape,
++    k_odd_shape,
++    kv_c_shape,
++    positions_shape,
++    cos_sin_shape,
++    slots_shape,
++    cache_shape,
++    q_even_dtype,
++    q_odd_dtype,
++    k_even_dtype,
++    k_odd_dtype,
++    kv_c_dtype,
++    positions_dtype,
++    cos_sin_dtype,
++    slots_dtype,
++    cache_dtype,
++    q_even_strides,
++    q_odd_strides,
++    k_even_strides,
++    k_odd_strides,
++    kv_c_strides,
++    positions_strides,
++    cos_sin_strides,
++    slots_strides,
++    cache_strides,
++):
++    q_pairs = q_even_shape[-1]
++    rope_dim = k_even_shape[-1] * 2
++    kv_lora_rank = kv_c_shape[-1]
++    arrangement_ = functools.partial(
++        arrangement,
++        q_pairs=q_pairs,
++        rope_dim=rope_dim,
++        kv_lora_rank=kv_lora_rank,
++    )
++
++    def tensor(shape, strides, dtype, *, other=None):
++        return Tensor(
++            shape=tuple(shape),
++            strides=tuple(strides),
++            dtype=dtype,
++            other=other,
++        )
++
++    tensors = (
++        tensor(q_even_shape, q_even_strides, q_even_dtype, other=0),
++        tensor(q_odd_shape, q_odd_strides, q_odd_dtype, other=0),
++        tensor(k_even_shape, k_even_strides, k_even_dtype, other=0),
++        tensor(k_odd_shape, k_odd_strides, k_odd_dtype, other=0),
++        tensor(kv_c_shape, kv_c_strides, kv_c_dtype, other=0),
++        tensor(positions_shape, positions_strides, positions_dtype),
++        tensor(cos_sin_shape, cos_sin_strides, cos_sin_dtype, other=0),
++        tensor(slots_shape, slots_strides, slots_dtype),
++        tensor(cache_shape, cache_strides, cache_dtype),
++    )
++    return arrangement_, application, tensors
++
++
++__all__ = ["NUM_WARPS", "NUM_STAGES", "premake"]
+diff --git a/src/ntops/torch/__init__.py b/src/ntops/torch/__init__.py
+index ad6fd4c24dff3fa7ad8e808abbc7438047dc1332..8936c2fcf3e3a4192dc32625ad285a6cb16d5545 100644
+--- a/src/ntops/torch/__init__.py
++++ b/src/ntops/torch/__init__.py
+@@ -74,6 +74,7 @@ from ntops.torch.lp_pool1d import lp_pool1d
+ from ntops.torch.lp_pool2d import lp_pool2d
+ from ntops.torch.lp_pool3d import lp_pool3d
+ from ntops.torch.max import max
++from ntops.torch.mla_rope_cache import mla_rope_cache
+ 
+ __all__ = [
+     "abs",
+@@ -153,4 +154,5 @@ __all__ = [
+     "lp_pool2d",
+     "lp_pool3d",
+     "max",
++    "mla_rope_cache",
+ ]
+diff --git a/src/ntops/torch/mla_rope_cache.py b/src/ntops/torch/mla_rope_cache.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3931b4fd29109a2653aa94e2fa76132046337212
+--- /dev/null
++++ b/src/ntops/torch/mla_rope_cache.py
+@@ -0,0 +1,241 @@
++"""Torch wrapper for fused MLA RoPE and compressed cache write."""
++
++import functools
++
++import torch
++
++import ntops
++from ntops.torch.mla_rope_cache_pair import (
++    mla_rope_cache_pair,
++    should_use_pair_layout,
++)
++from ntops.torch.utils import _cached_make
++
++_LAST_VALIDATED = None
++_LAST_VIEWS = None
++_LAST_KERNEL = None
++_LAST_CALL = None
++_LAST_PAIR_OBJECTS = None
++_GRAPH_UNAVAILABLE = object()
++
++
++def _capture_or_launch(invoke, q_pe, slot_mapping, kv_cache):
++    """Execute once while arming graph replay for stable inference buffers."""
++    if not getattr(invoke, "_ninetoothed_external_graph_capture", True):
++        invoke()
++        return _GRAPH_UNAVAILABLE
++
++    graph_type = getattr(torch.cuda, "CUDAGraph", None)
++    graph_context = getattr(torch.cuda, "graph", None)
++
++    if graph_type is None or graph_context is None:
++        invoke()
++        return _GRAPH_UNAVAILABLE
++
++    q_backup = None
++    cache_backup = None
++    cache_flat = None
++    slots = None
++    capture_started = False
++
++    try:
++        # Capturing executes the kernel once.  Preserve only the locations the
++        # in-place operator may update so a failed capture can safely fall back
++        # without cloning the potentially very large paged KV cache.
++        slots = slot_mapping.to(dtype=torch.long)
++        cache_flat = kv_cache.view(-1, kv_cache.shape[-1])
++        q_backup = q_pe.clone()
++        cache_backup = cache_flat.index_select(0, slots)
++        torch.cuda.synchronize()
++
++        graph = graph_type()
++        capture_started = True
++
++        with graph_context(graph):
++            invoke()
++
++        # CUDA executes captured work while recording, whereas the BW graph
++        # runtime records it without applying the in-place update.  Detect the
++        # observed semantics once so this public invocation executes exactly
++        # once on either backend.
++        torch.cuda.synchronize()
++        q_changed = not torch.equal(q_pe, q_backup)
++        cache_changed = not torch.equal(
++            cache_flat.index_select(0, slots),
++            cache_backup,
++        )
++
++        if not q_changed and not cache_changed:
++            graph.replay()
++
++        return graph
++    except (AttributeError, RuntimeError, TypeError):
++        if capture_started and q_backup is not None and cache_backup is not None:
++            # A backend may reject capture after partially launching work.
++            # Restore the original outputs before executing the checked path.
++            torch.cuda.synchronize()
++            q_pe.copy_(q_backup)
++            cache_flat.index_copy_(0, slots, cache_backup)
++
++        invoke()
++        return _GRAPH_UNAVAILABLE
++
++
++def _validate(q_pe, k_pe, kv_c, positions, cos_sin_cache, slot_mapping, kv_cache):
++    if q_pe.ndim != 3 or k_pe.ndim != 3 or k_pe.shape[1] != 1:
++        raise ValueError("q_pe and k_pe must have shapes (T, H, R) and (T, 1, R).")
++    tokens, _heads, rope_dim = q_pe.shape
++    if k_pe.shape != (tokens, 1, rope_dim):
++        raise ValueError("q_pe and k_pe must share token and RoPE dimensions.")
++    if kv_c.ndim != 2 or kv_c.shape[0] != tokens:
++        raise ValueError("kv_c must have shape (T, kv_lora_rank).")
++    if positions.shape != (tokens,) or slot_mapping.shape != (tokens,):
++        raise ValueError("positions and slot_mapping must have shape (T,).")
++    if kv_cache.ndim != 3 or kv_cache.shape[-1] != kv_c.shape[1] + rope_dim:
++        raise ValueError("kv_cache entry width must equal kv_lora_rank + rope_dim.")
++    if cos_sin_cache.ndim != 2 or cos_sin_cache.shape[1] != rope_dim:
++        raise ValueError("cos_sin_cache must have shape (max_position, rope_dim).")
++    if rope_dim % 2:
++        raise ValueError("rope_dim must be even.")
++    if q_pe.dtype not in (torch.float16, torch.bfloat16):
++        raise TypeError(
++            "q_pe, k_pe, kv_c, cos_sin_cache and kv_cache must be FP16/BF16."
++        )
++    if any(
++        tensor.dtype != q_pe.dtype
++        for tensor in (k_pe, kv_c, cos_sin_cache, kv_cache)
++    ):
++        raise TypeError("All floating-point inputs must have the same dtype.")
++    if positions.dtype not in (torch.int32, torch.int64):
++        raise TypeError("positions must use int32 or int64.")
++    if slot_mapping.dtype not in (torch.int32, torch.int64):
++        raise TypeError("slot_mapping must use int32 or int64.")
++    if any(
++        tensor.device != q_pe.device
++        for tensor in (k_pe, kv_c, positions, cos_sin_cache, slot_mapping, kv_cache)
++    ):
++        raise ValueError("All inputs must be on the same device.")
++    if not all(
++        tensor.is_contiguous()
++        for tensor in (
++            q_pe,
++            k_pe,
++            kv_c,
++            positions,
++            cos_sin_cache,
++            slot_mapping,
++            kv_cache,
++        )
++    ):
++        raise ValueError("All T4 inputs must be contiguous.")
++
++
++def mla_rope_cache(
++    q_pe,
++    k_pe,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++):
++    """Rotate q/k position channels and write ``kv_c + rotated(k_pe)``.
++
++    ``q_pe`` and ``kv_cache`` are updated in place.  Rotated ``k_pe`` is kept
++    inside the kernel and is never materialized in global memory.
++    """
++    global _LAST_CALL, _LAST_KERNEL, _LAST_PAIR_OBJECTS
++    global _LAST_VALIDATED, _LAST_VIEWS
++
++    objects = (q_pe, k_pe, kv_c, positions, cos_sin_cache, slot_mapping, kv_cache)
++
++    if _LAST_PAIR_OBJECTS is not None and all(
++        current is previous
++        for current, previous in zip(objects, _LAST_PAIR_OBJECTS)
++    ):
++        return mla_rope_cache_pair(*objects)
++
++    # The scalar lane layout has the lowest launch cost for decode and short
++    # prefill.  Once the query domain is large enough, the alias-safe pair
++    # layout halves CUDA threads and reuses each pair's cos/sin values.  The
++    # decision depends only on backend capability and workload size.
++    cached_call = _LAST_CALL
++
++    if (
++        cached_call is not None
++        and q_pe is cached_call[0][0]
++        and k_pe is cached_call[0][1]
++        and kv_c is cached_call[0][2]
++        and positions is cached_call[0][3]
++        and cos_sin_cache is cached_call[0][4]
++        and slot_mapping is cached_call[0][5]
++        and kv_cache is cached_call[0][6]
++    ):
++        invoke, graph = cached_call[1:3]
++
++        if graph is None:
++            graph = _capture_or_launch(invoke, q_pe, slot_mapping, kv_cache)
++            replay = invoke if graph is _GRAPH_UNAVAILABLE else graph.replay
++            _LAST_CALL = (objects, replay, graph)
++        else:
++            invoke()
++
++        return q_pe
++
++    if should_use_pair_layout(q_pe, kv_c):
++        _LAST_PAIR_OBJECTS = objects
++        return mla_rope_cache_pair(*objects)
++
++    same_objects = _LAST_VALIDATED is not None and all(
++        current is previous for current, previous in zip(objects, _LAST_VALIDATED[0])
++    )
++    if not same_objects:
++        _validate(q_pe, k_pe, kv_c, positions, cos_sin_cache, slot_mapping, kv_cache)
++        _LAST_VALIDATED = (objects,)
++
++    view_objects = (q_pe, k_pe, kv_cache)
++    if _LAST_VIEWS is not None and all(
++        current is previous
++        for current, previous in zip(
++            view_objects, _LAST_VIEWS[:3]
++        )
++    ):
++        q_flat, k_flat, cache_flat = _LAST_VIEWS[3:6]
++    else:
++        q_flat = q_pe.view(q_pe.shape[0], -1)
++        k_flat = k_pe.view(k_pe.shape[0], -1)
++        cache_flat = kv_cache.view(-1, kv_cache.shape[-1])
++        _LAST_VIEWS = (
++            q_pe, k_pe, kv_cache, q_flat, k_flat, cache_flat
++        )
++
++    tensors = (q_flat, k_flat, kv_c, positions, cos_sin_cache, slot_mapping, cache_flat)
++    if _LAST_KERNEL is not None and all(
++        current is previous for current, previous in zip(tensors, _LAST_KERNEL[0])
++    ):
++        kernel = _LAST_KERNEL[1]
++    else:
++        kernel = _cached_make(
++            ntops.kernels.mla_rope_cache.premake,
++            *(tuple(tensor.shape) for tensor in tensors),
++            *(tensor.dtype for tensor in tensors),
++            *(tuple(tensor.stride()) for tensor in tensors),
++            num_warps=ntops.kernels.mla_rope_cache.NUM_WARPS,
++            num_stages=ntops.kernels.mla_rope_cache.NUM_STAGES,
++            max_num_configs=1,
++        )
++        _LAST_KERNEL = (tensors, kernel)
++    launch = getattr(kernel, "_launch_prevalidated_noalias", kernel)
++    launch(*tensors)
++
++    bind = getattr(launch, "_ninetoothed_bind_prevalidated_noalias", None)
++    invoke_cached = bind(*tensors) if bind is not None else None
++
++    if invoke_cached is None:
++        invoke_cached = functools.partial(launch, *tensors)
++
++    _LAST_CALL = (objects, invoke_cached, None)
++    return q_pe
++
++
++__all__ = ["mla_rope_cache"]
+diff --git a/src/ntops/torch/mla_rope_cache_pair.py b/src/ntops/torch/mla_rope_cache_pair.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ebd8a3eb0d854276e8e11005f41ec9dcf476387
+--- /dev/null
++++ b/src/ntops/torch/mla_rope_cache_pair.py
+@@ -0,0 +1,133 @@
++"""Internal pair-vectorized path for large T4 CUDA workloads."""
++
++import functools
++import os
++
++import torch
++
++import ntops.kernels.mla_rope_cache_pair as _kernel_module
++from ntops.torch.utils import _cached_make
++
++_LAST = None
++_LAST_PUBLIC = None
++_LAST_VIEWS = None
++_PAIR_QUERY_ELEMENTS_THRESHOLD = 1 << 18
++
++
++def should_use_pair_layout(q_pe, kv_c):
++    """Choose pair vectorization from backend capability and workload size."""
++    backend = os.environ.get("NINETOOTHED_BACKEND", "triton").lower()
++    if backend != "cuda" or q_pe.ndim != 3:
++        return False
++
++    q_pairs_per_token = q_pe.shape[1] * q_pe.shape[2] // 2
++    cache_width = kv_c.shape[-1] + q_pe.shape[-1]
++    return (
++        q_pairs_per_token >= cache_width
++        and q_pe.numel() >= _PAIR_QUERY_ELEMENTS_THRESHOLD
++    )
++
++
++def mla_rope_cache_pair(
++    q_pe,
++    k_pe,
++    kv_c,
++    positions,
++    cos_sin_cache,
++    slot_mapping,
++    kv_cache,
++):
++    """Run one-thread-per-RoPE-pair on contiguous T4 inputs."""
++    global _LAST, _LAST_PUBLIC, _LAST_VIEWS
++    public_objects = (
++        q_pe,
++        k_pe,
++        kv_c,
++        positions,
++        cos_sin_cache,
++        slot_mapping,
++        kv_cache,
++    )
++    if _LAST_PUBLIC is not None and all(
++        current is previous
++        for current, previous in zip(public_objects, _LAST_PUBLIC[0])
++    ):
++        _LAST_PUBLIC[1]()
++        return q_pe
++
++    if q_pe.ndim != 3 or k_pe.shape[1] != 1:
++        raise ValueError("q_pe and k_pe have unsupported shapes.")
++    tokens, heads, rope_dim = q_pe.shape
++    if rope_dim % 2 or q_pe.dtype not in (torch.float16, torch.bfloat16):
++        raise ValueError("The pair candidate requires an even FP16/BF16 RoPE width.")
++    if q_pe.device.type != "cuda":
++        raise ValueError("The pair candidate requires a CUDA-compatible device.")
++    if not all(
++        tensor.is_contiguous()
++        for tensor in (q_pe, k_pe, kv_c, positions, cos_sin_cache, slot_mapping, kv_cache)
++    ):
++        raise ValueError("T4 inputs must be contiguous.")
++
++    view_inputs = (q_pe, k_pe, kv_cache)
++    if _LAST_VIEWS is not None and all(
++        current is previous
++        for current, previous in zip(view_inputs, _LAST_VIEWS[:3])
++    ):
++        q_even, q_odd, k_even, k_odd, cache_flat = _LAST_VIEWS[3:]
++    else:
++        q_output = q_pe.view(tokens, heads * rope_dim)
++        q_even = q_output[:, 0::2]
++        q_odd = q_output[:, 1::2]
++        k_flat = k_pe.view(tokens, rope_dim)
++        k_even = k_flat[:, 0::2]
++        k_odd = k_flat[:, 1::2]
++        cache_flat = kv_cache.view(-1, kv_cache.shape[-1])
++        _LAST_VIEWS = (
++            q_pe,
++            k_pe,
++            kv_cache,
++            q_even,
++            q_odd,
++            k_even,
++            k_odd,
++            cache_flat,
++        )
++    tensors = (
++        q_even,
++        q_odd,
++        k_even,
++        k_odd,
++        kv_c,
++        positions,
++        cos_sin_cache,
++        slot_mapping,
++        cache_flat,
++    )
++
++    if _LAST is not None and all(a is b for a, b in zip(_LAST[0], tensors)):
++        _LAST[1]()
++        return q_pe
++
++    q_pairs = q_even.shape[-1]
++    cache_width = kv_c.shape[-1] + rope_dim
++    if q_pairs < cache_width:
++        raise ValueError("The pair candidate requires q_pairs >= cache width.")
++    kernel = _cached_make(
++        _kernel_module.premake,
++        *(tuple(tensor.shape) for tensor in tensors),
++        *(tensor.dtype for tensor in tensors),
++        *(tuple(tensor.stride()) for tensor in tensors),
++        num_warps=_kernel_module.NUM_WARPS,
++        num_stages=_kernel_module.NUM_STAGES,
++        max_num_configs=1,
++    )
++    launch = getattr(kernel, "_launch_prevalidated_noalias", kernel)
++    launch(*tensors)
++    bind = getattr(launch, "_ninetoothed_bind_prevalidated_noalias", None)
++    invoke = bind(*tensors) if bind is not None else functools.partial(launch, *tensors)
++    _LAST = (tensors, invoke)
++    _LAST_PUBLIC = (public_objects, invoke)
++    return q_pe
++
++
++__all__ = ["mla_rope_cache_pair", "should_use_pair_layout"]
+diff --git a/tests/test_mla_rope_cache.py b/tests/test_mla_rope_cache.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..57c33d96efcb0b669fb10edfddc231bb88d78c34
+--- /dev/null
++++ b/tests/test_mla_rope_cache.py
+@@ -0,0 +1,174 @@
++import pytest
++import torch
++
++import ntops
++from tests.skippers import skip_if_cuda_not_available
++
++
++def _rotate(value, cos_sin):
++    cos, sin = cos_sin.chunk(2, dim=-1)
++    cos = cos.repeat_interleave(2, dim=-1).unsqueeze(-2).float()
++    sin = sin.repeat_interleave(2, dim=-1).unsqueeze(-2).float()
++    even = value[..., 0::2].float()
++    odd = value[..., 1::2].float()
++    output = torch.empty_like(value, dtype=torch.float32)
++    output[..., 0::2] = even * cos[..., 0::2] - odd * sin[..., 0::2]
++    output[..., 1::2] = odd * cos[..., 1::2] + even * sin[..., 1::2]
++    return output.to(value.dtype)
++
++
++@skip_if_cuda_not_available
++@pytest.mark.parametrize(
++    "dtype",
++    (
++        pytest.param(torch.bfloat16, id="bf16"),
++        pytest.param(torch.float16, id="fp16"),
++    ),
++)
++@pytest.mark.parametrize(
++    "index_dtype",
++    (
++        pytest.param(torch.int64, id="int64"),
++        pytest.param(torch.int32, id="int32"),
++    ),
++)
++@pytest.mark.parametrize(
++    "tokens,heads,block_size",
++    (
++        (1, 32, 16),
++        (16, 32, 16),
++        (128, 32, 64),
++        (1, 128, 16),
++        (16, 128, 16),
++        (128, 128, 64),
++    ),
++)
++def test_mla_rope_cache(tokens, heads, block_size, dtype, index_dtype):
++    torch.manual_seed(0)
++    rope_dim = 64
++    kv_lora_rank = 512
++    max_position = 16384
++    num_blocks = 64
++    frequencies = 1.0 / (
++        10000.0
++        ** (torch.arange(0, rope_dim, 2, device="cuda").float() / rope_dim)
++    )
++    angles = torch.outer(
++        torch.arange(max_position, device="cuda").float(), frequencies
++    )
++    cos_sin_cache = torch.cat((angles.cos(), angles.sin()), dim=-1).to(dtype)
++    positions = torch.randperm(
++        max_position, device="cuda", dtype=index_dtype
++    )[:tokens]
++    slots = torch.randperm(
++        num_blocks * block_size, device="cuda", dtype=index_dtype
++    )[:tokens]
++    q = torch.randn(tokens, heads, rope_dim, device="cuda", dtype=dtype)
++    k = torch.randn(tokens, 1, rope_dim, device="cuda", dtype=dtype)
++    kv_c = torch.randn(tokens, kv_lora_rank, device="cuda", dtype=dtype)
++    cache = torch.zeros(
++        num_blocks,
++        block_size,
++        kv_lora_rank + rope_dim,
++        device="cuda",
++        dtype=dtype,
++    )
++
++    cos_sin = cos_sin_cache.index_select(0, positions)
++    expected_q = _rotate(q, cos_sin)
++    expected_k = _rotate(k, cos_sin).squeeze(1)
++    expected_cache = cache.clone()
++    combined = torch.cat((kv_c, expected_k), dim=-1)
++    for token, slot in enumerate(slots.tolist()):
++        expected_cache[slot // block_size, slot % block_size] = combined[token]
++
++    result = ntops.torch.mla_rope_cache(
++        q, k, kv_c, positions, cos_sin_cache, slots, cache
++    )
++    assert result is q
++    torch.testing.assert_close(q, expected_q, rtol=2e-2, atol=2e-2)
++    torch.testing.assert_close(cache, expected_cache, rtol=2e-2, atol=2e-2)
++
++    expected_q = _rotate(expected_q, cos_sin)
++    result = ntops.torch.mla_rope_cache(
++        q, k, kv_c, positions, cos_sin_cache, slots, cache
++    )
++
++    assert result is q
++    torch.testing.assert_close(q, expected_q, rtol=3e-2, atol=3e-2)
++    torch.testing.assert_close(cache, expected_cache, rtol=2e-2, atol=2e-2)
++
++    # The third invocation exercises graph replay on backends which support
++    # it.  Updating position and slot tensors in place verifies that replay
++    # consumes current runtime data instead of embedding case-specific values.
++    new_positions = (positions + 1) % max_position
++    new_slots = (slots + block_size) % (num_blocks * block_size)
++    positions.copy_(new_positions)
++    slots.copy_(new_slots)
++    new_cos_sin = cos_sin_cache.index_select(0, new_positions.long())
++    expected_q = _rotate(expected_q, new_cos_sin)
++    replay_expected_k = _rotate(k, new_cos_sin).squeeze(1)
++    replay_combined = torch.cat((kv_c, replay_expected_k), dim=-1)
++
++    for token, slot in enumerate(new_slots.tolist()):
++        expected_cache[slot // block_size, slot % block_size] = replay_combined[token]
++
++    result = ntops.torch.mla_rope_cache(
++        q, k, kv_c, positions, cos_sin_cache, slots, cache
++    )
++
++    assert result is q
++    torch.testing.assert_close(q, expected_q, rtol=4e-2, atol=4e-2)
++    torch.testing.assert_close(cache, expected_cache, rtol=2e-2, atol=2e-2)
++
++
++@skip_if_cuda_not_available
++@pytest.mark.parametrize(
++    "dtype",
++    (
++        pytest.param(torch.bfloat16, id="bf16"),
++        pytest.param(torch.float16, id="fp16"),
++    ),
++)
++def test_mla_rope_cache_ignores_padding_slot(dtype):
++    torch.manual_seed(0)
++    tokens = 2
++    heads = 32
++    rope_dim = 64
++    kv_lora_rank = 512
++    max_position = 128
++    block_size = 16
++    num_blocks = 2
++    frequencies = 1.0 / (
++        10000.0
++        ** (torch.arange(0, rope_dim, 2, device="cuda").float() / rope_dim)
++    )
++    angles = torch.outer(
++        torch.arange(max_position, device="cuda").float(), frequencies
++    )
++    cos_sin_cache = torch.cat((angles.cos(), angles.sin()), dim=-1).to(dtype)
++    positions = torch.tensor((3, 7), device="cuda", dtype=torch.int32)
++    slots = torch.tensor((0, -1), device="cuda", dtype=torch.int32)
++    q = torch.randn(tokens, heads, rope_dim, device="cuda", dtype=dtype)
++    k = torch.randn(tokens, 1, rope_dim, device="cuda", dtype=dtype)
++    kv_c = torch.randn(tokens, kv_lora_rank, device="cuda", dtype=dtype)
++    cache = torch.zeros(
++        num_blocks,
++        block_size,
++        kv_lora_rank + rope_dim,
++        device="cuda",
++        dtype=dtype,
++    )
++
++    cos_sin = cos_sin_cache.index_select(0, positions.long())
++    expected_q = _rotate(q, cos_sin)
++    expected_k = _rotate(k, cos_sin).squeeze(1)
++    expected_cache = cache.clone()
++    expected_cache[0, 0] = torch.cat((kv_c[0], expected_k[0]), dim=-1)
++
++    ntops.torch.mla_rope_cache(
++        q, k, kv_c, positions, cos_sin_cache, slots, cache
++    )
++
++    torch.testing.assert_close(q, expected_q, rtol=2e-2, atol=2e-2)
++    torch.testing.assert_close(cache, expected_cache, rtol=2e-2, atol=2e-2)

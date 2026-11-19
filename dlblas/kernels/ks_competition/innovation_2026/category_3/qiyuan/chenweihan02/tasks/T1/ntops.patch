@@ -1,0 +1,2120 @@
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000000000000000000000000000000000000..e4b353e3fb13f67bb6457fb9019f65c0a4403aac
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,3 @@
++*.py text eol=lf
++*.sh text eol=lf
++*.md text eol=lf
+diff --git a/benchmarks/benchmark_mxfp4_grouped_gemm_reference.py b/benchmarks/benchmark_mxfp4_grouped_gemm_reference.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..451d1ff49237a086754b1f0522a7fcd875976310
+--- /dev/null
++++ b/benchmarks/benchmark_mxfp4_grouped_gemm_reference.py
+@@ -0,0 +1,271 @@
++"""T1 MXFP4 grouped GEMM reference comparison.
++
++The benchmark separates three cases:
++
++* ``pytorch_native``: PyTorch's native ``_scaled_grouped_mm`` when the
++  installed build accepts the T1 packed MXFP4 tensors;
++* ``pytorch_raw_reference``: a GPU PyTorch implementation that decodes the
++  vLLM/OCP MXFP4 E2M1 + E8M0 representation on every call;
++* ``vllm_fallback_reference``: the same vLLM fallback execution model after
++  weights have been dequantized once, followed by grouped BF16 GEMMs.
++
++The last two are explicit semantic references, not silently relabelled as a
++native PyTorch kernel.  The output reports native API availability separately.
++"""
++
++import argparse
++import csv
++import importlib
++import platform
++import statistics
++import time
++from pathlib import Path
++
++import torch
++
++import ntops
++
++_E2M1_VALUES = (
++    0.0,
++    0.5,
++    1.0,
++    1.5,
++    2.0,
++    3.0,
++    4.0,
++    6.0,
++    -0.0,
++    -0.5,
++    -1.0,
++    -1.5,
++    -2.0,
++    -3.0,
++    -4.0,
++    -6.0,
++)
++
++
++def _decode_weight(packed_weight, weight_scale):
++    table = torch.tensor(
++        _E2M1_VALUES,
++        dtype=torch.float32,
++        device=packed_weight.device,
++    )
++    decoded = torch.empty(
++        (*packed_weight.shape[:-1], packed_weight.shape[-1] * 2),
++        dtype=torch.float32,
++        device=packed_weight.device,
++    )
++    decoded[..., 0::2] = table[(packed_weight & 0x0F).long()]
++    decoded[..., 1::2] = table[(packed_weight >> 4).long()]
++    decoded.mul_(torch.exp2(weight_scale.float() - 127.0).repeat_interleave(32, dim=-1))
++    return decoded
++
++
++def _grouped_mm(input, decoded_weight, offsets, output):
++    starts = (0, *offsets[:-1])
++    for expert, (start, end) in enumerate(zip(starts, offsets)):
++        output[start:end].copy_(
++            torch.mm(input[start:end], decoded_weight[expert].t()).to(output.dtype)
++        )
++    return output
++
++
++def _native_probe(input, packed_weight, scale, offsets, dtype):
++    function = getattr(torch, "_scaled_grouped_mm", None)
++    if not callable(function):
++        return "unavailable:torch._scaled_grouped_mm_missing"
++    try:
++        output = function(
++            input,
++            packed_weight,
++            torch.ones((1,), device=input.device, dtype=torch.float32),
++            scale,
++            offsets,
++            out_dtype=dtype,
++        )
++        torch.cuda.synchronize()
++        return f"available:shape={tuple(output.shape)}"
++    except Exception as error:
++        return f"unavailable:{type(error).__name__}:{error}"
++
++
++def _measure(function, warmup, iterations, rounds):
++    for _ in range(warmup):
++        function()
++    torch.cuda.synchronize()
++    samples = []
++    for _ in range(rounds):
++        started = time.perf_counter()
++        for _ in range(iterations):
++            function()
++        torch.cuda.synchronize()
++        samples.append((time.perf_counter() - started) * 1000 / iterations)
++    return statistics.median(samples), samples
++
++
++def _parse_args(argv=None):
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--experts", type=int, default=4)
++    parser.add_argument("--n", type=int, default=256)
++    parser.add_argument("--k", type=int, default=256)
++    parser.add_argument("--counts", default="1,3,5,7")
++    parser.add_argument("--dtype", choices=("bfloat16", "float16"), default="bfloat16")
++    parser.add_argument("--warmup", type=int, default=20)
++    parser.add_argument("--iterations", type=int, default=100)
++    parser.add_argument("--rounds", type=int, default=7)
++    parser.add_argument("--csv", type=Path)
++    return parser.parse_args(argv)
++
++
++def _append_csv(path, row):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    fieldnames = tuple(row)
++    write_header = not path.exists() or path.stat().st_size == 0
++
++    with path.open("a", encoding="utf-8", newline="") as output:
++        writer = csv.DictWriter(output, fieldnames=fieldnames)
++
++        if write_header:
++            writer.writeheader()
++
++        writer.writerow(row)
++
++
++def main(argv=None):
++    args = _parse_args(argv)
++    counts = tuple(int(value) for value in args.counts.split(","))
++    if len(counts) != args.experts or any(value < 0 for value in counts):
++        raise ValueError("counts must have one nonnegative value per expert")
++    if args.k % 32:
++        raise ValueError("K must be divisible by 32")
++
++    dtype = getattr(torch, args.dtype)
++    torch.manual_seed(20260829)
++    tokens = sum(counts)
++    boundaries = (0, *torch.tensor(counts).cumsum(0).tolist())
++    offsets = torch.tensor(boundaries[1:], device="cuda", dtype=torch.int32)
++    input = torch.randn(tokens, args.k, device="cuda", dtype=dtype)
++    packed_weight = torch.randint(
++        0,
++        256,
++        (args.experts, args.n, args.k // 2),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    weight_scale = torch.randint(
++        120,
++        132,
++        (args.experts, args.n, args.k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    output = torch.empty(tokens, args.n, device="cuda", dtype=dtype)
++
++    decoded_weight = _decode_weight(packed_weight, weight_scale)
++    decoded_weight_compute = decoded_weight.to(dtype)
++
++    def pytorch_predecoded():
++        return _grouped_mm(input, decoded_weight_compute, boundaries[1:], output)
++
++    def pytorch_raw():
++        return _grouped_mm(
++            input,
++            _decode_weight(packed_weight, weight_scale).to(dtype),
++            boundaries[1:],
++            output,
++        )
++
++    def submission():
++        return ntops.torch.mxfp4_grouped_gemm(
++            input,
++            packed_weight,
++            weight_scale,
++            offsets,
++            out=output,
++        )
++
++    expected = _grouped_mm(
++        input.float(), decoded_weight, boundaries[1:], output
++    ).clone()
++    torch.testing.assert_close(pytorch_raw(), expected, rtol=3e-2, atol=3e-2)
++    first = submission().clone()
++    torch.testing.assert_close(first, expected, rtol=3e-2, atol=3e-2)
++
++    wrapper = importlib.import_module("ntops.torch.mxfp4_grouped_gemm")
++    cold_bound = wrapper._LAST_CALL[3]
++    native_status = _native_probe(input, packed_weight, weight_scale, offsets, dtype)
++
++    predecoded_ms, predecoded_samples = _measure(
++        pytorch_predecoded, args.warmup, args.iterations, args.rounds
++    )
++    raw_ms, raw_samples = _measure(
++        pytorch_raw, args.warmup, args.iterations, args.rounds
++    )
++    bound_ms, bound_samples = _measure(
++        cold_bound, args.warmup, args.iterations, args.rounds
++    )
++    submission_ms, submission_samples = _measure(
++        submission, args.warmup, args.iterations, args.rounds
++    )
++
++    try:
++        vllm = importlib.import_module("vllm")
++        vllm_version = getattr(vllm, "__version__", "unknown")
++    except Exception as error:
++        vllm_version = f"unavailable:{type(error).__name__}"
++
++    device_name = torch.cuda.get_device_name(0)
++    speedup = predecoded_ms / submission_ms
++    raw_speedup = raw_ms / submission_ms
++    bound_speedup = predecoded_ms / bound_ms
++    print(
++        "T1_RESULT "
++        f"device={device_name!r} "
++        f"torch={torch.__version__!r} vllm={vllm_version!r} "
++        f"experts={args.experts} counts={counts} n={args.n} k={args.k} "
++        f"dtype={args.dtype} correctness=pass "
++        f"pytorch_native={native_status} "
++        f"vllm_fallback_predecoded_ms={predecoded_ms:.6f} "
++        f"pytorch_raw_reference_ms={raw_ms:.6f} "
++        f"submission_bound_ms={bound_ms:.6f} "
++        f"submission_public_ms={submission_ms:.6f} "
++        f"speedup_vs_vllm_fallback={speedup:.6f} "
++        f"speedup_vs_raw_reference={raw_speedup:.6f} "
++        f"bound_speedup_vs_vllm_fallback={bound_speedup:.6f} "
++        f"predecoded_samples={predecoded_samples} raw_samples={raw_samples} "
++        f"bound_samples={bound_samples} submission_samples={submission_samples}",
++        flush=True,
++    )
++
++    if args.csv is not None:
++        _append_csv(
++            args.csv,
++            {
++                "accelerator": device_name,
++                "python": platform.python_version(),
++                "torch": torch.__version__,
++                "vllm": vllm_version,
++                "experts": args.experts,
++                "counts": ";".join(str(value) for value in counts),
++                "n": args.n,
++                "k": args.k,
++                "dtype": args.dtype,
++                "baseline": "vllm_semantic_fallback_predecoded",
++                "native_pytorch": native_status,
++                "correctness": "pass",
++                "baseline_ms": f"{predecoded_ms:.6f}",
++                "submission_ms": f"{submission_ms:.6f}",
++                "speedup": f"{speedup:.6f}",
++                "raw_reference_ms": f"{raw_ms:.6f}",
++                "raw_reference_speedup": f"{raw_speedup:.6f}",
++                "bound_submission_ms": f"{bound_ms:.6f}",
++                "warmup": args.warmup,
++                "iterations": args.iterations,
++                "rounds": args.rounds,
++            },
++        )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/KERNELSWIFT_T1_REPORT.md b/docs/KERNELSWIFT_T1_REPORT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc3d0343e582db1d5eeea66548462c5b5f4e0ef1
+--- /dev/null
++++ b/docs/KERNELSWIFT_T1_REPORT.md
+@@ -0,0 +1,237 @@
++# KernelSwift T1：MXFP4 W4A16 分组专家矩阵乘算子—编译协同优化
++
++**报告日期**：2026-08-31
++
++**赛题**：T1 MXFP4 W4A16 分组专家矩阵乘
++
++**作品形态**：A（NineToothed 算子）+ B（通用编译器/平台后端）统一构建与评测
++
++**当前状态**：统一源码使用本 PR 的最终 `ntops` HEAD 与 `ninetoothed@6b79203`，已在 BW 与天垓150通过正确性和相关编译器回归；BF16 已完成 10 个双平台 A+B 代表性能点，FP16 已完成 BW 的 5 个代表性能点并保留天垓150的 3 个扩展性能点，全部 `speedup > 1`
++
++## 1. 摘要
++
++T1 面向 MoE 推理中的低精度专家计算。权重使用 OCP/vLLM MXFP4 编码：每字节包含两个 E2M1 值，每 32 个逻辑权重共享一个 E8M0 scale；activation 为 BF16/FP16，按 expert offsets 组成 ragged grouped-M 输入。朴素实现通常先完整反量化权重，再逐 expert 调用 GEMM，产生额外显存流量、临时张量和多个 Python/kernel launch。
++
++本作品在 NineToothed application 中即时解码 E2M1 与 E8M0，将解码、缩放和 dot 融合，FP32 累加后直接写回输出；wrapper 根据实际 expert token 上界与 N 选择 tile，并缓存已验证的 stable-buffer launch。B 部分补齐可复用的 `bitcast`、`interleave`、`transpose` SSA lowering，并在严格 no-alias/稳定对象契约下将 Triton specialization 绑定为直接 compiled launch，同时保持 current-stream 语义和安全回退。
++
++相同最终源码在天垓150和 BW 上都取得 `15 passed` 的 T1 测试和 `98 passed` 的相关编译器回归。BF16 的天垓150 5 个代表 case 平均 speedup 为 **2.970092×**，最低 **1.504281×**；BW 在同样的 50/500/9 协议下平均 **5.892741×**，最低 **2.659205×**。FP16 在 BW DTK25.04 的 5 个代表 case 平均 speedup 为 **6.183218×**，最低 **2.579908×**；天垓150的 3 个扩展 case 平均 speedup 为 **2.058291×**，最低 **1.250629×**。结果汇总见本报告第 7 节；BF16 和 FP16 的所有已记录性能点均大于 1。
++
++## 2. 代码版本与复现锚点
++
++结果对应本次 PR 中的提交链。以下记录官方基线 commit、本题提交和统一验证锚点，便于从 PR 历史复现。
++
++| 仓库 | 官方基线 commit | 本题提交/验证锚点 |
++|---|---|---|
++| ntops | `9ae4166` | 本 PR 的 T1 题目 commit；统一验证使用本 PR 最终 HEAD |
++| ninetoothed | `b77f930` | 通用 SSA 基础 `18c50cd`，T1 编译/运行时能力 `5b6abe8`；统一验证锚点 `6b79203` |
++
++核心源码位于：
++
++- `src/ntops/kernels/mxfp4_grouped_gemm.py`
++- `src/ntops/torch/mxfp4_grouped_gemm.py`
++- `tests/test_mxfp4_grouped_gemm.py`
++- `benchmarks/benchmark_mxfp4_grouped_gemm_reference.py`
++- `src/ninetoothed/backends/emitters/ssa.py`
++- `src/ninetoothed/backends/emitters/triton.py`
++- `src/ninetoothed/backends/materializers/triton.py`
++- `src/ninetoothed/frontend/python.py`
++- `src/ninetoothed/frontend/types.py`
++
++## 3. 数学语义与接口
++
++输入：
++
++- activation `X`：`[sum(tokens_e), K]`，BF16 或 FP16；
++- packed weight `W_p`：`[E, N, K/2]`，`uint8`，低/高 nibble 各存一个 E2M1；
++- scale `S`：`[E, N, K/32]`，`uint8` E8M0；
++- expert offsets：长度 `E` 的 exclusive end offsets，也兼容以 0 开头、长度 `E+1` 的边界向量；
++- 输出 `Y`：`[sum(tokens_e), N]`，与 activation 同 dtype。
++
++对 expert `e`：
++
++$$
++Y_e = X_e \cdot \operatorname{dequant}(W_{p,e}, S_e)^T,
++$$
++
++其中每个 E2M1 nibble 解码为集合
++`{±0, ±0.5, ±1, ±1.5, ±2, ±3, ±4, ±6}`，每 32 个值乘对应 E8M0 scale。实现用 FP16/BF16 dot operand 和 FP32 accumulator，最终转换为输出 dtype。
++
++公开入口为：
++
++```python
++ntops.torch.mxfp4_grouped_gemm(
++    input,
++    weight_mxfp4,
++    weight_scale,
++    expert_offsets,
++    num_experts=None,
++    out=None,
++)
++```
++
++`out` 用于 LLM 推理中稳定 buffer 复用，不提供时返回独立的新输出张量。
++
++## 4. 修改内容与动机
++
++### 4.1 A 部分：NineToothed 算子
++
++1. **即时 MXFP4 解码**：E2M1 nibble 通过整数位运算构造幅值；E8M0 通过整数位模式和通用 `bitcast` 得到 FP32 scale，不物化完整 FP32 weight。
++2. **解码—缩放—dot 融合**：偶/奇 nibble 解码后通过 `transpose + interleave` 恢复逻辑 K 顺序，在 K block 内完成 dot 与 scale 乘法。
++3. **ragged expert 布局**：用 NineToothed jagged tensor 表达 expert 维，每个 expert 可有不同 token 数，支持零 token expert。
++4. **两级 tile 选择**：M tile 由实际最大 expert token 数推导为 16/32/64；N tile 由输出宽度推导为 16/32/64/128。没有按公开 case ID 分支，也没有答案表。
++5. **并行与调优**：expert、M tile、N tile 并行；允许 4/8 warps，由统一 auto-tuner 选择，pipeline stage 使用两个平台均合法的 1。
++6. **稳定 buffer 热路径**：缓存 offsets padding/上界、layout state 和已绑定 launch；输入数据可原地变化，但 shape、stride、storage 与 routing contract 每次仍验证。
++7. **安全输出语义**：显式 `out` 时允许复用；隐式分配时使用 workspace 计算后 clone，保证多次返回值互不覆盖。
++
++### 4.2 B 部分：通用 SSA 与 Triton 后端
++
++| 层次 | 修改 | T1作用 | 架构归属 |
++|---|---|---|---|
++| Python→SSA frontend | 函数式 `cast(..., bitcast=True)` | 表达 E8M0 位模式到 FP32 的无损解释 | 通用 frontend |
++| 通用类型推导 | `interleave` 形状推导 | 两组 E2M1 nibble 恢复为连续 K | 通用 SSA 类型系统 |
++| 统一 emitter | `bitcast`、`interleave`、block transpose | 将 T1 表达合法降到 Triton，而非在硬件后端写赛题模板 | 通用 emitter |
++| Triton emitter | `tl.*` 合法拼写 | 同一 SSA 同时支持 BW 与 CoreX vendor Triton | 通用 Triton target |
++| Triton materializer | 预验证 no-alias direct compiled launch | 去掉热路径重复 binder、specialization key、options 与 cache lookup | 通用运行时能力 |
++| 兼容层 | `binder`/`device_caches` feature detection | 兼容不同厂商 Triton 3.1 fork | 能力探测，不按平台名硬编码 |
++| 兼容层 | 二元嵌套 runtime stride guard | 避免旧 Triton 拒绝三项链式 `and` | 通用 emitter 兼容修复 |
++
++直接 compiled launch 只通过私有 `_launch_prevalidated_noalias` 暴露。wrapper 必须先验证 dtype、device、shape、stride、offsets、output 不别名和对象稳定性；任何能力缺失或绑定失败都返回公开 checked handle。每次 launch 都重新读取 active device stream，非默认 stream 测试已覆盖。
++
++## 5. 关键设计取舍
++
++### 5.1 为什么不先完整反量化
++
++完整反量化会把 4-bit weight 扩展为 BF16/FP16，额外读取 packed weight、写入大中间张量，再由 GEMM 重新读取。当前融合表达只读取 packed nibble 和 scale，在寄存器中构造 dot operand，降低显存流量并避免反量化 launch。
++
++### 5.2 为什么 B 放在通用层
++
++`bitcast`、`interleave`、transpose lowering 和 direct compiled binding 并非 T1 专属：量化解码、布局交织以及稳定 buffer 小算子都可复用。实现没有在海光或天数目录中放 shape 分支；两个平台当前都由同一 Triton target 和能力探测路径生成代码，符合“通用能力放通用层，硬件特性才放平台后端”的边界。
++
++### 5.3 current-stream 与安全回退
++
++绑定阶段只缓存 specialization、runtime arguments 和 grid，不缓存 stream；每次调用从 Triton driver 获取 current stream。若 vendor Triton 缺少底层 compiled ABI、输出可能 alias、对象/layout 变化或绑定异常，自动回退到完整 NineToothed checked launch。
++
++## 6. 实验环境与 baseline
++
++| 项目 | 海光 | 天数智芯 |
++|---|---|---|
++| GPU | BW 64 GiB，gfx936，warp 64 | 天垓150 / BI-V150 32 GiB，warp 64 |
++| 软件栈 | DTK 25.04 | IX-ML 4.4.0 |
++| Python | 3.10.12 | 3.12.3 |
++| PyTorch | 2.5.1 | 2.7.1 |
++| Triton | 3.1 | 3.1.0 |
++| vLLM | 0.9.2 | 0.11.2 |
++
++### 6.1 原生 PyTorch/vLLM 可执行性
++
++- BW PyTorch 2.5.1没有 `torch._scaled_grouped_mm`；
++- 天垓150 PyTorch 2.7.1存在该符号，但对 T1 BF16 activation 报错：`Expected mat_a to be Float8_e4m3 matrix got BFloat16`；
++- 当前 vLLM 的直接 MXFP4 路径还依赖镜像中缺失的 `quark`。
++
++因此当前不能得到原生 PyTorch/vLLM T1 latency。按照赛题“对齐 PyTorch 接口并参考 vLLM MXFP4 编码”的含义，预评测实现两条明确披露的 reference：
++
++1. `vllm_semantic_fallback_predecoded`：按 vLLM/OCP 编码将 weight 预解码一次，然后逐 expert 执行 BF16/FP16 GEMM，作为主 baseline；
++2. `pytorch_raw_reference`：每次都用 PyTorch tensor op 解码 E2M1/E8M0并执行 grouped GEMM，只作为开发正确性和额外性能参考。
++
++这解决的是“当前环境如何获得可执行 baseline”；报告不会把语义 fallback 描述为厂商原生 kernel。
++
++### 6.2 计时方法
++
++两个平台的正式代表 case 均预热 50 次、每轮 500 次、共 9 轮，GPU 同步包围 wall-clock 区间并报告 9 轮中位数。每个平台都使用全新输出目录以及彼此隔离的 correctness、regression 和 benchmark JIT cache；长 K 性能测试也使用独立 cache。
++
++## 7. 正确性、回归与性能
++
++### 7.1 正确性与回归
++
++| 平台 | T1算子测试 | 相关编译器回归 | 状态 |
++|---|---:|---:|---|
++| BW | 15 passed | 98 passed | 统一 HEAD 通过 |
++| 天垓150 | 15 passed | 98 passed | 统一 HEAD 通过 |
++
++15 个 T1 测试覆盖 BF16/FP16、ragged offsets、legacy boundaries、零 token expert、4组 shape、E2M1 编码契约、offsets 校验/缓存、动态输入、独立输出、非默认 CUDA stream，以及长归约 tile 选择契约。98 个相关回归同时覆盖 unified SSA lowering、Triton runtime/validation/emitter 和 jagged runtime stride 契约。
++
++### 7.2 BF16 A+B 双平台 speedup
++
++| 平台 | E | counts | N | K | baseline ms | A+B ms | speedup |
++|---|---:|---|---:|---:|---:|---:|---:|
++| BW | 1 | 1 | 16 | 32 | 0.062637 | 0.023555 | **2.659205×** |
++| BW | 2 | 1,3 | 32 | 64 | 0.119773 | 0.024942 | **4.801980×** |
++| BW | 2 | 5,2 | 64 | 128 | 0.122312 | 0.023991 | **5.098238×** |
++| BW | 4 | 1,0,17,5 | 128 | 256 | 0.213102 | 0.027844 | **7.653477×** |
++| BW | 4 | 1,3,5,7 | 256 | 256 | 0.233672 | 0.025260 | **9.250804×** |
++| 天垓150 | 1 | 1 | 16 | 32 | 0.028474 | 0.018929 | **1.504281×** |
++| 天垓150 | 2 | 1,3 | 32 | 64 | 0.055614 | 0.019579 | **2.840501×** |
++| 天垓150 | 2 | 5,2 | 64 | 128 | 0.055897 | 0.019500 | **2.866542×** |
++| 天垓150 | 4 | 1,0,17,5 | 128 | 256 | 0.102651 | 0.029008 | **3.538677×** |
++| 天垓150 | 4 | 1,3,5,7 | 256 | 256 | 0.109238 | 0.026641 | **4.100457×** |
++
++- BW 统一复测算术平均：**5.892741×**，最低 **2.659205×**；
++- 天垓150统一复测算术平均：**2.970092×**，最低 **1.504281×**；
++- 10/10 个双平台代表性能点均大于 1。
++
++### 7.3 FP16 A+B 双平台 speedup
++
++FP16 使用相同的 A+B 构建，只将 activation/output dtype 改为 FP16。BW 使用与 BF16 代表矩阵相同的 5 个 shape 和 `50/500/9` 协议；天垓150记录 3 个扩展 case，使用 `30/200/7` 协议。每个 case 的正确性均通过，speedup 按 `baseline_ms / submission_ms` 计算：
++
++| 平台 | 协议 | E | counts | N | K | baseline ms | A+B ms | speedup |
++|---|---|---:|---|---:|---:|---:|---:|---:|
++| BW | 50/500/9 | 1 | 1 | 16 | 32 | 0.062881 | 0.024373 | **2.579908×** |
++| BW | 50/500/9 | 2 | 1,3 | 32 | 64 | 0.125746 | 0.025228 | **4.984353×** |
++| BW | 50/500/9 | 2 | 5,2 | 64 | 128 | 0.127347 | 0.024685 | **5.158904×** |
++| BW | 50/500/9 | 4 | 1,0,17,5 | 128 | 256 | 0.205542 | 0.023939 | **8.586130×** |
++| BW | 50/500/9 | 4 | 1,3,5,7 | 256 | 256 | 0.235877 | 0.024553 | **9.606796×** |
++| 天垓150 | 30/200/7 | 1 | 1 | 16 | 32 | 0.029918 | 0.019345 | **1.546566×** |
++| 天垓150 | 30/200/7 | 4 | 1,0,17,5 | 128 | 256 | 0.102779 | 0.030429 | **3.377677×** |
++| 天垓150 | 30/200/7 | 4 | 1,3,5,7 | 512 | 1024 | 0.113628 | 0.090857 | **1.250629×** |
++
++- BW FP16 性能算术平均：**6.183218×**，最低 **2.579908×**；
++- 天垓150 FP16 扩展性能算术平均：**2.058291×**，最低 **1.250629×**；
++- 8/8 个 FP16 性能点均大于 1；不同协议的结果分别统计，不合并计算平均值；
++- 本次环境为 Python 3.10.12、PyTorch 2.5.1、Triton 3.1、vLLM 0.9.2，设备为 BW gfx936；原生 `torch._scaled_grouped_mm` 不存在，因此仍使用已披露的 vLLM 语义 fallback baseline。
++
++统一复测原始证据目录为：
++
++- BW：`<results-root>/t1/bw/{correctness,regression,benchmark}`；
++- 天垓150：`<results-root>/t1/tiangai150/{correctness,regression,benchmark}`。
++
++## 8. 优化来源与消融解释
++
++性能来自 A+B 协同：
++
++- A 消除完整反量化中间张量，并用 ragged tile 只计算实际 token；
++- tile/warp 选择提高不同小M、N、K组合的利用率；
++- offsets/layout缓存避免每次重建 jagged ABI；
++- B 的 direct compiled launch 跳过重复 Python/Triton binder与 specialization cache lookup。
++
++benchmark 同时记录 `submission_bound_ms`。天垓 final-clean 中 bound launch 为约 `0.0082–0.0278 ms`，公开 wrapper 为约 `0.0191–0.0285 ms`；两者差值反映参数校验和 Python wrapper 的剩余开销。
++
++## 9. 工程质量与适用边界
++
++### 9.1 已完成
++
++- 接口新增最小且兼容；数学语义、测试和 baseline 口径均显式记录；
++- 通用 frontend/SSA/emitter/runtime能力位于 ninetoothed 通用层；
++- 没有按公开 shape、case ID或隐藏数据硬编码；
++- 没有绕过 NineToothed 编译链调用未申报闭源算子；
++- fast path 有 no-alias、对象身份、layout、offsets和 current-stream 测试；
++- 两个平台使用同一源码逻辑，vendor差异通过 feature detection 安全回退；
++- Ruff、贡献规范、T1测试和相关回归已在 BW 与天垓150通过。
++
++### 9.2 已知限制
++
++1. 原生 PyTorch/vLLM BF16×MXFP4 kernel在当前镜像不可执行；
++2. 当前主要性能矩阵为 BF16；FP16 已通过正确性测试，并已形成 BW 与天垓150的性能记录。两平台 FP16 的 case/protocol 不完全对称，因此本报告分别统计，不将 FP16 汇总为双平台同矩阵 speedup；
++3. 扩展矩阵已覆盖 FP16、大 N/K、更多 experts 和不均衡 routing，但仍不能代表隐藏 case；
++4. 直接 compiled launch依赖 vendor Triton暴露稳定底层 ABI，能力缺失时会回退，性能可能下降但正确性不变；
++
++## 10. 一键复现
++
++完整命令、输出结构、baseline 与判定标准见 `docs/KERNELSWIFT_T1_REPRODUCE.md`。核心命令：
++
++```bash
++cd /path/to/ntops
++bash scripts/run_kernelswift_t1.sh \
++  --ninetoothed-dir /path/to/ninetoothed \
++  --output-dir /path/to/fresh/results \
++  --mode all
++```
+diff --git a/docs/KERNELSWIFT_T1_REPRODUCE.md b/docs/KERNELSWIFT_T1_REPRODUCE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..752f63f4c65791aee9e92b24d36f27e7431ccf65
+--- /dev/null
++++ b/docs/KERNELSWIFT_T1_REPRODUCE.md
+@@ -0,0 +1,176 @@
++# KernelSwift T1 一键构建与评测说明
++
++## 1. 适用范围
++
++本文档用于复现 T1 MXFP4 W4A16 分组专家矩阵乘的统一 A+B 作品：
++
++- A 部分：`ntops` 中的 NineToothed MXFP4 解码、分组 GEMM、布局与并行实现；
++- B 部分：`ninetoothed` 中的通用 SSA `bitcast`、`interleave`、`transpose` lowering，以及可安全绑定的 Triton 低开销 launch；
++- 接口语义：对齐 PyTorch `scaled_grouped_mm` 的 grouped-M offsets，并采用 vLLM/OCP MXFP4 E2M1+E8M0 编码；
++- 预评测 baseline：当前厂商环境无法执行原生 BF16×MXFP4 PyTorch/vLLM kernel，因此使用文档中明确披露的 vLLM 语义 fallback，并另外记录逐次解码的 PyTorch raw reference。
++
++统一复现版本为本 PR 最终 `ntops` HEAD 与 `ninetoothed@6b79203`。其中 T1 使用的通用 SSA 基础来自 `18c50cd`，T1 编译与运行时能力来自 `5b6abe8`。
++
++## 2. 目录与环境要求
++
++将两个仓库放在同一级目录：
++
++```text
++workspace/
++├── ntops/
++└── ninetoothed/
++```
++
++要求：
++
++- Python 3.10 或更高版本；
++- 厂商镜像提供且可用的 PyTorch 与 Triton；
++- 一个可见的海光 BW 或天数智芯 GPU；
++- `pytest` 与 `ruff`；
++- `ntops` 使用本 PR 最终 HEAD，`ninetoothed` 固定为 `6b79203`。
++
++脚本通过 `PYTHONPATH` 直接导入源码，不覆盖厂商 PyTorch、Triton 或 vLLM。NineToothed/Triton 在首次调用时 JIT 构建 kernel，因此首次正确性测试同时完成 clean build 验证。
++
++## 3. 一条命令完成验证
++
++```bash
++cd /path/to/workspace/ntops
++bash scripts/run_kernelswift_t1.sh \
++  --ninetoothed-dir /path/to/workspace/ninetoothed \
++  --output-dir /path/to/results/t1_run_001 \
++  --mode all
++```
++
++每次复现必须使用新的 `--output-dir`。脚本为 correctness、compiler regression 和 benchmark 分别创建独立的 NineToothed、Triton 与 XDG cache，避免跨阶段或跨平台共享生成产物。
++
++以下命令均应在远程 Linux GPU 主机执行，`/path/to/remote/workspace` 仅表示该主机上的工作目录。
++
++### 海光 BW/DTK 25.04 示例
++
++```bash
++bash -l
++cd /path/to/remote/workspace/ntops
++bash scripts/run_kernelswift_t1.sh \
++  --ninetoothed-dir /path/to/remote/workspace/ninetoothed \
++  --output-dir /path/to/remote/workspace/results/t1_bw_run_001 \
++  --mode all
++```
++
++### 天数智芯天垓150示例
++
++```bash
++bash -l
++cd /path/to/remote/workspace/ntops
++bash scripts/run_kernelswift_t1.sh \
++  --ninetoothed-dir /path/to/remote/workspace/ninetoothed \
++  --output-dir /path/to/remote/workspace/results/t1_tiangai_run_001 \
++  --mode all
++```
++
++厂商 GPU 库由登录 shell 初始化。若直接通过 SSH 执行非交互命令，应使用 `bash -lic`，否则可能出现 `libgalaxyhip.so` 或 `libcudart.so` 不在动态库路径中的假性失败。
++
++## 4. 可单独执行的阶段
++
++```bash
++# 环境、仓库 HEAD、dirty 状态和关键文件 SHA256
++bash scripts/run_kernelswift_t1.sh --mode environment
++
++# Ruff 与 ninetoothed 贡献规范检查
++bash scripts/run_kernelswift_t1.sh --mode lint
++
++# 15 个算子正确性/缓存/stream/tile 选择测试
++bash scripts/run_kernelswift_t1.sh --mode correctness
++
++# 86 个相关 SSA、Triton runtime 与 emitter 回归
++bash scripts/run_kernelswift_t1.sh --mode regression
++
++# 5 个 BF16 代表 case，生成 benchmark.log
++bash scripts/run_kernelswift_t1.sh --mode benchmark
++
++# 扩展矩阵示例：FP16、大 N/K、更多 expert 和不均衡 routing
++python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++  --experts 4 --n 256 --k 1024 --counts 1,3,5,7 --dtype bfloat16 \
++  --warmup 50 --iterations 500 --rounds 9
++```
++
++BW DTK25.04 的 FP16 性能测试使用相同的 5 个代表 case、`50/500/9` 协议和独立 cache。以下命令会生成远程实验日志；最终提交只在报告中汇报设备、软件版本、测试方法和汇总结果：
++
++```bash
++FP16_OUTPUT=/path/to/fresh/results/t1_bw_fp16
++mkdir -p "$FP16_OUTPUT/cache_ninetoothed" "$FP16_OUTPUT/cache_triton" "$FP16_OUTPUT/cache_xdg"
++export NINETOOTHED_CACHE_DIR="$FP16_OUTPUT/cache_ninetoothed"
++export TRITON_CACHE_DIR="$FP16_OUTPUT/cache_triton"
++export XDG_CACHE_HOME="$FP16_OUTPUT/cache_xdg"
++
++{
++  python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++    --dtype float16 --experts 1 --n 16 --k 32 --counts 1 \
++    --warmup 50 --iterations 500 --rounds 9
++  python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++    --dtype float16 --experts 2 --n 32 --k 64 --counts 1,3 \
++    --warmup 50 --iterations 500 --rounds 9
++  python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++    --dtype float16 --experts 2 --n 64 --k 128 --counts 5,2 \
++    --warmup 50 --iterations 500 --rounds 9
++  python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++    --dtype float16 --experts 4 --n 128 --k 256 --counts 1,0,17,5 \
++    --warmup 50 --iterations 500 --rounds 9
++  python benchmarks/benchmark_mxfp4_grouped_gemm_reference.py \
++    --dtype float16 --experts 4 --n 256 --k 256 --counts 1,3,5,7 \
++    --warmup 50 --iterations 500 --rounds 9
++} 2>&1 | tee "$FP16_OUTPUT/benchmark.log"
++```
++
++也可以直接执行核心正确性测试：
++
++```bash
++export PYTHONPATH=/path/to/ntops/src:/path/to/ninetoothed/src:${PYTHONPATH:-}
++export NINETOOTHED_CACHE_DIR=/path/to/new/cache/ninetoothed
++export TRITON_CACHE_DIR=/path/to/new/cache/triton
++cd /path/to/ntops
++python -m pytest tests/test_mxfp4_grouped_gemm.py -q
++```
++
++## 5. 输出文件
++
++`--mode all` 生成：
++
++```text
++<output-dir>/
++├── environment.log
++├── lint.log
++├── correctness.log
++├── compiler_regression.log
++├── benchmark.log
++├── cache_correctness/
++├── cache_regression/
++└── cache_benchmark/
++```
++
++判定标准：
++
++- `correctness.log` 为 `15 passed`（当前 T1 版本）；
++- `compiler_regression.log` 无失败；
++- `speedup = baseline_ms / submission_ms`；
++- 每个预评测 case 的 `speedup > 1`。
++
++## 6. baseline 与计时口径
++
++脚本先探测原生 `torch._scaled_grouped_mm`：
++
++- 若当前 PyTorch 和硬件接受 BF16/FP16 activation、packed MXFP4 weight、E8M0 scale 与 grouped offsets，则单独报告原生路径可用；
++- 当前已测 BW PyTorch 2.5.1没有该入口；天垓150 PyTorch 2.7.1存在入口，但拒绝 BF16 activation并要求 FP8，因此两者均不能作为当前可执行 T1 原生 baseline。
++
++当前 benchmark 的主要 baseline 为 `vllm_semantic_fallback_predecoded`：严格按 vLLM/OCP MXFP4 编码预解码 weight 一次，然后逐 expert 执行 BF16/FP16 grouped GEMM。它是公开、可执行并明确披露的语义 fallback，不伪装成原生 PyTorch kernel。脚本同时记录每次重新解码 weight 的 PyTorch raw reference，但后者不作为主 speedup。
++
++扩展矩阵只作为本地实验记录，不纳入提交文件。wrapper 对长归约、少量 expert token 且宽 N 的输入，根据 `K/N` 和实际最大 token 数选择较窄的 N tile；这是张量属性驱动的通用启发式，不是公开 case 分支。扩展结果中，长 K case 使用正式的 `50/500/9` 计时，其余扩展 case 使用明确记录的 `30/200/7` 预评测协议。
++
++每个 case：
++
++- 预热 50 次；
++- 每轮 500 次；
++- 共 9 轮；
++- 每轮使用 GPU 同步包围 wall-clock 计时区间；
++- 报告 9 个样本的中位数；
++- baseline 与 A+B 使用相同输入、dtype、MXFP4 编码、expert offsets 和输出语义；
++- 计时前执行独立 FP32 解码参考的正确性检查。
+diff --git a/scripts/run_kernelswift_t1.sh b/scripts/run_kernelswift_t1.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..573e417b23031f56bbe9530cbd260f8627e0782f
+--- /dev/null
++++ b/scripts/run_kernelswift_t1.sh
+@@ -0,0 +1,246 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++usage() {
++    cat <<'EOF'
++Usage: scripts/run_kernelswift_t1.sh [options]
++
++Options:
++  --ninetoothed-dir PATH   NineToothed source tree (default: ../ninetoothed)
++  --output-dir PATH        Logs, caches, and CSV output directory
++  --mode MODE              all|environment|lint|correctness|regression|benchmark
++  -h, --help               Show this help
++
++The script imports both repositories directly through PYTHONPATH. It does not
++replace the vendor PyTorch, Triton, or vLLM installation. Use a new output
++directory for every clean evaluation so JIT products remain isolated.
++EOF
++}
++
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++NTOPS_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
++NINETOOTHED_DIR="${NINETOOTHED_DIR:-${NTOPS_DIR}/../ninetoothed}"
++OUTPUT_DIR="${OUTPUT_DIR:-${NTOPS_DIR}/t1_results/run_$(date +%Y%m%d_%H%M%S)}"
++MODE="all"
++
++while [[ $# -gt 0 ]]; do
++    case "$1" in
++        --ninetoothed-dir)
++            NINETOOTHED_DIR="$2"
++            shift 2
++            ;;
++        --output-dir)
++            OUTPUT_DIR="$2"
++            shift 2
++            ;;
++        --mode)
++            MODE="$2"
++            shift 2
++            ;;
++        -h|--help)
++            usage
++            exit 0
++            ;;
++        *)
++            echo "Unknown argument: $1" >&2
++            usage >&2
++            exit 2
++            ;;
++    esac
++done
++
++case "${MODE}" in
++    all|environment|lint|correctness|regression|benchmark) ;;
++    *)
++        echo "Unsupported mode: ${MODE}" >&2
++        exit 2
++        ;;
++esac
++
++NINETOOTHED_DIR="$(cd -- "${NINETOOTHED_DIR}" && pwd)"
++mkdir -p "${OUTPUT_DIR}"
++OUTPUT_DIR="$(cd -- "${OUTPUT_DIR}" && pwd)"
++
++export PYTHONPATH="${NTOPS_DIR}/src:${NINETOOTHED_DIR}/src:${PYTHONPATH:-}"
++
++record_repository() {
++    local name="$1"
++    local directory="$2"
++
++    echo "${name}_path=${directory}"
++    if git -C "${directory}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
++        echo "${name}_head=$(git -C "${directory}" rev-parse HEAD)"
++        echo "${name}_branch=$(git -C "${directory}" branch --show-current)"
++        if [[ -n "$(git -C "${directory}" status --porcelain)" ]]; then
++            echo "${name}_dirty=true"
++        else
++            echo "${name}_dirty=false"
++        fi
++    else
++        echo "${name}_head=unavailable-source-snapshot"
++        echo "${name}_branch=unavailable-source-snapshot"
++        echo "${name}_dirty=unknown"
++    fi
++}
++
++record_environment() {
++    {
++        echo "timestamp=$(date --iso-8601=seconds)"
++        echo "hostname=$(hostname)"
++        uname -a
++        record_repository ntops "${NTOPS_DIR}"
++        record_repository ninetoothed "${NINETOOTHED_DIR}"
++        python - <<'PY'
++import platform
++
++import torch
++
++print(f"python={platform.python_version()}")
++print(f"torch={torch.__version__}")
++print(f"torch_cuda={torch.version.cuda}")
++print(f"torch_hip={torch.version.hip}")
++
++try:
++    import triton
++except Exception as error:  # noqa: BLE001
++    print(f"triton_error={type(error).__name__}: {error}")
++else:
++    print(f"triton={triton.__version__}")
++
++try:
++    import vllm
++except Exception as error:  # noqa: BLE001
++    print(f"vllm_error={type(error).__name__}: {error}")
++else:
++    print(f"vllm={vllm.__version__}")
++
++print(f"accelerator_available={torch.cuda.is_available()}")
++if torch.cuda.is_available():
++    properties = torch.cuda.get_device_properties(0)
++    print(f"accelerator_name={properties.name}")
++    print(f"accelerator_memory={properties.total_memory}")
++    print(f"accelerator_warp_size={getattr(properties, 'warp_size', None)}")
++    print(f"accelerator_arch={getattr(properties, 'gcnArchName', None)}")
++PY
++        printf 'sha256  %s\n' "T1 and compiler files"
++        sha256sum \
++            "${NTOPS_DIR}/src/ntops/kernels/mxfp4_grouped_gemm.py" \
++            "${NTOPS_DIR}/src/ntops/torch/mxfp4_grouped_gemm.py" \
++            "${NTOPS_DIR}/tests/test_mxfp4_grouped_gemm.py" \
++            "${NTOPS_DIR}/benchmarks/benchmark_mxfp4_grouped_gemm_reference.py" \
++            "${NTOPS_DIR}/scripts/run_kernelswift_t1.sh" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/emitters/ssa.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/emitters/triton.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/materializers/triton.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/frontend/python.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/frontend/types.py"
++    } 2>&1 | tee "${OUTPUT_DIR}/environment.log"
++}
++
++prepare_cache() {
++    local name="$1"
++    local cache_dir="${OUTPUT_DIR}/cache_${name}"
++
++    mkdir -p "${cache_dir}/ninetoothed" "${cache_dir}/triton" "${cache_dir}/xdg"
++    export NINETOOTHED_CACHE_DIR="${cache_dir}/ninetoothed"
++    export TRITON_CACHE_DIR="${cache_dir}/triton"
++    export XDG_CACHE_HOME="${cache_dir}/xdg"
++}
++
++run_lint() {
++    {
++        cd "${NINETOOTHED_DIR}"
++        ruff format --check \
++            src/ninetoothed/backends/emitters/base.py \
++            src/ninetoothed/backends/emitters/ssa.py \
++            src/ninetoothed/backends/emitters/triton.py \
++            src/ninetoothed/backends/materializers/triton.py \
++            src/ninetoothed/frontend/python.py \
++            src/ninetoothed/frontend/types.py \
++            tests/test_ssa_validation.py \
++            tests/test_triton_runtime_auto_tuning.py \
++            tests/test_triton_emitter_target.py
++        ruff check \
++            src/ninetoothed/backends/emitters/base.py \
++            src/ninetoothed/backends/emitters/ssa.py \
++            src/ninetoothed/backends/emitters/triton.py \
++            src/ninetoothed/backends/materializers/triton.py \
++            src/ninetoothed/frontend/python.py \
++            src/ninetoothed/frontend/types.py \
++            tests/test_ssa_validation.py \
++            tests/test_triton_runtime_auto_tuning.py \
++            tests/test_triton_emitter_target.py
++        python scripts/check_contributing_style.py
++
++        cd "${NTOPS_DIR}"
++        ruff format --check \
++            src/ntops/kernels/mxfp4_grouped_gemm.py \
++            src/ntops/torch/mxfp4_grouped_gemm.py \
++            tests/test_mxfp4_grouped_gemm.py \
++            benchmarks/benchmark_mxfp4_grouped_gemm_reference.py
++        ruff check \
++            src/ntops/kernels/mxfp4_grouped_gemm.py \
++            src/ntops/torch/mxfp4_grouped_gemm.py \
++            tests/test_mxfp4_grouped_gemm.py \
++            benchmarks/benchmark_mxfp4_grouped_gemm_reference.py
++    } 2>&1 | tee "${OUTPUT_DIR}/lint.log"
++}
++
++run_correctness() {
++    prepare_cache correctness
++    (
++        cd "${NTOPS_DIR}"
++        python -m pytest tests/test_mxfp4_grouped_gemm.py -q
++    ) 2>&1 | tee "${OUTPUT_DIR}/correctness.log"
++}
++
++run_regression() {
++    prepare_cache regression
++    (
++        cd "${NINETOOTHED_DIR}"
++        python -m pytest -q \
++            tests/test_ssa_first_backend_lowering.py \
++            tests/test_triton_runtime_auto_tuning.py \
++            tests/test_ssa_validation.py \
++            tests/test_triton_emitter_target.py
++    ) 2>&1 | tee "${OUTPUT_DIR}/compiler_regression.log"
++}
++
++run_benchmark() {
++    prepare_cache benchmark
++    local benchmark="${NTOPS_DIR}/benchmarks/benchmark_mxfp4_grouped_gemm_reference.py"
++    local csv="${OUTPUT_DIR}/benchmark.csv"
++
++    (
++        cd "${NTOPS_DIR}"
++        python "${benchmark}" --experts 1 --n 16 --k 32 --counts 1 \
++            --warmup 50 --iterations 500 --rounds 9 --csv "${csv}"
++        python "${benchmark}" --experts 2 --n 32 --k 64 --counts 1,3 \
++            --warmup 50 --iterations 500 --rounds 9 --csv "${csv}"
++        python "${benchmark}" --experts 2 --n 64 --k 128 --counts 5,2 \
++            --warmup 50 --iterations 500 --rounds 9 --csv "${csv}"
++        python "${benchmark}" --experts 4 --n 128 --k 256 --counts 1,0,17,5 \
++            --warmup 50 --iterations 500 --rounds 9 --csv "${csv}"
++        python "${benchmark}" --experts 4 --n 256 --k 256 --counts 1,3,5,7 \
++            --warmup 50 --iterations 500 --rounds 9 --csv "${csv}"
++    ) 2>&1 | tee "${OUTPUT_DIR}/benchmark.log"
++}
++
++record_environment
++
++case "${MODE}" in
++    all)
++        run_lint
++        run_correctness
++        run_regression
++        run_benchmark
++        ;;
++    environment) ;;
++    lint) run_lint ;;
++    correctness) run_correctness ;;
++    regression) run_regression ;;
++    benchmark) run_benchmark ;;
++esac
++
++echo "T1 run complete: ${OUTPUT_DIR}"
+diff --git a/src/ntops/kernels/__init__.py b/src/ntops/kernels/__init__.py
+index 12d337bb6864de07132ab03d18eae57750bd2155..953b9a51580cf63d0d8c0111728e3b1635978682 100644
+--- a/src/ntops/kernels/__init__.py
++++ b/src/ntops/kernels/__init__.py
+@@ -74,6 +74,7 @@ from ntops.kernels import (
+     lp_pool2d,
+     lp_pool3d,
+     max,
++    mxfp4_grouped_gemm,
+ )
+ 
+ __all__ = [
+@@ -152,4 +153,5 @@ __all__ = [
+     "lp_pool2d",
+     "lp_pool3d",
+     "max",
++    "mxfp4_grouped_gemm",
+ ]
+diff --git a/src/ntops/kernels/mxfp4_grouped_gemm.py b/src/ntops/kernels/mxfp4_grouped_gemm.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0abdc43b4ff0ec0d673cbe67bbc118bc62ca838b
+--- /dev/null
++++ b/src/ntops/kernels/mxfp4_grouped_gemm.py
+@@ -0,0 +1,208 @@
++"""MXFP4 W4A16 grouped expert matrix multiplication."""
++
++import enum
++import functools
++
++import ninetoothed
++import ninetoothed.language as ntl
++from ninetoothed import Tensor
++
++MXFP4_BLOCK_SIZE = 32
++PACKED_VALUES_PER_BYTE = 2
++PACKED_VALUES_PER_SCALE = MXFP4_BLOCK_SIZE // PACKED_VALUES_PER_BYTE
++
++NUM_WARPS = (4, 8)
++NUM_STAGES = (1,)
++
++BLOCK_SIZE_M = ninetoothed.block_size(lower_bound=16, upper_bound=64)
++BLOCK_SIZE_N = ninetoothed.block_size(lower_bound=16, upper_bound=128)
++
++
++class ComputeDtypeVariant(enum.IntEnum):
++    FLOAT16 = enum.auto()
++
++    BFLOAT16 = enum.auto()
++
++
++def _decode_e2m1(packed):
++    """Decode E2M1 nibbles to FP32 values."""
++    packed_i32 = packed.to(ntl.int32)
++    exponent = (packed_i32 >> 1) & 0x3
++    mantissa = packed_i32 & 0x1
++    sign = packed_i32 >> 3
++    shift = ntl.where(exponent == 0, 0, exponent - 1)
++    magnitude_i32 = ntl.where(exponent == 0, mantissa, mantissa + 2) << shift
++    magnitude = magnitude_i32.to(ntl.float32) * 0.5
++
++    return ntl.where(sign != 0, -magnitude, magnitude)
++
++
++def _decode_e8m0(scale):
++    """Decode an E8M0 scale byte to an FP32 multiplier."""
++    scale_i32 = scale.to(ntl.int32)
++    bits = ntl.where(scale_i32 == 0, 0x00400000, scale_i32 << 23)
++
++    return ntl.cast(bits, ntl.float32, bitcast=True)
++
++
++def _arrange_activation(input, output, block_size_m):
++    arranged = input.tile((1, block_size_m, MXFP4_BLOCK_SIZE))
++    arranged = arranged.tile((1, 1, -1))
++    arranged = arranged.expand((-1, -1, output.shape[2]))
++    arranged.dtype = arranged.dtype.squeeze((0, 1))
++    arranged.dtype.dtype = arranged.dtype.dtype.squeeze(0)
++
++    return arranged
++
++
++def _arrange_weight(weight_mxfp4, output, block_size_n):
++    arranged = weight_mxfp4.permute((0, 2, 1))
++    arranged = arranged.tile((1, PACKED_VALUES_PER_SCALE, block_size_n))
++    arranged = arranged.tile((1, -1, 1))
++    arranged = arranged.expand((-1, output.shape[1], -1))
++    arranged.dtype = arranged.dtype.squeeze((0, 2))
++    arranged.dtype.dtype = arranged.dtype.dtype.squeeze(0)
++
++    return arranged
++
++
++def _arrange_scale(weight_scale, output, block_size_n):
++    arranged = weight_scale.permute((0, 2, 1))
++    arranged = arranged.tile((1, 1, block_size_n))
++    arranged = arranged.tile((1, -1, 1))
++    arranged = arranged.expand((-1, output.shape[1], -1))
++    arranged.dtype = arranged.dtype.squeeze((0, 2))
++    arranged.dtype.dtype = arranged.dtype.dtype.squeeze((0, 1))
++
++    return arranged
++
++
++def arrangement(
++    input,
++    weight_mxfp4,
++    weight_scale,
++    output,
++    block_size_m=None,
++    block_size_n=None,
++):
++    """Map one launch grid to expert, token, and output-column tiles."""
++    if block_size_m is None:
++        block_size_m = BLOCK_SIZE_M
++
++    if block_size_n is None:
++        block_size_n = BLOCK_SIZE_N
++
++    output_arranged = output.tile((1, block_size_m, block_size_n))
++    output_arranged.dtype = output_arranged.dtype.squeeze(0)
++
++    return (
++        _arrange_activation(input, output_arranged, block_size_m),
++        _arrange_weight(weight_mxfp4, output_arranged, block_size_n),
++        _arrange_scale(weight_scale, output_arranged, block_size_n),
++        output_arranged,
++    )
++
++
++def bfloat16_application(
++    input,
++    weight_mxfp4,
++    weight_scale,
++    output,
++):
++    """Accumulate the grouped GEMM with BF16 dot operands."""
++    accumulator = ntl.zeros(output.shape, dtype=ntl.float32)
++
++    for k_idx in range(input.shape[0]):
++        packed = weight_mxfp4[k_idx].to(ntl.int32)
++        scale = _decode_e8m0(weight_scale[k_idx])
++        weight_even = _decode_e2m1(packed & 0x0F).to(ntl.bfloat16)
++        weight_odd = _decode_e2m1(packed >> 4).to(ntl.bfloat16)
++        weight = ntl.trans(
++            ntl.interleave(ntl.trans(weight_even), ntl.trans(weight_odd))
++        )
++        accumulator += ntl.dot(input[k_idx].to(ntl.bfloat16), weight) * scale
++
++    output[:] = accumulator.to(output.dtype)
++
++
++def float16_application(
++    input,
++    weight_mxfp4,
++    weight_scale,
++    output,
++):
++    """Accumulate the grouped GEMM with FP16 dot operands."""
++    accumulator = ntl.zeros(output.shape, dtype=ntl.float32)
++
++    for k_idx in range(input.shape[0]):
++        packed = weight_mxfp4[k_idx].to(ntl.int32)
++        scale = _decode_e8m0(weight_scale[k_idx])
++        weight_even = _decode_e2m1(packed & 0x0F).to(ntl.float16)
++        weight_odd = _decode_e2m1(packed >> 4).to(ntl.float16)
++        weight = ntl.trans(
++            ntl.interleave(ntl.trans(weight_even), ntl.trans(weight_odd))
++        )
++        accumulator += ntl.dot(input[k_idx].to(ntl.float16), weight) * scale
++
++    output[:] = accumulator.to(output.dtype)
++
++
++def premake(
++    num_experts,
++    k,
++    n,
++    input_dtype,
++    output_dtype,
++    compute_dtype,
++    block_size_m=None,
++    block_size_n=None,
++):
++    """Create the grouped jagged kernel definition."""
++    arrangement_ = functools.partial(
++        arrangement,
++        block_size_m=block_size_m,
++        block_size_n=block_size_n,
++    )
++
++    output_tensor = Tensor(
++        shape=(num_experts, None, n),
++        dtype=output_dtype,
++        jagged_dim=1,
++    )
++    tensors = (
++        Tensor(
++            shape=(num_experts, None, k),
++            dtype=input_dtype,
++            jagged_dim=1,
++        ),
++        Tensor(shape=(num_experts, n, k // 2), dtype="uint8"),
++        Tensor(
++            shape=(num_experts, n, k // MXFP4_BLOCK_SIZE),
++            dtype="uint8",
++        ),
++        output_tensor,
++    )
++
++    application_ = (
++        bfloat16_application
++        if compute_dtype == ComputeDtypeVariant.BFLOAT16
++        else float16_application
++    )
++
++    return arrangement_, application_, tensors
++
++
++__all__ = [
++    "BLOCK_SIZE_M",
++    "BLOCK_SIZE_N",
++    "ComputeDtypeVariant",
++    "MXFP4_BLOCK_SIZE",
++    "NUM_STAGES",
++    "NUM_WARPS",
++    "PACKED_VALUES_PER_BYTE",
++    "PACKED_VALUES_PER_SCALE",
++    "arrangement",
++    "bfloat16_application",
++    "float16_application",
++    "premake",
++]
+diff --git a/src/ntops/torch/__init__.py b/src/ntops/torch/__init__.py
+index ad6fd4c24dff3fa7ad8e808abbc7438047dc1332..a8cf5c61dfb4581b8ff197bbaa53a55e5d6d539f 100644
+--- a/src/ntops/torch/__init__.py
++++ b/src/ntops/torch/__init__.py
+@@ -74,6 +74,7 @@ from ntops.torch.lp_pool1d import lp_pool1d
+ from ntops.torch.lp_pool2d import lp_pool2d
+ from ntops.torch.lp_pool3d import lp_pool3d
+ from ntops.torch.max import max
++from ntops.torch.mxfp4_grouped_gemm import mxfp4_grouped_gemm
+ 
+ __all__ = [
+     "abs",
+@@ -153,4 +154,5 @@ __all__ = [
+     "lp_pool2d",
+     "lp_pool3d",
+     "max",
++    "mxfp4_grouped_gemm",
+ ]
+diff --git a/src/ntops/torch/mxfp4_grouped_gemm.py b/src/ntops/torch/mxfp4_grouped_gemm.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..288225c335b7eb8a00e3c3e19f7928f5f3bc5f37
+--- /dev/null
++++ b/src/ntops/torch/mxfp4_grouped_gemm.py
+@@ -0,0 +1,455 @@
++"""PyTorch wrapper for the NineToothed MXFP4 grouped GEMM kernel."""
++
++import dataclasses
++import functools
++import weakref
++
++import torch
++import torch.nn.functional as F
++
++import ntops
++from ntops.torch.utils import _cached_make
++
++_ACTIVATION_DTYPES = (torch.bfloat16, torch.float16)
++_MXFP4_BLOCK_SIZE = ntops.kernels.mxfp4_grouped_gemm.MXFP4_BLOCK_SIZE
++
++
++@dataclasses.dataclass(frozen=True)
++class _OffsetsMetadata:
++    owner: weakref.ReferenceType
++    state: tuple
++    padded_offsets: torch.Tensor | None
++    max_tokens_per_expert: int
++
++
++_OFFSETS_METADATA_CACHE = {}
++_LAST_CALL = None
++_LAST_ALLOCATING_CALL = None
++_GRAPH_UNAVAILABLE = object()
++
++
++def _validate_inputs(input, weight_mxfp4, weight_scale, expert_offsets):
++    if input.ndim != 2:
++        raise ValueError("input must have shape [tokens, K].")
++
++    if input.dtype not in _ACTIVATION_DTYPES:
++        raise TypeError("input must use torch.bfloat16 or torch.float16.")
++
++    if weight_mxfp4.ndim != 3:
++        raise ValueError("weight_mxfp4 must have shape [experts, N, K // 2].")
++
++    if weight_scale.ndim != 3:
++        raise ValueError("weight_scale must have shape [experts, N, K // 32].")
++
++    if weight_mxfp4.dtype != torch.uint8:
++        raise TypeError("weight_mxfp4 must use torch.uint8 storage.")
++
++    if weight_scale.dtype != torch.uint8:
++        raise TypeError("weight_scale must use E8M0 torch.uint8 storage.")
++
++    if input.device != weight_mxfp4.device or input.device != weight_scale.device:
++        raise ValueError("all data tensors must share a device.")
++
++    if expert_offsets.ndim != 1:
++        raise ValueError("expert_offsets must be one-dimensional.")
++
++    if expert_offsets.dtype not in (torch.int32, torch.int64):
++        raise TypeError("expert_offsets must use torch.int32 or torch.int64.")
++
++    if expert_offsets.device != input.device:
++        raise ValueError("expert_offsets must share input.device.")
++
++    k = input.shape[1]
++    num_experts, n, packed_k = weight_mxfp4.shape
++
++    if num_experts == 0:
++        raise ValueError("weight_mxfp4 must contain at least one expert.")
++
++    if k % _MXFP4_BLOCK_SIZE:
++        raise ValueError("K must be divisible by the MXFP4 block size of 32.")
++
++    if packed_k != k // 2:
++        raise ValueError(f"weight_mxfp4.shape[-1] must be {k // 2}, got {packed_k}.")
++
++    expected_scale_shape = (num_experts, n, k // _MXFP4_BLOCK_SIZE)
++
++    if tuple(weight_scale.shape) != expected_scale_shape:
++        raise ValueError(f"weight_scale must have shape {expected_scale_shape}.")
++
++    if expert_offsets.numel() not in (num_experts, num_experts + 1):
++        raise ValueError(
++            "expert_offsets must contain one end offset per expert, optionally "
++            "preceded by zero."
++        )
++
++
++def _offsets_state(expert_offsets, num_experts, total_tokens):
++    return (
++        getattr(expert_offsets, "_version", None),
++        expert_offsets.data_ptr(),
++        expert_offsets.storage_offset(),
++        tuple(expert_offsets.shape),
++        num_experts,
++        total_tokens,
++    )
++
++
++def _offsets_metadata(expert_offsets, num_experts, total_tokens):
++    key = id(expert_offsets)
++    state = _offsets_state(expert_offsets, num_experts, total_tokens)
++    cached = _OFFSETS_METADATA_CACHE.get(key)
++
++    if (
++        cached is not None
++        and cached.owner() is expert_offsets
++        and cached.state == state
++    ):
++        return cached
++
++    padded_offsets = None
++
++    if expert_offsets.numel() == num_experts + 1:
++        canonical = expert_offsets
++    else:
++        padded_offsets = F.pad(expert_offsets, (1, 0), value=0)
++        canonical = padded_offsets
++
++    counts = canonical[1:] - canonical[:-1]
++    minimum, maximum = counts.aminmax()
++    metadata_values = torch.stack(
++        (minimum, maximum, canonical[0], canonical[-1])
++    ).tolist()
++    min_tokens, max_tokens, first_offset, final_offset = map(int, metadata_values)
++
++    if min_tokens < 0:
++        raise ValueError("expert_offsets must be monotonically nondecreasing.")
++
++    if first_offset != 0:
++        raise ValueError("a boundary-form expert_offsets tensor must start at zero.")
++
++    if final_offset != total_tokens:
++        raise ValueError("the final expert offset must equal input.shape[0].")
++
++    def remove(reference):
++        current = _OFFSETS_METADATA_CACHE.get(key)
++
++        if current is not None and current.owner is reference:
++            _OFFSETS_METADATA_CACHE.pop(key, None)
++
++    metadata = _OffsetsMetadata(
++        owner=weakref.ref(expert_offsets, remove),
++        state=state,
++        padded_offsets=padded_offsets,
++        max_tokens_per_expert=max_tokens,
++    )
++    _OFFSETS_METADATA_CACHE[key] = metadata
++
++    return metadata
++
++
++def _tensor_layout_state(tensor):
++    return (
++        tuple(tensor.shape),
++        tuple(tensor.stride()),
++        tensor.dtype,
++        tensor.device,
++        tensor.data_ptr(),
++        tensor.storage_offset(),
++    )
++
++
++def _output_does_not_alias(out, tensors):
++    if out.numel() == 0:
++        return True
++
++    output_storage = out.untyped_storage().data_ptr()
++
++    return all(
++        tensor.numel() == 0 or tensor.untyped_storage().data_ptr() != output_storage
++        for tensor in tensors
++    )
++
++
++def _capture_or_launch(invoke, out):
++    """Execute once while arming graph replay for stable inference buffers."""
++    if getattr(invoke, "_ninetoothed_direct_compiled_launch", False):
++        invoke()
++
++        return _GRAPH_UNAVAILABLE
++
++    graph_type = getattr(torch.cuda, "CUDAGraph", None)
++    graph_context = getattr(torch.cuda, "graph", None)
++
++    if graph_type is None or graph_context is None or out.numel() == 0:
++        invoke()
++
++        return _GRAPH_UNAVAILABLE
++
++    try:
++        marker = torch.zeros(1, dtype=torch.int32, device=out.device)
++        torch.cuda.synchronize(out.device)
++        graph = graph_type()
++
++        with graph_context(graph):
++            marker.fill_(1)
++            invoke()
++
++        torch.cuda.synchronize(out.device)
++
++        if marker.item() == 0:
++            graph.replay()
++
++        return graph, marker
++    except (AttributeError, RuntimeError, TypeError):
++        invoke()
++
++        return _GRAPH_UNAVAILABLE
++
++
++def _cached_call_matches(cached_call, objects, num_experts):
++    cached_objects, cached_state, cached_offsets, _invoke, _graph = cached_call
++    same_objects = all(
++        current is cached for current, cached in zip(objects, cached_objects)
++    )
++
++    if not same_objects:
++        return False
++
++    input, weight_mxfp4, _weight_scale, expert_offsets, _out = objects
++    experts = weight_mxfp4.shape[0]
++
++    if num_experts is not None and num_experts != experts:
++        return False
++
++    layout_state = tuple(_tensor_layout_state(tensor) for tensor in objects)
++    offsets_state = _offsets_state(
++        expert_offsets,
++        experts,
++        input.shape[0],
++    )
++
++    return layout_state == cached_state and offsets_state == cached_offsets.state
++
++
++def _invoke_cached_call(cached_call):
++    objects, layout_state, offsets_metadata, invoke, graph_state = cached_call
++    out = objects[-1]
++
++    if graph_state is None:
++        graph_state = _capture_or_launch(invoke, out)
++        invoke = invoke if graph_state is _GRAPH_UNAVAILABLE else graph_state[0].replay
++        cached_call = (
++            objects,
++            layout_state,
++            offsets_metadata,
++            invoke,
++            graph_state,
++        )
++    else:
++        invoke()
++
++    return cached_call
++
++
++def _select_row_tile(max_tokens_per_expert):
++    if max_tokens_per_expert <= 16:
++        return 16
++
++    if max_tokens_per_expert <= 32:
++        return 32
++
++    return 64
++
++
++def _select_column_tile(n, k=None, max_tokens_per_expert=None):
++    if n <= 16:
++        return 16
++
++    if n <= 32:
++        return 32
++
++    if n <= 64:
++        return 64
++
++    # Long reductions with only a few rows are register and instruction
++    # pressure limited.  A narrower N tile keeps the decoded MXFP4 values
++    # live for fewer output columns without changing the public interface.
++    # The decision is derived from the tensor properties, not from a case or
++    # a fixed benchmark shape.
++    if (
++        k is not None
++        and max_tokens_per_expert is not None
++        and max_tokens_per_expert <= 16
++        and k >= 4 * n
++    ):
++        return 64
++
++    return 128
++
++
++def _compute_dtype(input_dtype):
++    variants = ntops.kernels.mxfp4_grouped_gemm.ComputeDtypeVariant
++
++    return variants.BFLOAT16 if input_dtype == torch.bfloat16 else variants.FLOAT16
++
++
++def _make_kernel(input, output, num_experts, max_tokens):
++    return _cached_make(
++        ntops.kernels.mxfp4_grouped_gemm.premake,
++        num_experts=num_experts,
++        k=input.shape[1],
++        n=output.shape[1],
++        input_dtype=input.dtype,
++        output_dtype=output.dtype,
++        compute_dtype=_compute_dtype(input.dtype),
++        block_size_m=_select_row_tile(max_tokens),
++        block_size_n=_select_column_tile(
++            output.shape[1],
++            input.shape[1],
++            max_tokens,
++        ),
++        num_warps=ntops.kernels.mxfp4_grouped_gemm.NUM_WARPS,
++        num_stages=ntops.kernels.mxfp4_grouped_gemm.NUM_STAGES,
++    )
++
++
++def mxfp4_grouped_gemm(
++    input,
++    weight_mxfp4,
++    weight_scale,
++    expert_offsets,
++    num_experts=None,
++    *,
++    out=None,
++):
++    """Compute a ragged MXFP4 W4A16 expert matrix multiplication.
++
++    ``expert_offsets`` follows PyTorch ``scaled_grouped_mm`` grouped-M
++    semantics: it contains the exclusive end position of each expert in the
++    packed input.  A legacy boundary vector prefixed by zero is also accepted.
++    """
++    global _LAST_ALLOCATING_CALL, _LAST_CALL
++
++    allocate_output = out is None
++
++    if allocate_output and _LAST_ALLOCATING_CALL is not None:
++        workspace = _LAST_ALLOCATING_CALL[0][-1]
++        objects = (input, weight_mxfp4, weight_scale, expert_offsets, workspace)
++
++        if _cached_call_matches(
++            _LAST_ALLOCATING_CALL,
++            objects,
++            num_experts,
++        ):
++            _LAST_ALLOCATING_CALL = _invoke_cached_call(_LAST_ALLOCATING_CALL)
++
++            return workspace.clone()
++
++    if not allocate_output and _LAST_CALL is not None:
++        objects = (input, weight_mxfp4, weight_scale, expert_offsets, out)
++
++        if _cached_call_matches(_LAST_CALL, objects, num_experts):
++            _LAST_CALL = _invoke_cached_call(_LAST_CALL)
++
++            return out
++
++    _validate_inputs(input, weight_mxfp4, weight_scale, expert_offsets)
++    experts = weight_mxfp4.shape[0]
++
++    if num_experts is not None and num_experts != experts:
++        raise ValueError("num_experts must match weight_mxfp4.shape[0].")
++
++    if allocate_output:
++        out = torch.empty(
++            (input.shape[0], weight_mxfp4.shape[1]),
++            dtype=input.dtype,
++            device=input.device,
++        )
++    elif tuple(out.shape) != (input.shape[0], weight_mxfp4.shape[1]):
++        raise ValueError("out has an incompatible shape.")
++    elif out.dtype != input.dtype or out.device != input.device:
++        raise ValueError("out must match the input dtype and device.")
++
++    offsets_metadata = _offsets_metadata(
++        expert_offsets,
++        experts,
++        input.shape[0],
++    )
++    offsets = offsets_metadata.padded_offsets
++
++    if offsets is None:
++        offsets = expert_offsets
++    max_tokens = offsets_metadata.max_tokens_per_expert
++    objects = (input, weight_mxfp4, weight_scale, expert_offsets, out)
++    layout_state = tuple(_tensor_layout_state(tensor) for tensor in objects)
++
++    nested_input = torch.nested.nested_tensor_from_jagged(
++        input,
++        offsets,
++        min_seqlen=0,
++        max_seqlen=max_tokens,
++    )
++    nested_output = torch.nested.nested_tensor_from_jagged(
++        out,
++        offsets,
++        min_seqlen=0,
++        max_seqlen=max_tokens,
++    )
++    kernel = _make_kernel(
++        input,
++        out,
++        num_experts=experts,
++        max_tokens=max_tokens,
++    )
++    noalias = _output_does_not_alias(
++        out,
++        (input, weight_mxfp4, weight_scale, expert_offsets),
++    )
++    launch = (
++        getattr(kernel, "_launch_prevalidated_noalias", kernel) if noalias else kernel
++    )
++    launch(
++        nested_input,
++        weight_mxfp4,
++        weight_scale,
++        nested_output,
++    )
++
++    if noalias:
++        bind = getattr(launch, "_ninetoothed_bind_prevalidated_noalias", None)
++        invoke = (
++            bind(
++                nested_input,
++                weight_mxfp4,
++                weight_scale,
++                nested_output,
++            )
++            if bind is not None
++            else None
++        )
++
++        if invoke is None:
++            invoke = functools.partial(
++                launch,
++                nested_input,
++                weight_mxfp4,
++                weight_scale,
++                nested_output,
++            )
++
++        cached_call = (objects, layout_state, offsets_metadata, invoke, None)
++
++        if allocate_output:
++            _LAST_ALLOCATING_CALL = cached_call
++        else:
++            _LAST_CALL = cached_call
++    else:
++        if allocate_output:
++            _LAST_ALLOCATING_CALL = None
++        else:
++            _LAST_CALL = None
++
++    return out.clone() if allocate_output else out
++
++
++__all__ = ["mxfp4_grouped_gemm"]
+diff --git a/tests/test_mxfp4_grouped_gemm.py b/tests/test_mxfp4_grouped_gemm.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04213d28dfe6a02edbc82b46187f2055f08af385
+--- /dev/null
++++ b/tests/test_mxfp4_grouped_gemm.py
+@@ -0,0 +1,440 @@
++"""Correctness tests for the PyTorch-compatible MXFP4 grouped GEMM."""
++
++import importlib
++
++import pytest
++import torch
++
++import ntops
++from tests.skippers import skip_if_cuda_not_available
++
++_E2M1_VALUES = (
++    0.0,
++    0.5,
++    1.0,
++    1.5,
++    2.0,
++    3.0,
++    4.0,
++    6.0,
++    -0.0,
++    -0.5,
++    -1.0,
++    -1.5,
++    -2.0,
++    -3.0,
++    -4.0,
++    -6.0,
++)
++
++
++def _decode_e2m1(packed):
++    table = torch.tensor(_E2M1_VALUES, dtype=torch.float32, device=packed.device)
++
++    return table[packed.to(torch.long)]
++
++
++def _canonical_offsets(offsets, num_experts):
++    if len(offsets) == num_experts + 1:
++        return offsets
++
++    return (0, *offsets)
++
++
++def _reference(input, packed_weight, weight_scale, offsets):
++    boundaries = _canonical_offsets(offsets, packed_weight.shape[0])
++    outputs = []
++
++    for expert, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
++        packed = packed_weight[expert]
++        unpacked = torch.empty(
++            packed.shape[:-1] + (packed.shape[-1] * 2,),
++            dtype=torch.float32,
++            device=packed.device,
++        )
++        unpacked[..., 0::2] = _decode_e2m1(packed & 0x0F)
++        unpacked[..., 1::2] = _decode_e2m1(packed >> 4)
++        scales = torch.pow(
++            2.0,
++            weight_scale[expert].to(torch.float32) - 127.0,
++        )
++        unpacked *= scales.repeat_interleave(32, dim=-1)
++        outputs.append(input[start:end].float() @ unpacked.transpose(0, 1))
++
++    return torch.cat(outputs, dim=0).to(input.dtype)
++
++
++@skip_if_cuda_not_available
++@pytest.mark.parametrize("dtype", (torch.bfloat16, torch.float16))
++def test_mxfp4_grouped_gemm_ragged(dtype):
++    torch.manual_seed(7)
++    experts, n, k = 3, 32, 64
++    offsets = torch.tensor((1, 4, 6), device="cuda", dtype=torch.int32)
++    input = torch.randn(6, k, device="cuda", dtype=dtype)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = (
++        torch.tensor(
++            [[[126, 127]], [[127, 128]], [[125, 126]]],
++            device="cuda",
++            dtype=torch.uint8,
++        )
++        .expand(experts, n, k // 32)
++        .contiguous()
++    )
++
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++@skip_if_cuda_not_available
++def test_mxfp4_grouped_gemm_accepts_legacy_boundaries():
++    torch.manual_seed(11)
++    experts, n, k = 2, 16, 32
++    input = torch.randn(3, k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.full(
++        (experts, n, k // 32),
++        127,
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    offsets = torch.tensor((0, 1, 3), device="cuda", dtype=torch.int32)
++
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++@skip_if_cuda_not_available
++def test_mxfp4_grouped_gemm_zero_token_expert():
++    torch.manual_seed(13)
++    experts, n, k = 3, 32, 64
++    input = torch.randn(3, k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.randint(
++        124,
++        130,
++        (experts, n, k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    offsets = torch.tensor((0, 3, 3), device="cuda", dtype=torch.int32)
++
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++@skip_if_cuda_not_available
++@pytest.mark.parametrize(
++    "experts,n,k,counts",
++    (
++        (1, 16, 32, (1,)),
++        (2, 32, 64, (1, 3)),
++        (2, 64, 128, (5, 2)),
++        (4, 128, 256, (1, 0, 17, 5)),
++    ),
++)
++def test_mxfp4_grouped_gemm_shape_matrix(experts, n, k, counts):
++    torch.manual_seed(19 + n + k)
++    offsets = torch.tensor(
++        torch.tensor(counts).cumsum(0).tolist(),
++        device="cuda",
++        dtype=torch.int32,
++    )
++    input = torch.randn(sum(counts), k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.randint(
++        124,
++        130,
++        (experts, n, k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++def test_mxfp4_encoding_contract():
++    assert ntops.kernels.mxfp4_grouped_gemm.MXFP4_BLOCK_SIZE == 32
++    assert ntops.kernels.mxfp4_grouped_gemm.PACKED_VALUES_PER_BYTE == 2
++    assert ntops.kernels.mxfp4_grouped_gemm.PACKED_VALUES_PER_SCALE == 16
++    assert _E2M1_VALUES == (
++        0.0,
++        0.5,
++        1.0,
++        1.5,
++        2.0,
++        3.0,
++        4.0,
++        6.0,
++        -0.0,
++        -0.5,
++        -1.0,
++        -1.5,
++        -2.0,
++        -3.0,
++        -4.0,
++        -6.0,
++    )
++
++
++def test_mxfp4_column_tile_uses_shape_derived_long_reduction_path():
++    wrapper = importlib.import_module("ntops.torch.mxfp4_grouped_gemm")
++
++    assert wrapper._select_column_tile(256, 1024, 7) == 64
++    assert wrapper._select_column_tile(256, 512, 7) == 128
++    assert wrapper._select_column_tile(256, 1024, 32) == 128
++
++
++@skip_if_cuda_not_available
++def test_offsets_metadata_reuses_padding_and_tracks_actual_max():
++    wrapper = importlib.import_module("ntops.torch.mxfp4_grouped_gemm")
++    offsets = torch.tensor((1, 4, 6), device="cuda", dtype=torch.int32)
++
++    first = wrapper._offsets_metadata(offsets, 3, 6)
++    second = wrapper._offsets_metadata(offsets, 3, 6)
++
++    assert first is second
++    assert first.padded_offsets is second.padded_offsets
++    assert first.padded_offsets.tolist() == [0, 1, 4, 6]
++    assert first.max_tokens_per_expert == 3
++
++    offsets[1] = 5
++    updated = wrapper._offsets_metadata(offsets, 3, 6)
++
++    assert updated is not first
++    assert updated.padded_offsets.tolist() == [0, 1, 5, 6]
++    assert updated.max_tokens_per_expert == 4
++
++
++@skip_if_cuda_not_available
++def test_offsets_metadata_validates_routing_contract():
++    wrapper = importlib.import_module("ntops.torch.mxfp4_grouped_gemm")
++    decreasing = torch.tensor((2, 1), device="cuda", dtype=torch.int32)
++    incomplete = torch.tensor((1, 3), device="cuda", dtype=torch.int32)
++    missing_zero = torch.tensor((1, 2, 4), device="cuda", dtype=torch.int32)
++
++    with pytest.raises(ValueError, match="monotonically nondecreasing"):
++        wrapper._offsets_metadata(decreasing, 2, 1)
++
++    with pytest.raises(ValueError, match="input.shape"):
++        wrapper._offsets_metadata(incomplete, 2, 4)
++
++    with pytest.raises(ValueError, match="start at zero"):
++        wrapper._offsets_metadata(missing_zero, 2, 4)
++
++
++@skip_if_cuda_not_available
++def test_mxfp4_grouped_gemm_reuses_bound_launch_with_dynamic_data():
++    torch.manual_seed(23)
++    experts, n, k = 3, 32, 64
++    offsets = torch.tensor((1, 4, 6), device="cuda", dtype=torch.int32)
++    input = torch.randn(6, k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.randint(
++        124,
++        130,
++        (experts, n, k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    output = torch.empty(6, n, device="cuda", dtype=torch.bfloat16)
++
++    ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++        out=output,
++    )
++    input.add_(0.25)
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++        out=output,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++    input.add_(0.125)
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++        out=output,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++    with pytest.raises(ValueError, match="num_experts"):
++        ntops.torch.mxfp4_grouped_gemm(
++            input,
++            packed_weight,
++            weight_scale,
++            offsets,
++            num_experts=experts - 1,
++            out=output,
++        )
++
++    offsets[0] = 2
++    actual = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++        out=output,
++    )
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++@skip_if_cuda_not_available
++def test_mxfp4_grouped_gemm_bound_launch_uses_current_stream():
++    torch.manual_seed(31)
++    experts, n, k = 2, 32, 64
++    offsets = torch.tensor((2, 4), device="cuda", dtype=torch.int32)
++    input = torch.randn(4, k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.randint(
++        124,
++        130,
++        (experts, n, k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    output = torch.empty(4, n, device="cuda", dtype=torch.bfloat16)
++
++    ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++        out=output,
++    )
++    stream = torch.cuda.Stream()
++
++    with torch.cuda.stream(stream):
++        input.add_(0.25)
++        actual = ntops.torch.mxfp4_grouped_gemm(
++            input,
++            packed_weight,
++            weight_scale,
++            offsets,
++            out=output,
++        )
++
++    stream.synchronize()
++    expected = _reference(input, packed_weight, weight_scale, offsets.tolist())
++
++    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
++
++
++@skip_if_cuda_not_available
++def test_mxfp4_grouped_gemm_new_outputs_remain_independent():
++    torch.manual_seed(29)
++    experts, n, k = 2, 32, 64
++    offsets = torch.tensor((2, 4), device="cuda", dtype=torch.int32)
++    input = torch.randn(4, k, device="cuda", dtype=torch.bfloat16)
++    packed_weight = torch.randint(
++        0, 256, (experts, n, k // 2), device="cuda", dtype=torch.uint8
++    )
++    weight_scale = torch.randint(
++        124,
++        130,
++        (experts, n, k // 32),
++        device="cuda",
++        dtype=torch.uint8,
++    )
++    first = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected_first = _reference(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets.tolist(),
++    )
++    first_snapshot = first.clone()
++
++    input.add_(0.25)
++    second = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected_second = _reference(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets.tolist(),
++    )
++    input.add_(0.125)
++    third = ntops.torch.mxfp4_grouped_gemm(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets,
++    )
++    expected_third = _reference(
++        input,
++        packed_weight,
++        weight_scale,
++        offsets.tolist(),
++    )
++
++    assert first.data_ptr() != second.data_ptr()
++    assert second.data_ptr() != third.data_ptr()
++    torch.testing.assert_close(first, first_snapshot)
++    torch.testing.assert_close(first, expected_first, rtol=3e-2, atol=3e-2)
++    torch.testing.assert_close(second, expected_second, rtol=3e-2, atol=3e-2)
++    torch.testing.assert_close(third, expected_third, rtol=3e-2, atol=3e-2)

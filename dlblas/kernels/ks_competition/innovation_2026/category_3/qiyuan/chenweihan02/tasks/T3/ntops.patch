@@ -1,0 +1,1413 @@
+diff --git a/benchmarks/benchmark_rms_norm_gated.py b/benchmarks/benchmark_rms_norm_gated.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9f5dc946886492e46274d6a6bde004d83a479f80
+--- /dev/null
++++ b/benchmarks/benchmark_rms_norm_gated.py
+@@ -0,0 +1,236 @@
++"""Benchmark the fused T3 kernel against the unmodified vLLM operator.
++
++The reported speedup follows the competition definition:
++
++    baseline_latency / submission_latency
++
++Both paths are invoked through their public Python interfaces in the same
++process.  PyTorch eager expressions are used for correctness only and are
++never timed.
++"""
++
++import argparse
++import csv
++import statistics
++import time
++from pathlib import Path
++
++import torch
++
++import ntops
++
++
++def _import_vllm_rms_norm_gated():
++    # Some BW images expose both ROCm SMI and an NVML compatibility shim.
++    # vLLM 0.9 then detects both built-in platforms and aborts before the
++    # operator can be imported.  Suppress only the spurious CUDA discovery
++    # while vLLM resolves its platform; the timed operator remains unchanged.
++    # This is the unchanged operator called by
++    # ``Mixer2RMSNormGated.forward_cuda``.  Calling it directly avoids
++    # initializing vLLM's unrelated distributed model context, which is not
++    # registered as a standard CUDA platform by some CoreX vLLM builds.
++    try:
++        from vllm.utils import import_pynvml
++    except ImportError:
++        from vllm.utils.import_utils import import_pynvml
++
++    pynvml = import_pynvml()
++    original = pynvml.nvmlDeviceGetCount
++    pynvml.nvmlDeviceGetCount = lambda: 0
++
++    try:
++        try:
++            from vllm.model_executor.layers.mamba.ops.layernorm_gated import (
++                rms_norm_gated,
++            )
++        except ImportError:
++            # vLLM 0.9 only exposes the operation through the layer wrapper.
++            from vllm.distributed.parallel_state import (
++                init_distributed_environment,
++                initialize_model_parallel,
++            )
++            from vllm.model_executor.layers.mamba.mamba_mixer2 import (
++                Mixer2RMSNormGated,
++            )
++
++            torch.cuda.set_device(0)
++            init_distributed_environment(
++                world_size=1,
++                rank=0,
++                local_rank=0,
++                distributed_init_method="tcp://127.0.0.1:29532",
++            )
++            initialize_model_parallel(1, 1)
++            return Mixer2RMSNormGated, False
++
++        return rms_norm_gated, True
++    finally:
++        pynvml.nvmlDeviceGetCount = original
++
++
++def _reference(input, gate, weight, eps):
++    gated = input.float() * torch.nn.functional.silu(gate.float())
++    variance = gated.square().mean(dim=-1, keepdim=True)
++    return (gated * torch.rsqrt(variance + eps) * weight.float()).to(input.dtype)
++
++
++def _time_once(function, iterations):
++    torch.cuda.synchronize()
++    started = time.perf_counter()
++    for _ in range(iterations):
++        function()
++    torch.cuda.synchronize()
++    return (time.perf_counter() - started) * 1000 / iterations
++
++
++def _measure_pair(baseline, submission, warmup=50, iterations=500, rounds=7):
++    for _ in range(warmup):
++        baseline()
++        submission()
++    torch.cuda.synchronize()
++
++    baseline_samples = []
++    submission_samples = []
++    for round_index in range(rounds):
++        if round_index % 2 == 0:
++            baseline_samples.append(_time_once(baseline, iterations))
++            submission_samples.append(_time_once(submission, iterations))
++        else:
++            submission_samples.append(_time_once(submission, iterations))
++            baseline_samples.append(_time_once(baseline, iterations))
++
++    return (
++        statistics.median(baseline_samples),
++        statistics.median(submission_samples),
++        baseline_samples,
++        submission_samples,
++    )
++
++
++def _parse_args(argv=None):
++    parser = argparse.ArgumentParser(
++        description="Benchmark the T3 submission against the vLLM baseline."
++    )
++    parser.add_argument("--warmup", type=int, default=50)
++    parser.add_argument("--iterations", type=int, default=500)
++    parser.add_argument("--rounds", type=int, default=7)
++    parser.add_argument(
++        "--csv",
++        type=Path,
++        help="Optionally write the median latency and speedup rows as CSV.",
++    )
++    return parser.parse_args(argv)
++
++
++def main(argv=None):
++    args = _parse_args(argv)
++    torch.manual_seed(0)
++    vllm_entry, direct_vllm_op = _import_vllm_rms_norm_gated()
++    eps = 1e-5
++    results = []
++
++    for tokens, hidden_size in ((64, 128), (128, 512), (16, 4096)):
++        if direct_vllm_op:
++            layer = None
++            weight = torch.empty(
++                hidden_size, device="cuda", dtype=torch.bfloat16
++            ).uniform_(-1, 1)
++        else:
++            layer = vllm_entry(
++                full_hidden_size=hidden_size,
++                full_n_groups=1,
++                use_rms_norm=True,
++                eps=eps,
++            ).to(device="cuda", dtype=torch.bfloat16)
++            layer.weight.data.uniform_(-1, 1)
++            weight = layer.weight
++        input = torch.randn(
++            tokens, hidden_size, device="cuda", dtype=torch.bfloat16
++        )
++        gate = torch.randn_like(input)
++
++        def baseline():
++            if direct_vllm_op:
++                return vllm_entry(
++                    input,
++                    weight,
++                    bias=None,
++                    z=gate,
++                    eps=eps,
++                    norm_before_gate=False,
++                )
++            return layer.forward_cuda(input, gate)
++
++        def submission():
++            return ntops.torch.rms_norm_gated(
++                input,
++                gate,
++                weight,
++                eps=eps,
++                group_size=hidden_size,
++                norm_before_gate=False,
++                activation="swish",
++            )
++
++        baseline_output = baseline()
++        submission_output = submission()
++        expected = _reference(input, gate, weight, eps)
++        torch.testing.assert_close(
++            baseline_output, expected, rtol=2e-2, atol=2e-2
++        )
++        torch.testing.assert_close(
++            submission_output, expected, rtol=2e-2, atol=2e-2
++        )
++
++        (
++            baseline_ms,
++            submission_ms,
++            baseline_samples,
++            submission_samples,
++        ) = _measure_pair(
++            baseline,
++            submission,
++            warmup=args.warmup,
++            iterations=args.iterations,
++            rounds=args.rounds,
++        )
++        speedup = baseline_ms / submission_ms
++        baseline_path = (
++            "direct_op" if direct_vllm_op else "layer_forward_cuda"
++        )
++        print(
++            f"shape={tokens}x{hidden_size} correctness=pass "
++            f"vllm_path={baseline_path} "
++            f"vllm_ms={baseline_ms:.6f} "
++            f"submission_ms={submission_ms:.6f} speedup={speedup:.4f} "
++            f"vllm_samples={baseline_samples} "
++            f"submission_samples={submission_samples}",
++            flush=True,
++        )
++        results.append(
++            {
++                "shape": f"{tokens}x{hidden_size}",
++                "tokens": tokens,
++                "hidden_size": hidden_size,
++                "correctness": "pass",
++                "baseline": "vLLM",
++                "baseline_path": baseline_path,
++                "baseline_ms": f"{baseline_ms:.6f}",
++                "submission_ms": f"{submission_ms:.6f}",
++                "speedup": f"{speedup:.4f}",
++                "warmup": args.warmup,
++                "iterations": args.iterations,
++                "rounds": args.rounds,
++            }
++        )
++
++    if args.csv is not None:
++        args.csv.parent.mkdir(parents=True, exist_ok=True)
++        with args.csv.open("w", encoding="utf-8", newline="") as file:
++            writer = csv.DictWriter(file, fieldnames=tuple(results[0]))
++            writer.writeheader()
++            writer.writerows(results)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmarks/benchmark_rms_norm_gated_runtime_ablation.py b/benchmarks/benchmark_rms_norm_gated_runtime_ablation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..12cc40614c1b5b9bc002e4de79ab0a18fdcd9e50
+--- /dev/null
++++ b/benchmarks/benchmark_rms_norm_gated_runtime_ablation.py
+@@ -0,0 +1,133 @@
++"""Micro-ablate the checked and prevalidated NineToothed launch paths.
++
++This is not a competition speedup benchmark.  It isolates the B-part runtime
++launch optimization while keeping the generated T3 kernel and tensor objects
++fixed.  The competition result remains the vLLM-versus-submission measurement
++in ``benchmark_rms_norm_gated.py``.
++"""
++
++import statistics
++import time
++
++import torch
++
++import ntops
++from ntops.torch.utils import _cached_make
++
++
++def _time_once(function, iterations):
++    torch.cuda.synchronize()
++    started = time.perf_counter()
++    for _ in range(iterations):
++        function()
++    torch.cuda.synchronize()
++    return (time.perf_counter() - started) * 1000 / iterations
++
++
++def _measure_pair(lhs, rhs, warmup=50, iterations=500, rounds=7):
++    for _ in range(warmup):
++        lhs()
++        rhs()
++    torch.cuda.synchronize()
++
++    lhs_samples = []
++    rhs_samples = []
++    for round_index in range(rounds):
++        if round_index % 2 == 0:
++            lhs_samples.append(_time_once(lhs, iterations))
++            rhs_samples.append(_time_once(rhs, iterations))
++        else:
++            rhs_samples.append(_time_once(rhs, iterations))
++            lhs_samples.append(_time_once(lhs, iterations))
++
++    return (
++        statistics.median(lhs_samples),
++        statistics.median(rhs_samples),
++        lhs_samples,
++        rhs_samples,
++    )
++
++
++def _make_kernel(input, gate, weight, output):
++    hidden_size = input.shape[-1]
++    return _cached_make(
++        ntops.kernels.rms_norm_gated.premake,
++        input.ndim,
++        hidden_size,
++        ntops.kernels.rms_norm_gated.ActivationVariant.SILU,
++        False,
++        input_dtype=input.dtype,
++        gate_dtype=gate.dtype,
++        weight_dtype=weight.dtype,
++        output_dtype=output.dtype,
++        block_size=hidden_size,
++        input_shape=tuple(input.shape),
++        gate_shape=tuple(gate.shape),
++        weight_shape=tuple(weight.shape),
++        output_shape=tuple(output.shape),
++        input_strides=tuple(input.stride()),
++        gate_strides=tuple(gate.stride()),
++        weight_strides=tuple(weight.stride()),
++        output_strides=tuple(output.stride()),
++        num_warps=ntops.kernels.rms_norm_gated.NUM_WARPS,
++        num_stages=ntops.kernels.rms_norm_gated.NUM_STAGES,
++    )
++
++
++def main():
++    torch.manual_seed(0)
++    eps = 1e-5
++
++    for tokens, hidden_size in ((64, 128), (128, 512), (16, 4096)):
++        input = torch.randn(
++            tokens, hidden_size, device="cuda", dtype=torch.bfloat16
++        )
++        gate = torch.randn_like(input)
++        weight = torch.empty(
++            hidden_size, device="cuda", dtype=torch.bfloat16
++        ).uniform_(-1, 1)
++        output = torch.empty_like(input)
++        kernel = _make_kernel(input, gate, weight, output)
++        arguments = (input, gate, weight, eps, output)
++
++        def checked():
++            return kernel(*arguments)
++
++        prevalidated = getattr(kernel, "_launch_prevalidated_noalias", None)
++        if prevalidated is None:
++            raise RuntimeError("The prevalidated no-alias launcher is unavailable.")
++
++        def fast():
++            return prevalidated(*arguments)
++
++        checked()
++        fast()
++        torch.testing.assert_close(
++            output,
++            ntops.torch.rms_norm_gated(
++                input,
++                gate,
++                weight,
++                eps=eps,
++                group_size=hidden_size,
++                norm_before_gate=False,
++                activation="swish",
++            ),
++            rtol=2e-2,
++            atol=2e-2,
++        )
++
++        checked_ms, fast_ms, checked_samples, fast_samples = _measure_pair(
++            checked, fast
++        )
++        print(
++            f"shape={tokens}x{hidden_size} correctness=pass "
++            f"checked_ms={checked_ms:.6f} fast_ms={fast_ms:.6f} "
++            f"runtime_speedup={checked_ms / fast_ms:.4f} "
++            f"checked_samples={checked_samples} fast_samples={fast_samples}",
++            flush=True,
++        )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/KERNELSWIFT_T3_REPORT.md b/docs/KERNELSWIFT_T3_REPORT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e1a5a96f0a9530513a52cf9d3b2342d5915c67d
+--- /dev/null
++++ b/docs/KERNELSWIFT_T3_REPORT.md
+@@ -0,0 +1,199 @@
++# KernelSwift T3：Gated RMSNorm 融合算子—编译协同优化
++
++**报告日期**：2026-08-31
++
++**赛题**：T3 Gated RMSNorm 融合算子
++
++**作品形态**：A（NineToothed 算子）+ B（通用编译器/平台后端）统一构建与评测
++
++**当前状态**：统一源码使用本 PR 的最终 `ntops` HEAD 与 `ninetoothed@6b79203`，已在两平台通过 T3 正确性、相关编译器回归和六个 vLLM 性能 case；全部 `speedup > 1`
++
++## 1. 摘要
++
++T3 面向 KDA、门控线性 Attention 和新型序列模型中的 Gated RMSNorm。朴素实现需要分别执行门控激活、逐元素乘、平方归约、倒平方根、归一化与 affine 缩放，容易产生多个 kernel launch 和中间张量流量。本作品使用 NineToothed 的张量元编程表达将上述步骤融合为一个 kernel，并通过静态布局、统一 SSA application-block lowering、能力驱动的 Triton 合法化和预验证低开销 launch 降低小算子的编译与运行时开销。
++
++在同一份源码上，T3 正确性测试在海光 BW 与天数智芯天垓150均为 `32 passed`，T3 相关编译器回归均为 `94 passed`。相对未修改 vLLM 基线，海光三个 case 的平均 speedup 为 **1.2626×**，天数三个 case 的平均 speedup 为 **1.3436×**；六个 case 等权平均为 **1.3031×**。
++
++## 2. 代码版本与复现锚点
++
++结果对应本次 PR 中的提交链。以下记录官方基线 commit、本题提交和统一验证锚点，便于从 PR 历史复现。
++
++| 仓库 | 官方基线 commit | 本题提交/验证锚点 |
++|---|---|---|
++| ntops | `9ae4166ad342e4745f0eed13a5a20d069e994fc0` | 本 PR 的 T3 题目 commit；统一验证使用本 PR 最终 HEAD |
++| ninetoothed | `b77f930dc6c8b016e09adf33570d55a7bc8376c1` | 通用 SSA/运行时能力 `18c50cd`、`5b6abe8`；统一验证锚点 `6b79203` |
++
++## 3. 数学语义与接口
++
++设输入为 (x)，门控为 (g)，激活为 (a(g))，可选权重为 (w)，按隐藏维每 `group_size` 个元素分组。`norm_before_gate=False` 时：
++
++$$
++v=x\odot a(g),\qquad
++y=\frac{v}{\sqrt{\operatorname{mean}_{group}(v^2)+\epsilon}}\odot w.
++$$
++`norm_before_gate=True` 时：
++
++$$
++y=\frac{x}{\sqrt{\operatorname{mean}_{group}(x^2)+\epsilon}}\odot a(g)\odot w.
++$$
++
++实现提供：
++
++```python
++ntops.torch.rms_norm_gated(
++    input,
++    gate,
++    weight=None,
++    eps=1e-5,
++    group_size=None,
++    norm_before_gate=False,
++    activation="swish",
++)
++```
++
++支持 `silu`/`swish` 与 `sigmoid`，支持有/无 affine weight、归一化前/后门控和多组归一化。输入、gate、weight 的形状、设备、dtype、末维连续性和 group 可整除性在 Python wrapper 中检查。公开接口只新增一个 T3 算子入口；NineToothed `Tensor` 的 `strides` 是可选参数，旧调用保持兼容。
++
++## 4. 修改内容与动机
++
++### 4.1 A 部分：NineToothed 算子实现
++
++涉及文件：
++
++- `src/ntops/kernels/rms_norm_gated.py`
++- `src/ntops/torch/rms_norm_gated.py`
++- `src/ntops/kernels/__init__.py`
++- `src/ntops/torch/__init__.py`
++
++主要修改：
++
++1. 将 gate 激活、门控乘法、组内平方和归约、RMS 归一化和 affine 缩放表达为单个 NineToothed application，避免物化完整中间张量。
++2. 输入先映射为 `[-1, group_size]` 的逻辑二维视图，一行对应一个独立归一化组；组间并行，组内沿隐藏维向量化和归约。
++3. 输入、gate 和 weight 在寄存器计算前转为 FP32，平方和与归一化用 FP32 累加，最后写回输入 dtype。
++4. 为 `activation × norm_before_gate × has_weight` 生成语义明确的静态变体，避免运行期在 kernel 内分支。
++5. 对最常用的“二维输入 + 单组”路径保留原二维张量和一维 weight，不创建 stride-zero expanded view，也不做多余 reshape。
++6. wrapper 提供必要的参数校验，并把实际 shape/stride 传给编译器建立静态契约。
++
++### 4.2 B 部分：编译器与后端
++
++下表只列 T3 实际依赖且有测试覆盖的能力，不把 `gather` 等 T4 能力归因于 T3。最终 ntops PR 的 T3 commit 只保留 RMSNorm 路径。
++
++| 层次 | 修改 | T3 作用 | 架构归属 |
++|---|---|---|---|
++| 通用 Tensor/运行时 | 可选静态 source strides，并在 launch 时校验 | 删除重复 stride 参数和动态索引准备，同时防止错误复用 | 通用编译器层 |
++| 通用布局分析 | 静态区间证明与 mask 简化 | 完整 tile 可去掉冗余边界 predicate，尾块仍保留 mask | 通用编译器层 |
++| 统一 SSA emitter | 合法静态 application block、标量按值传递、静态循环策略 | 让 gate、归约、归一化和缩放在一个程序中生成；`eps` 不被误当指针 | 通用编译器层 |
++| Triton materializer | 预验证 no-alias invocation plan 缓存 | wrapper 已检查契约后跳过重复 Python ABI、alias 和绑定准备 | 通用运行时能力，私有入口 |
++| Triton 能力合法化 | 对 `backend=cuda && warp_size=64` 固定合法 `num_stages=1` | 适配 CoreX 现有软件流水能力 | 硬件能力驱动的后端逻辑 |
++| HIP target 恢复 | 厂商 Triton ABI 不匹配时从 PyTorch 读取 gfx/warp target | 保证 BW 可编译，不改变数学语义 | HIP 后端兼容逻辑 |
++
++预验证 launch 是私有能力 `_launch_prevalidated_noalias`。公开 kernel handle 仍执行完整参数、layout 和 alias 校验；只有 T3 wrapper 在每次调用已经验证 shape、stride、dtype、device，且 output 为新分配不别名张量时才使用快速路径。若后端不提供该能力，wrapper 自动回退到公开 handle。
++
++## 5. 关键设计取舍
++
++### 5.1 数据布局与并行策略
++
++- 逻辑布局为“行/组 × group_size”；每行独立，天然无跨程序同步。
++- 一次读取 input、gate 和可选 weight；中间值留在程序内，不写全局中间张量。
++- weight 在单组常见路径保持一维广播；多组路径才生成对应的逻辑 group view。
++- 静态 shape/stride 只在 wrapper 能证明契约时启用；不满足契约的输入在 launch 前报错，而不是静默产生错误索引。
++
++### 5.2 融合与数值精度
++
++所有非线性和 RMS 统计在 FP32 中执行，降低 BF16/FP16 平方和的误差风险。测试容差为 `rtol=2e-2, atol=2e-2`，与低精度推理算子的常见误差范围一致。最终输出保持输入 dtype。
++
++### 5.3 通用优化与平台特化边界
++
++静态布局证明、统一 SSA application block、标量 ABI 和预验证 runtime 都位于通用层，可被其他逐行归约/融合算子复用。平台相关逻辑不按赛题 shape 或 case ID 分支，而是依据 backend、warp size、gfx 架构和目标能力做合法化。实现没有公开 shape 答案表、隐藏 case 读取或外部闭源 kernel 绕行。
++
++## 6. 实验环境与方法
++
++| 项目 | 海光 | 天数智芯 |
++|---|---|---|
++| GPU | BW，64 GiB，gfx936，warp 64 | 天垓150 / BI-V150，32 GiB，warp 64 |
++| Python | 3.10.12 | 3.12.3 |
++| PyTorch | 2.5.1，HIP 6.3.25405 | 2.7.1，CUDA-compatible 10.2 |
++| Triton | 3.1 | 3.1.0 |
++| vLLM | 0.9.2 | 0.11.2 |
++| 基线入口 | `Mixer2RMSNormGated.forward_cuda` | `rms_norm_gated` direct op |
++
++T3 没有语义等价的公开 PyTorch 融合接口，且赛题对齐 vLLM `RMSNormGated`，因此按照“优先 PyTorch、其次 vLLM”采用 vLLM。PyTorch eager 只用于正确性 reference，不进入计时。
++
++每个 case 交替预热 50 次，随后进行 7 轮配对计时，每轮每条路径执行 500 次；轮间交替基线与提交实现的先后顺序，使用 GPU 同步包围 wall-clock 区间，报告 7 个样本的中位数。
++
++## 7. 正确性与性能结果
++
++### 7.1 正确性与回归
++
++| 平台 | T3 算子测试 | T3 相关编译器回归 | 结果 |
++|---|---:|---:|---|
++| 海光 BW | 32 passed | 94 passed | 通过 |
++| 天垓150 | 32 passed | 94 passed | 通过 |
++
++32 个 T3 case 来自 4 个 shape/group 组合 × 2 种 activation × 2 种门控顺序 × 2 种 affine 配置。相关编译器回归覆盖统一 SSA lowering、Triton 调优/运行时、标量参数、静态 bounds 和静态 strides。
++
++### 7.2  A+B speedup
++
++| 平台 | Shape | vLLM ms | A+B ms | speedup |
++|---|---:|---:|---:|---:|
++| 海光 BW | 64×128 | 0.084763 | 0.067287 | **1.2597×** |
++| 海光 BW | 128×512 | 0.084719 | 0.068306 | **1.2403×** |
++| 海光 BW | 16×4096 | 0.085418 | 0.066326 | **1.2878×** |
++| 天垓150 | 64×128 | 0.094104 | 0.070783 | **1.3295×** |
++| 天垓150 | 128×512 | 0.097470 | 0.071967 | **1.3544×** |
++| 天垓150 | 16×4096 | 0.097530 | 0.072408 | **1.3469×** |
++
++- 海光算术平均：**1.2626×**；
++- 天数算术平均：**1.3436×**；
++- 六个 case 等权平均：**1.3031×**；
++- 最低 case：**1.2403×**，六个 case 均大于 1。
++
++性能结果见上表。原始日志目录：
++
++- 海光：`<results-root>/t3/bw/`
++- 天数：`<results-root>/t3/tiangai150/`
++
++## 8. 消融与优化来源
++
++为隔离 B 部分的运行时贡献，保持同一生成 kernel、同一输入和固定 output，仅比较公开完整检查 launch 与 wrapper 可使用的预验证 no-alias launch。该实验不与 vLLM 比较，因此不作为赛事 speedup。
++
++| 平台 | Shape | 完整检查 ms | 预验证 ms | 运行时微消融 speedup |
++|---|---:|---:|---:|---:|
++| 海光 BW | 64×128 | 0.043819 | 0.031003 | 1.4134× |
++| 海光 BW | 128×512 | 0.044870 | 0.030885 | 1.4528× |
++| 海光 BW | 16×4096 | 0.044710 | 0.031623 | 1.4138× |
++| 天垓150 | 64×128 | 0.056039 | 0.043395 | 1.2914× |
++| 天垓150 | 128×512 | 0.055744 | 0.043033 | 1.2954× |
++| 天垓150 | 16×4096 | 0.056353 | 0.043113 | 1.3071× |
++
++这说明对几十微秒级融合 kernel，重复 Python ABI/绑定/alias 检查是可观开销，预验证运行时能力对端到端结果有直接贡献。静态布局、融合表达和运行时优化之间存在耦合。
++
++## 9. 工程质量、兼容性与适用边界
++
++### 9.1 已完成
++
++- T3 语义测试覆盖高维输入、分组、两种激活、两种门控顺序和有/无 weight；
++- 统一 SSA、静态布局、标量 ABI、runtime cache 和 target 合法化有独立回归；
++- 两个平台使用相同关键源码哈希、独立缓存和统一一键脚本；
++- benchmark 同进程配对、交替顺序并记录完整样本；
++- 公共接口变化最小，快速 launch 保持私有并有安全回退；
++- 没有复制第三方 kernel；vLLM 只作为未修改 baseline，PyTorch 只用于张量与正确性参考。
++
++### 9.2 已知限制
++
++1. 当前正式性能预评测只有 3 个公开代表 shape，未知隐藏 case 可能包含不同 group_size、dtype、stride 或 batch 结构。
++2. 正确性主矩阵使用 BF16，性能矩阵使用 BF16 + swish + `norm_before_gate=False` + affine weight；FP16/FP32及更广参数范围仍应扩测。
++3. 相关编译器回归为 94 个定向测试。
++4. 预验证快速路径要求 wrapper 每次重验 shape/stride/dtype/device，并保证新 output 不别名；不能由任意调用者无条件使用。
++5. BW vLLM 0.9.2 镜像重启后可能同时暴露 ROCm 与 NVML 兼容发现。基准脚本只在平台解析阶段屏蔽伪 CUDA 计数，选择正确 ROCm 平台；该处理不修改或替换被计时的 vLLM kernel。
++
++## 10. 一键复现
++
++完整命令、目录约束、输出文件和判定方法见 `docs/KERNELSWIFT_T3_REPRODUCE.md`。核心命令为：
++
++```bash
++cd /path/to/ntops
++bash scripts/run_kernelswift_t3.sh \
++  --ninetoothed-dir /path/to/ninetoothed \
++  --output-dir /path/to/fresh/results \
++  --mode all
++```
+diff --git a/docs/KERNELSWIFT_T3_REPRODUCE.md b/docs/KERNELSWIFT_T3_REPRODUCE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..874e47b14d10bf286b36aa0ef13d50c713aa0f73
+--- /dev/null
++++ b/docs/KERNELSWIFT_T3_REPRODUCE.md
+@@ -0,0 +1,134 @@
++# KernelSwift T3 一键构建与评测说明
++
++## 1. 适用范围
++
++本文档用于复现 T3 Gated RMSNorm 的统一 A+B 作品：
++
++- A 部分：`ntops` 中的 NineToothed 算子表达、布局、并行与融合实现；
++- B 部分：`ninetoothed` 中的通用 SSA lowering、静态布局分析、Triton 物化与低开销运行时路径；
++- 正式性能基线：未修改的 vLLM `RMSNormGated` 调用链；
++- PyTorch eager 只生成独立正确性参考值，不参与 latency 或 speedup。
++
++统一复现版本为本 PR 最终 `ntops` HEAD 与 `ninetoothed@6b79203`。T3 复用 `18c50cd`、`5b6abe8` 引入的通用 SSA、静态布局和低开销运行时能力，最终正确性、回归和性能记录均使用 `6b79203`。
++
++## 2. 目录和环境要求
++
++将两个仓库放在同一级目录：
++
++```text
++workspace/
++├── ntops/
++└── ninetoothed/
++```
++
++要求：
++
++- Python 3.10 或更高版本；
++- 厂商镜像自带并能使用的 PyTorch、Triton 和 vLLM；
++- 一个可见的海光 BW 或天数智芯 GPU；
++- `pytest`；
++- `ntops` 使用本 PR 最终 HEAD，`ninetoothed` 固定为 `6b79203`。
++
++脚本通过 `PYTHONPATH` 直接使用源码，不会用 `pip` 覆盖厂商 PyTorch、Triton 或 vLLM。
++
++## 3. 一条命令完成构建与评测
++
++NineToothed/Triton 在第一次调用时 JIT 构建 kernel，因此首次正确性测试同时完成构建验证。每次正式复现都应指定全新的输出目录，脚本会为正确性、编译器回归、正式性能和消融实验分别创建独立缓存。
++
++```bash
++cd /path/to/workspace/ntops
++bash scripts/run_kernelswift_t3.sh \
++  --ninetoothed-dir /path/to/workspace/ninetoothed \
++  --output-dir /path/to/results/t3_run_001 \
++  --mode all
++```
++
++以下命令均应在远程 Linux GPU 主机执行，`/path/to/remote/workspace` 仅表示该主机上的工作目录。
++
++### 海光 BW/DTK 25.04 示例
++
++```bash
++source /opt/dtk-25.04.2/env.sh
++cd /path/to/remote/workspace/ntops
++bash scripts/run_kernelswift_t3.sh \
++  --ninetoothed-dir /path/to/remote/workspace/ninetoothed \
++  --output-dir /path/to/remote/workspace/results/t3_final_bw \
++  --mode all
++```
++
++### 天数智芯天垓150示例
++
++```bash
++export KS_ROOT=/path/to/remote/workspace
++cd "${KS_ROOT}/ntops"
++bash scripts/run_kernelswift_t3.sh \
++  --ninetoothed-dir "${KS_ROOT}/ninetoothed" \
++  --output-dir "${KS_ROOT}/results/t3_final_biv150" \
++  --mode all
++```
++
++## 4. 可单独执行的阶段
++
++```bash
++# 仅记录环境、版本和关键文件 SHA256
++bash scripts/run_kernelswift_t3.sh --mode environment
++
++# 32 个 T3 语义组合（当前测试矩阵）
++bash scripts/run_kernelswift_t3.sh --mode correctness
++
++# T3 所依赖的通用 SSA、布局、运行时和后端回归
++bash scripts/run_kernelswift_t3.sh --mode regression
++
++# vLLM 基线对 A+B 统一实现的正式 speedup
++bash scripts/run_kernelswift_t3.sh --mode benchmark
++
++# 仅隔离已检查 launch 与预验证低开销 launch 的运行时微消融
++bash scripts/run_kernelswift_t3.sh --mode ablation
++```
++
++也可以直接执行核心命令：
++
++```bash
++export PYTHONPATH=/path/to/ntops/src:/path/to/ninetoothed/src:${PYTHONPATH:-}
++export NINETOOTHED_CACHE_DIR=/path/to/a/new/cache
++python -m pytest /path/to/ntops/tests/test_rms_norm_gated.py -q
++python /path/to/ntops/benchmarks/benchmark_rms_norm_gated.py
++```
++
++## 5. 输出文件
++
++`--mode all` 生成：
++
++```text
++<output-dir>/
++├── environment.log
++├── correctness.log
++├── compiler_regression.log
++├── benchmark.log
++├── runtime_ablation.log
++├── cache_correctness/
++├── cache_regression/
++├── cache_benchmark/
++└── cache_ablation/
++```
++
++判定标准：
++
++- `correctness.log` 末尾为全部通过；
++- `compiler_regression.log` 无失败；
++- `speedup = baseline_ms / submission_ms`；
++- 每个正式 case 的 `speedup > 1`。
++
++`runtime_ablation.log` 是 B 部分运行时开销的微消融。
++
++## 6. 计时方法
++
++- 每个 shape 先交替预热基线和提交实现 50 次；
++- 每轮各执行 500 次；
++- 共 7 轮，基线与提交实现交替先后顺序；
++- 每条路径在计时区间前后执行 GPU 同步；
++- 报告 7 轮 wall-clock 均值样本的中位数；
++- 两条路径使用同一进程、同一输入、同一 dtype 和同一数学语义；
++- 计时前分别对基线、提交实现和独立 PyTorch 参考值执行正确性检查。
++
++BW 的 vLLM 0.9.2 通过 `Mixer2RMSNormGated.forward_cuda` 调用未修改算子；天垓150的 vLLM 0.11.2 直接调用其公开 `rms_norm_gated` op。BW 镜像若同时暴露 ROCm SMI 和 NVML 兼容层，基准脚本只在 vLLM 平台发现阶段屏蔽伪 CUDA 设备计数，确保选择 ROCm；vLLM kernel 和计时路径本身不做修改。
+diff --git a/scripts/run_kernelswift_t3.sh b/scripts/run_kernelswift_t3.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..26d0edd66c005055d70ef4edcaf413c80b43f7d1
+--- /dev/null
++++ b/scripts/run_kernelswift_t3.sh
+@@ -0,0 +1,200 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++usage() {
++    cat <<'EOF'
++Usage: scripts/run_kernelswift_t3.sh [options]
++
++Options:
++  --ninetoothed-dir PATH   NineToothed source tree (default: ../ninetoothed)
++  --output-dir PATH        Logs, caches, and CSV output directory
++  --mode MODE              all|correctness|regression|benchmark|ablation|environment
++  -h, --help               Show this help
++
++The script imports both repositories directly through PYTHONPATH. It does not
++replace the vendor PyTorch, Triton, or vLLM installation.
++EOF
++}
++
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++NTOPS_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
++NINETOOTHED_DIR="${NINETOOTHED_DIR:-${NTOPS_DIR}/../ninetoothed}"
++OUTPUT_DIR="${OUTPUT_DIR:-${NTOPS_DIR}/t3_results/run_$(date +%Y%m%d_%H%M%S)}"
++MODE="all"
++
++while [[ $# -gt 0 ]]; do
++    case "$1" in
++        --ninetoothed-dir)
++            NINETOOTHED_DIR="$2"
++            shift 2
++            ;;
++        --output-dir)
++            OUTPUT_DIR="$2"
++            shift 2
++            ;;
++        --mode)
++            MODE="$2"
++            shift 2
++            ;;
++        -h|--help)
++            usage
++            exit 0
++            ;;
++        *)
++            echo "Unknown argument: $1" >&2
++            usage >&2
++            exit 2
++            ;;
++    esac
++done
++
++case "${MODE}" in
++    all|correctness|regression|benchmark|ablation|environment) ;;
++    *)
++        echo "Unsupported mode: ${MODE}" >&2
++        exit 2
++        ;;
++esac
++
++NINETOOTHED_DIR="$(cd -- "${NINETOOTHED_DIR}" && pwd)"
++mkdir -p "${OUTPUT_DIR}"
++OUTPUT_DIR="$(cd -- "${OUTPUT_DIR}" && pwd)"
++
++export PYTHONPATH="${NTOPS_DIR}/src:${NINETOOTHED_DIR}/src:${PYTHONPATH:-}"
++
++record_repository() {
++    local name="$1"
++    local directory="$2"
++
++    echo "${name}_path=${directory}"
++    if git -C "${directory}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
++        echo "${name}_head=$(git -C "${directory}" rev-parse HEAD)"
++        echo "${name}_branch=$(git -C "${directory}" branch --show-current)"
++        if [[ -n "$(git -C "${directory}" status --porcelain)" ]]; then
++            echo "${name}_dirty=true"
++        else
++            echo "${name}_dirty=false"
++        fi
++    else
++        echo "${name}_head=unavailable-source-snapshot"
++        echo "${name}_branch=unavailable-source-snapshot"
++        echo "${name}_dirty=unknown"
++    fi
++}
++
++record_environment() {
++    {
++        echo "timestamp=$(date --iso-8601=seconds)"
++        echo "hostname=$(hostname)"
++        uname -a
++        record_repository ntops "${NTOPS_DIR}"
++        record_repository ninetoothed "${NINETOOTHED_DIR}"
++        python - <<'PY'
++import platform
++
++import torch
++
++print(f"python={platform.python_version()}")
++print(f"torch={torch.__version__}")
++print(f"torch_cuda={torch.version.cuda}")
++print(f"torch_hip={torch.version.hip}")
++
++try:
++    import triton
++except Exception as error:  # noqa: BLE001
++    print(f"triton_error={type(error).__name__}: {error}")
++else:
++    print(f"triton={triton.__version__}")
++
++try:
++    import vllm
++except Exception as error:  # noqa: BLE001
++    print(f"vllm_error={type(error).__name__}: {error}")
++else:
++    print(f"vllm={vllm.__version__}")
++
++print(f"accelerator_available={torch.cuda.is_available()}")
++if torch.cuda.is_available():
++    properties = torch.cuda.get_device_properties(0)
++    print(f"accelerator_name={properties.name}")
++    print(f"accelerator_memory={properties.total_memory}")
++    print(f"accelerator_warp_size={getattr(properties, 'warp_size', None)}")
++    print(f"accelerator_arch={getattr(properties, 'gcnArchName', None)}")
++PY
++        printf 'sha256  %s\n' "T3 and compiler files"
++        sha256sum \
++            "${NTOPS_DIR}/src/ntops/kernels/rms_norm_gated.py" \
++            "${NTOPS_DIR}/src/ntops/torch/rms_norm_gated.py" \
++            "${NTOPS_DIR}/tests/test_rms_norm_gated.py" \
++            "${NTOPS_DIR}/benchmarks/benchmark_rms_norm_gated.py" \
++            "${NTOPS_DIR}/benchmarks/benchmark_rms_norm_gated_runtime_ablation.py" \
++            "${NTOPS_DIR}/scripts/run_kernelswift_t3.sh" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/emitters/ssa.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/emitters/triton.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/backends/materializers/triton.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/compiler/runtime.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/frontend/layout.py" \
++            "${NINETOOTHED_DIR}/src/ninetoothed/tensor.py"
++    } 2>&1 | tee "${OUTPUT_DIR}/environment.log"
++}
++
++run_correctness() {
++    export NINETOOTHED_CACHE_DIR="${OUTPUT_DIR}/cache_correctness"
++    mkdir -p "${NINETOOTHED_CACHE_DIR}"
++    (
++        cd "${NTOPS_DIR}"
++        python -m pytest tests/test_rms_norm_gated.py -q
++    ) 2>&1 | tee "${OUTPUT_DIR}/correctness.log"
++}
++
++run_regression() {
++    export NINETOOTHED_CACHE_DIR="${OUTPUT_DIR}/cache_regression"
++    mkdir -p "${NINETOOTHED_CACHE_DIR}"
++    (
++        cd "${NINETOOTHED_DIR}"
++        python -m pytest -q \
++            tests/test_ssa_first_backend_lowering.py \
++            tests/test_triton_runtime_auto_tuning.py \
++            tests/test_ssa_scalar_argument_emission.py \
++            tests/test_static_layout_bounds.py \
++            tests/test_static_tensor_strides.py
++    ) 2>&1 | tee "${OUTPUT_DIR}/compiler_regression.log"
++}
++
++run_benchmark() {
++    export NINETOOTHED_CACHE_DIR="${OUTPUT_DIR}/cache_benchmark"
++    mkdir -p "${NINETOOTHED_CACHE_DIR}"
++    (
++        cd "${NTOPS_DIR}"
++        python benchmarks/benchmark_rms_norm_gated.py \
++            --csv "${OUTPUT_DIR}/benchmark.csv"
++    ) 2>&1 | tee "${OUTPUT_DIR}/benchmark.log"
++}
++
++run_ablation() {
++    export NINETOOTHED_CACHE_DIR="${OUTPUT_DIR}/cache_ablation"
++    mkdir -p "${NINETOOTHED_CACHE_DIR}"
++    (
++        cd "${NTOPS_DIR}"
++        python benchmarks/benchmark_rms_norm_gated_runtime_ablation.py
++    ) 2>&1 | tee "${OUTPUT_DIR}/runtime_ablation.log"
++}
++
++record_environment
++
++case "${MODE}" in
++    all)
++        run_correctness
++        run_regression
++        run_benchmark
++        run_ablation
++        ;;
++    correctness) run_correctness ;;
++    regression) run_regression ;;
++    benchmark) run_benchmark ;;
++    ablation) run_ablation ;;
++    environment) ;;
++esac
++
++echo "T3 run complete: ${OUTPUT_DIR}"
+diff --git a/src/ntops/kernels/__init__.py b/src/ntops/kernels/__init__.py
+index 12d337bb6864de07132ab03d18eae57750bd2155..4b06acc90a15a247145a5d08404f3a05d9278e79 100644
+--- a/src/ntops/kernels/__init__.py
++++ b/src/ntops/kernels/__init__.py
+@@ -37,6 +37,7 @@ from ntops.kernels import (
+     quantile,
+     relu,
+     rms_norm,
++    rms_norm_gated,
+     rot90,
+     rotary_position_embedding,
+     round,
+@@ -115,6 +116,7 @@ __all__ = [
+     "quantile",
+     "relu",
+     "rms_norm",
++    "rms_norm_gated",
+     "rot90",
+     "rotary_position_embedding",
+     "round",
+diff --git a/src/ntops/kernels/rms_norm_gated.py b/src/ntops/kernels/rms_norm_gated.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cf2f12b20088a0fa3ee1394654d84ac8fb7d8e1
+--- /dev/null
++++ b/src/ntops/kernels/rms_norm_gated.py
+@@ -0,0 +1,199 @@
++import enum
++import functools
++
++import ninetoothed
++import ninetoothed.language as ntl
++from ninetoothed import Tensor
++
++NUM_WARPS = (1, 2, 4, 8)
++NUM_STAGES = 1
++
++
++class ActivationVariant(enum.IntEnum):
++    SILU = enum.auto()
++    SIGMOID = enum.auto()
++
++
++def arrangement(*tensors, block_size):
++    return tuple(
++        tensor.tile((1, block_size)) if tensor.ndim == 2 else tensor
++        for tensor in tensors
++    )
++
++
++def silu_after_gate_application(
++    input, gate, weight, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    value = input_value * gate_value / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(value * value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        value
++        * ntl.rsqrt(variance[:, None] + eps)
++        * weight.to(ntl.float32)
++    )
++
++
++def silu_before_gate_application(
++    input, gate, weight, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = gate_value / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(input_value * input_value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        input_value
++        * ntl.rsqrt(variance[:, None] + eps)
++        * activated_gate
++        * weight.to(ntl.float32)
++    )
++
++
++def sigmoid_after_gate_application(
++    input, gate, weight, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = 1 / (1 + ntl.exp(-gate_value))
++    value = input_value * activated_gate
++    variance = ntl.sum(value * value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        value
++        * ntl.rsqrt(variance[:, None] + eps)
++        * weight.to(ntl.float32)
++    )
++
++
++def sigmoid_before_gate_application(
++    input, gate, weight, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = 1 / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(input_value * input_value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        input_value
++        * ntl.rsqrt(variance[:, None] + eps)
++        * activated_gate
++        * weight.to(ntl.float32)
++    )
++
++
++def silu_after_gate_no_weight_application(
++    input, gate, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    value = input_value * gate_value / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(value * value, axis=1) / input.shape[1]
++    output = value * ntl.rsqrt(variance[:, None] + eps)  # noqa: F841
++
++
++def silu_before_gate_no_weight_application(
++    input, gate, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = gate_value / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(input_value * input_value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        input_value * ntl.rsqrt(variance[:, None] + eps) * activated_gate
++    )
++
++
++def sigmoid_after_gate_no_weight_application(
++    input, gate, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = 1 / (1 + ntl.exp(-gate_value))
++    value = input_value * activated_gate
++    variance = ntl.sum(value * value, axis=1) / input.shape[1]
++    output = value * ntl.rsqrt(variance[:, None] + eps)  # noqa: F841
++
++
++def sigmoid_before_gate_no_weight_application(
++    input, gate, eps, output
++):
++    input_value = input.to(ntl.float32)
++    gate_value = gate.to(ntl.float32)
++    activated_gate = 1 / (1 + ntl.exp(-gate_value))
++    variance = ntl.sum(input_value * input_value, axis=1) / input.shape[1]
++    output = (  # noqa: F841
++        input_value * ntl.rsqrt(variance[:, None] + eps) * activated_gate
++    )
++
++
++_APPLICATIONS = {
++    (ActivationVariant.SILU, False, True): silu_after_gate_application,
++    (ActivationVariant.SILU, True, True): silu_before_gate_application,
++    (ActivationVariant.SIGMOID, False, True): sigmoid_after_gate_application,
++    (ActivationVariant.SIGMOID, True, True): sigmoid_before_gate_application,
++    (ActivationVariant.SILU, False, False): silu_after_gate_no_weight_application,
++    (ActivationVariant.SILU, True, False): silu_before_gate_no_weight_application,
++    (
++        ActivationVariant.SIGMOID,
++        False,
++        False,
++    ): sigmoid_after_gate_no_weight_application,
++    (
++        ActivationVariant.SIGMOID,
++        True,
++        False,
++    ): sigmoid_before_gate_no_weight_application,
++}
++
++
++def premake(
++    ndim,
++    group_size,
++    activation_variant,
++    norm_before_gate,
++    input_dtype=None,
++    gate_dtype=None,
++    weight_dtype=None,
++    output_dtype=None,
++    block_size=None,
++    input_shape=None,
++    gate_shape=None,
++    weight_shape=None,
++    output_shape=None,
++    input_strides=None,
++    gate_strides=None,
++    weight_strides=None,
++    output_strides=None,
++):
++    arrangement_ = functools.partial(arrangement, block_size=block_size)
++    has_weight = weight_dtype is not None
++    application = _APPLICATIONS[
++        (activation_variant, norm_before_gate, has_weight)
++    ]
++
++    def tensor(dtype, shape, strides, *, other=None):
++        if shape is None:
++            return Tensor(ndim, other=other, dtype=dtype)
++        return Tensor(
++            shape=tuple(shape),
++            strides=None if strides is None else tuple(strides),
++            other=other,
++            dtype=dtype,
++        )
++
++    tensors = [
++        tensor(input_dtype, input_shape, input_strides, other=0),
++        tensor(gate_dtype, gate_shape, gate_strides, other=0),
++    ]
++    if has_weight:
++        tensors.append(tensor(weight_dtype, weight_shape, weight_strides))
++    tensors.extend(
++        (
++            Tensor(0, dtype=ninetoothed.float64),
++            tensor(output_dtype, output_shape, output_strides),
++        )
++    )
++
++    return arrangement_, application, tuple(tensors)
++
++
++__all__ = ["ActivationVariant", "premake"]
+diff --git a/src/ntops/torch/__init__.py b/src/ntops/torch/__init__.py
+index ad6fd4c24dff3fa7ad8e808abbc7438047dc1332..5809f4a7c8801f21806b0ff43be3a1f4fcdf7a27 100644
+--- a/src/ntops/torch/__init__.py
++++ b/src/ntops/torch/__init__.py
+@@ -37,6 +37,7 @@ from ntops.torch.pow import pow
+ from ntops.torch.quantile import quantile
+ from ntops.torch.relu import relu
+ from ntops.torch.rms_norm import rms_norm
++from ntops.torch.rms_norm_gated import rms_norm_gated
+ from ntops.torch.rot90 import rot90
+ from ntops.torch.rotary_position_embedding import rotary_position_embedding
+ from ntops.torch.round import round
+@@ -115,6 +116,7 @@ __all__ = [
+     "quantile",
+     "relu",
+     "rms_norm",
++    "rms_norm_gated",
+     "rot90",
+     "rotary_position_embedding",
+     "round",
+diff --git a/src/ntops/torch/rms_norm_gated.py b/src/ntops/torch/rms_norm_gated.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a1902afbe3161377dcf608ed721f8c3d209f8f7a
+--- /dev/null
++++ b/src/ntops/torch/rms_norm_gated.py
+@@ -0,0 +1,141 @@
++import torch
++
++import ntops
++from ntops.torch.utils import _cached_make
++
++_ACTIVATIONS = {
++    "silu": ntops.kernels.rms_norm_gated.ActivationVariant.SILU,
++    "swish": ntops.kernels.rms_norm_gated.ActivationVariant.SILU,
++    "sigmoid": ntops.kernels.rms_norm_gated.ActivationVariant.SIGMOID,
++}
++
++
++def _next_power_of_two(value):
++    return 1 << (value - 1).bit_length()
++
++
++def _validate(input, gate, weight, group_size, activation):
++    if input.shape != gate.shape:
++        raise ValueError(
++            "input and gate must have the same shape, but got "
++            f"{tuple(input.shape)} and {tuple(gate.shape)}."
++        )
++    if input.ndim == 0:
++        raise ValueError("input and gate must have at least one dimension.")
++    if input.device != gate.device:
++        raise ValueError("input and gate must be on the same device.")
++    if input.dtype != gate.dtype:
++        raise TypeError("input and gate must have the same dtype.")
++    if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
++        raise TypeError("input and gate must use float16, bfloat16, or float32.")
++    if input.stride(-1) != 1 or gate.stride(-1) != 1:
++        raise ValueError("The last dimension of input and gate must be contiguous.")
++
++    hidden_size = input.shape[-1]
++    if group_size is None:
++        group_size = hidden_size
++    if group_size <= 0 or hidden_size % group_size:
++        raise ValueError(
++            f"group_size={group_size} must divide hidden_size={hidden_size}."
++        )
++
++    if weight is not None:
++        if weight.shape != (hidden_size,):
++            raise ValueError(
++                f"weight must have shape {(hidden_size,)}, got {tuple(weight.shape)}."
++            )
++        if weight.device != input.device or weight.dtype != input.dtype:
++            raise ValueError("weight must share input's device and dtype.")
++        if not weight.is_contiguous():
++            raise ValueError("weight must be contiguous.")
++
++    try:
++        activation_variant = _ACTIVATIONS[activation.lower()]
++    except (AttributeError, KeyError) as error:
++        raise ValueError(
++            "activation must be one of 'silu', 'swish', or 'sigmoid'."
++        ) from error
++
++    return group_size, activation_variant
++
++
++def rms_norm_gated(
++    input,
++    gate,
++    weight=None,
++    eps=1e-5,
++    group_size=None,
++    norm_before_gate=False,
++    activation="swish",
++):
++    group_size, activation_variant = _validate(
++        input, gate, weight, group_size, activation
++    )
++    hidden_size = input.shape[-1]
++    num_groups = hidden_size // group_size
++    output = torch.empty_like(input)
++    if input.ndim == 2 and num_groups == 1:
++        grouped_input = input
++        grouped_gate = gate
++        grouped_output = output
++    else:
++        grouped_input = input.reshape(-1, group_size)
++        grouped_gate = gate.reshape(-1, group_size)
++        grouped_output = output.reshape(-1, group_size)
++
++    grouped_weight = None
++    if weight is not None:
++        if num_groups == 1:
++            # Keep the affine vector one-dimensional.  The SSA application
++            # broadcasts it over rows, avoiding a stride-zero expanded view
++            # and reducing the runtime launch ABI.
++            grouped_weight = weight
++        else:
++            grouped_weight = weight.reshape(num_groups, group_size)
++            expand_shape = (*input.shape[:-1], num_groups, group_size)
++            grouped_weight = grouped_weight.reshape(
++                *((1,) * (input.ndim - 1)), num_groups, group_size
++            ).expand(expand_shape)
++            grouped_weight = grouped_weight.reshape(-1, group_size)
++
++    kernel = _cached_make(
++        ntops.kernels.rms_norm_gated.premake,
++        grouped_input.ndim,
++        group_size,
++        activation_variant,
++        bool(norm_before_gate),
++        input_dtype=input.dtype,
++        gate_dtype=gate.dtype,
++        weight_dtype=None if weight is None else weight.dtype,
++        output_dtype=output.dtype,
++        block_size=group_size,
++        input_shape=tuple(grouped_input.shape),
++        gate_shape=tuple(grouped_gate.shape),
++        weight_shape=(
++            None if grouped_weight is None else tuple(grouped_weight.shape)
++        ),
++        output_shape=tuple(grouped_output.shape),
++        input_strides=tuple(grouped_input.stride()),
++        gate_strides=tuple(grouped_gate.stride()),
++        weight_strides=(
++            None if grouped_weight is None else tuple(grouped_weight.stride())
++        ),
++        output_strides=tuple(grouped_output.stride()),
++        num_warps=ntops.kernels.rms_norm_gated.NUM_WARPS,
++        num_stages=ntops.kernels.rms_norm_gated.NUM_STAGES,
++    )
++
++    arguments = [grouped_input, grouped_gate]
++    if grouped_weight is not None:
++        arguments.append(grouped_weight)
++    arguments.extend((eps, grouped_output))
++    # `_validate` plus the freshly allocated output establish the static tensor
++    # contracts and non-aliasing required by the compiler's private fast path.
++    # Fall back to the fully verified public handle for other backends.
++    launch = getattr(kernel, "_launch_prevalidated_noalias", kernel)
++    launch(*arguments)
++
++    return output
++
++
++__all__ = ["rms_norm_gated"]
+diff --git a/tests/test_rms_norm_gated.py b/tests/test_rms_norm_gated.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b60efaaded0a68fb841581573520a2f9397a71b9
+--- /dev/null
++++ b/tests/test_rms_norm_gated.py
+@@ -0,0 +1,83 @@
++import pytest
++import torch
++
++import ntops
++from tests.skippers import skip_if_cuda_not_available
++
++
++def _reference(
++    input,
++    gate,
++    weight,
++    eps,
++    group_size,
++    norm_before_gate,
++    activation,
++):
++    if activation in ("silu", "swish"):
++        activated_gate = torch.nn.functional.silu(gate.float())
++    else:
++        activated_gate = torch.sigmoid(gate.float())
++
++    value = input.float()
++    if not norm_before_gate:
++        value = value * activated_gate
++
++    grouped = value.reshape(*value.shape[:-1], -1, group_size)
++    variance = grouped.square().mean(dim=-1, keepdim=True)
++    normalized = (grouped * torch.rsqrt(variance + eps)).reshape_as(value)
++    if norm_before_gate:
++        normalized = normalized * activated_gate
++    if weight is not None:
++        normalized = normalized * weight.float()
++
++    return normalized.to(input.dtype)
++
++
++@skip_if_cuda_not_available
++@pytest.mark.parametrize(
++    "shape,group_size",
++    (
++        ((64, 128), 128),
++        ((128, 512), 512),
++        ((16, 4096), 4096),
++        ((2, 8, 16, 64), 32),
++    ),
++)
++@pytest.mark.parametrize("activation", ("swish", "sigmoid"))
++@pytest.mark.parametrize("norm_before_gate", (False, True))
++@pytest.mark.parametrize("elementwise_affine", (False, True))
++def test_rms_norm_gated(
++    shape, group_size, activation, norm_before_gate, elementwise_affine
++):
++    dtype = torch.bfloat16
++    device = "cuda"
++    eps = 1e-5
++    input = torch.randn(shape, dtype=dtype, device=device)
++    gate = torch.randn_like(input)
++    weight = (
++        torch.randn(shape[-1], dtype=dtype, device=device)
++        if elementwise_affine
++        else None
++    )
++
++    actual = ntops.torch.rms_norm_gated(
++        input,
++        gate,
++        weight,
++        eps=eps,
++        group_size=group_size,
++        norm_before_gate=norm_before_gate,
++        activation=activation,
++    )
++    expected = _reference(
++        input,
++        gate,
++        weight,
++        eps,
++        group_size,
++        norm_before_gate,
++        activation,
++    )
++
++    torch.testing.assert_close(actual, expected, rtol=2e-2, atol=2e-2)

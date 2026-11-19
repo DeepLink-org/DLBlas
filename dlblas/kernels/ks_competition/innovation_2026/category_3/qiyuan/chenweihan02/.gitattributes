@@ -1,0 +1,4 @@
+*.md text eol=lf
+*.sh text eol=lf
+*.lock text eol=lf
+*.patch -text

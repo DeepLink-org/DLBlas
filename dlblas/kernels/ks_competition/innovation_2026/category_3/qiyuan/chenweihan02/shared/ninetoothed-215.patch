@@ -1,0 +1,3348 @@
+diff --git a/.gitattributes b/.gitattributes
+index 24a8e87939aa53cdd833f6be7610cb4972e063ad..6134119a1c4f650833ef5165fab991e8fb313256 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -1 +1,4 @@
++*.md text eol=lf
++*.py text eol=lf
++*.sh text eol=lf
+ *.png filter=lfs diff=lfs merge=lfs -text
+diff --git a/src/ninetoothed/backends/emitters/base.py b/src/ninetoothed/backends/emitters/base.py
+index 7f03a6e56fd59d00ef5667ce71dbd1eaaa4daeaa..0310862166f88c08eb20277b7cb6b5aa11e69fab 100644
+--- a/src/ninetoothed/backends/emitters/base.py
++++ b/src/ninetoothed/backends/emitters/base.py
+@@ -49,6 +49,8 @@ class EmitterTarget(ABC):
+     tir_value_semantics: bool = False
+     native_block_matmul: bool = False
+     max_vector_numel: int | None = None
++    max_static_loop_output_numel: int | None = None
++    max_static_application_block_numel: int | None = None
+ 
+     def symbol(self, name: str) -> str:
+         return f"v{name[1:]}" if name.startswith("%") else name
+@@ -94,6 +96,11 @@ class EmitterTarget(ABC):
+ 
+         return args
+ 
++    def coerce_block_dot_operands(self, operation, operands, context):
++        del operation, context
++
++        return operands
++
+     def emit_dot_operand(self, name, coords, context):
+         del name, coords, context
+ 
+@@ -114,6 +121,12 @@ class EmitterTarget(ABC):
+ 
+         return False
+ 
++    def supports_application_block(self, axes: tuple[str, ...]) -> bool:
++        """Return whether one program may evaluate a complete application tile."""
++        del axes
++
++        return False
++
+     def thread_id(self) -> str:
+         raise NotImplementedError(
+             f"Emitter {type(self).__name__} has no thread-id expression."
+@@ -152,6 +165,11 @@ class EmitterTarget(ABC):
+     def index_cast(self, value: str) -> str:
+         return value
+ 
++    def bitcast(self, dtype: str, value: str) -> str:
++        raise NotImplementedError(
++            f"Emitter {type(self).__name__} has no bitcast expression."
++        )
++
+     def uses_mutable_scalar_slots(self) -> bool:
+         return False
+ 
+@@ -205,7 +223,15 @@ class EmitterTarget(ABC):
+     def local_decl(self, type_: ssa.Type, name: str, expr: str) -> str: ...
+ 
+     @abstractmethod
+-    def loop_header(self, var: str, lower: str, upper: str, step: str) -> str: ...
++    def loop_header(
++        self,
++        var: str,
++        lower: str,
++        upper: str,
++        step: str,
++        *,
++        static: bool = True,
++    ) -> str: ...
+ 
+     @abstractmethod
+     def reduce_update(self, operator: str, acc: str, term: str) -> str: ...
+diff --git a/src/ninetoothed/backends/emitters/cuda.py b/src/ninetoothed/backends/emitters/cuda.py
+index 9741e15193c3dec194ac273e909ab9d637177539..6f0cf188e72180f47fc53edce9524084f6b94afc 100644
+--- a/src/ninetoothed/backends/emitters/cuda.py
++++ b/src/ninetoothed/backends/emitters/cuda.py
+@@ -169,7 +169,8 @@ class CudaTarget(EmitterTarget):
+             return f"auto {name} = {expr};"
+         return f"{self.type_name(type_.dtype, type_.kind)} {name} = {expr};"
+ 
+-    def loop_header(self, var, lower, upper, step):
++    def loop_header(self, var, lower, upper, step, *, static=True):
++        del static
+         return f"for (int64_t {var} = {lower}; {var} < {upper}; {var} += {step}) {{"
+ 
+     def reduce_update(self, operator, acc, term):
+diff --git a/src/ninetoothed/backends/emitters/ssa.py b/src/ninetoothed/backends/emitters/ssa.py
+index 64b333da52cd59a4a82b981e6938404553f6080e..fab179a4e992bdea0d4d30e2d1d5e7a038cfe309 100644
+--- a/src/ninetoothed/backends/emitters/ssa.py
++++ b/src/ninetoothed/backends/emitters/ssa.py
+@@ -405,8 +405,13 @@ def _render_source(
+     vector_block_program = bool(
+         target.vector_value_semantics
+         and split_outer_inner
+-        and len(value_axes) == 2
+-        and has_dot
++        and (
++            (len(value_axes) == 2 and has_dot)
++            or (
++                reduction_schedule is None
++                and target.supports_application_block(value_axes)
++            )
++        )
+     )
+     vector_scalar_program = bool(
+         target.vector_value_semantics and primary_atomic is not None and not value_axes
+@@ -666,10 +671,11 @@ def _with_contiguous_1d_fast_path(
+         layout_contiguous=True,
+         vector_program=vector_program,
+     )
++    predicate_terms = tuple(f"({stride} == 1)" for stride in stride_params)
+     predicate = (
+-        " && ".join(f"({stride} == 1)" for stride in stride_params)
++        " && ".join(predicate_terms)
+         if target.c_style_syntax
+-        else " and ".join(f"({stride} == 1)" for stride in stride_params)
++        else _nested_python_conjunction(predicate_terms)
+     )
+ 
+     if target.c_style_syntax:
+@@ -688,6 +694,16 @@ def _with_contiguous_1d_fast_path(
+     )
+ 
+ 
++def _nested_python_conjunction(terms: tuple[str, ...]) -> str:
++    """Render a binary conjunction accepted by older Triton AST parsers."""
++    predicate = terms[0]
++
++    for term in terms[1:]:
++        predicate = f"({predicate} and {term})"
++
++    return predicate
++
++
+ def _simplify_unit_stride_expr(expr: str) -> str:
+     return re.sub(
+         r"\(?\s*index\s*\)?\s*\*\s*\(?\s*1\s*\)?",
+@@ -978,7 +994,6 @@ def _emit_operation(op: ssa.Operation, ctx: _EmitContext) -> None:
+ 
+     if op.opcode == "mem.store":
+         value_name = op.operands[0]
+-        value = _emit_value(value_name, ctx)
+         tensor = op.operands[1]
+         view_index = _store_index(op, ctx)
+         info = ctx.tensor_infos.get(tensor)
+@@ -1056,7 +1071,23 @@ def _emit_operation(op: ssa.Operation, ctx: _EmitContext) -> None:
+             )
+ 
+         mask = _materialize_bool_expr(mask, ctx)
+-        ctx.lines.append(ctx.target.store(tensor, store_index, value, mask=mask))
++
++        if ctx.target.c_style_syntax and mask is not None:
++            # Keep the pure producer slice behind the same bounds predicate as
++            # its store.  Emitting the value first makes every CUDA lane run
++            # masked loads and arithmetic even when only a narrow sub-domain
++            # can commit the result (for example a compressed cache row fused
++            # into a much wider query update).
++            body_lines: list[str] = []
++            body = ctx.child(lines=body_lines, memo=dict(ctx.memo))
++            value = _emit_value(value_name, body)
++            body_lines.append(ctx.target.store(tensor, store_index, value))
++            ctx.lines.append(f"if ({mask}) {{")
++            ctx.lines.extend(_indent_lines(body_lines, ctx.target))
++            ctx.lines.append("}")
++        else:
++            value = _emit_value(value_name, ctx)
++            ctx.lines.append(ctx.target.store(tensor, store_index, value, mask=mask))
+ 
+         return
+ 
+@@ -1088,6 +1119,20 @@ def _emit_value(name: str, ctx: _EmitContext) -> str:
+         return ctx.memo[name]
+ 
+     if not name.startswith("%"):
++        value_type = ctx.value_types.get(name)
++        output_names = {value.name for value in ctx.program.outputs}
++
++        # Rank-zero application arguments are passed by value in every
++        # backend ABI.  Tensor metadata is still retained for dtype and
++        # specialization, but it must not turn a scalar input into a pointer
++        # load (for example ``tl.load(eps + 0)`` in Triton).
++        if (
++            value_type is not None
++            and value_type.kind == "scalar"
++            and name not in output_names
++        ):
++            return name
++
+         if name not in ctx.tensor_infos:
+             if _is_bool_scalar_value(name, ctx) and ctx.target.tir_value_semantics:
+                 return f"({name} != 0)"
+@@ -1305,6 +1350,9 @@ def _operation_expr(op: ssa.Operation, ctx: _EmitContext) -> str:
+ 
+         return _load_tensor(tensor, index, ctx)
+ 
++    if opcode == "tensor.gather":
++        return _emit_tensor_gather(op, ctx)
++
+     if opcode == "tensor.cast":
+         return _cast_value(op, _emit_value(op.operands[0], ctx), ctx)
+ 
+@@ -1312,6 +1360,14 @@ def _operation_expr(op: ssa.Operation, ctx: _EmitContext) -> str:
+         args = tuple(_emit_value(operand, ctx) for operand in op.operands)
+         args = (_materialize_bool_expr(args[0], ctx) or args[0], args[1], args[2])
+ 
++        if target.c_style_syntax and op.results:
++            result_type = target.arithmetic_result_type(op, ctx)
++            args = (
++                args[0],
++                target.cast(result_type.dtype, args[1]),
++                target.cast(result_type.dtype, args[2]),
++            )
++
+         return target.where(args[0], args[1], args[2])
+ 
+     if opcode.startswith("cmp."):
+@@ -1370,7 +1426,12 @@ def _operation_expr(op: ssa.Operation, ctx: _EmitContext) -> str:
+         return _emit_linalg_dot(op, ctx)
+ 
+     if opcode == "linalg.transpose":
+-        return _emit_value(op.operands[0], ctx)
++        value = _emit_value(op.operands[0], ctx)
++
++        if target.vector_value_semantics:
++            return target.call("trans", (value,))
++
++        return value
+ 
+     raise ValueError(f"Unsupported SSA opcode `{opcode}` for unified backend emitter.")
+ 
+@@ -1419,8 +1480,9 @@ def _emit_linalg_dot(
+     if ctx.block_program and len(lhs_axes) == 2 and len(rhs_axes) == 2:
+         lhs_value = _emit_element(lhs, ctx.target.block_coords(lhs_axes), ctx)
+         rhs_value = _emit_element(rhs, ctx.target.block_coords(rhs_axes), ctx)
++        operands = ctx.target.coerce_block_dot_operands(op, (lhs_value, rhs_value), ctx)
+ 
+-        return ctx.target.call("block_dot", (lhs_value, rhs_value))
++        return ctx.target.call("block_dot", operands)
+ 
+     if not lhs_axes or not rhs_axes:
+         return ctx.target.call(
+@@ -1447,7 +1509,15 @@ def _emit_linalg_dot(
+ 
+     k_extent = lhs_axes[-1]
+     loop_var = f"{local}_k"
+-    ctx.lines.append(ctx.target.loop_header(loop_var, "0", k_extent, "1"))
++    ctx.lines.append(
++        ctx.target.loop_header(
++            loop_var,
++            "0",
++            k_extent,
++            "1",
++            static=False,
++        )
++    )
+     body_lines: list[str] = []
+     body = ctx.child(
+         lines=body_lines,
+@@ -1580,7 +1650,18 @@ def _emit_element(name: str, coords: tuple[str, ...], ctx: _EmitContext) -> str:
+             return ctx.target.render_view(op, ctx)
+         return _emit_element(op.operands[0], _view_base_coords(op, coords, ctx), ctx)
+ 
++    if op.opcode == "tensor.gather":
++        indices = op.operands[1]
++        index_coords = _broadcast_coords(
++            coords, _value_axes(op.results[0].name, ctx), _value_axes(indices, ctx)
++        )
++        index = _emit_element(indices, index_coords, ctx)
++        return _emit_element(op.operands[0], (index,), ctx)
++
+     if op.opcode == "linalg.transpose":
++        if ctx.target.vector_value_semantics and ctx.block_program:
++            return ctx.target.call("trans", (_emit_value(op.operands[0], ctx),))
++
+         return _emit_element(op.operands[0], tuple(reversed(coords)), ctx)
+ 
+     if op.opcode == "tensor.cast":
+@@ -1610,6 +1691,11 @@ def _emit_element(name: str, coords: tuple[str, ...], ctx: _EmitContext) -> str:
+ 
+         args[0] = _materialize_bool_expr(args[0], ctx) or args[0]
+ 
++        if ctx.target.c_style_syntax and op.results:
++            result_type = ctx.target.arithmetic_result_type(op, ctx)
++            args[1] = ctx.target.cast(result_type.dtype, args[1])
++            args[2] = ctx.target.cast(result_type.dtype, args[2])
++
+         return ctx.target.where(args[0], args[1], args[2])
+ 
+     if op.opcode.startswith("cmp."):
+@@ -1943,6 +2029,30 @@ def _emit_offset_element(
+     return _emit_value(op.results[0].name, ctx)
+ 
+ 
++def _emit_tensor_gather(op: ssa.Operation, ctx: _EmitContext) -> str:
++    """Lower a rank-one gather to indexed access of the producer expression."""
++    if len(op.operands) < 2:
++        raise ValueError("`tensor.gather` requires an input and indices.")
++
++    input_, indices = op.operands[:2]
++    axes = _value_axes(input_, ctx)
++    axis = int(op.attrs.get("axis", 0) or 0)
++
++    if axis < 0:
++        axis += len(axes)
++
++    if len(axes) != 1 or axis != 0:
++        raise ValueError(
++            "Unified backend emission currently supports rank-one axis-0 gather."
++        )
++
++    index = _emit_value(indices, ctx)
++
++    if input_ in ctx.tensor_infos:
++        return _load_tensor(input_, index, ctx)
++    return _emit_element(input_, (index,), ctx)
++
++
+ def _load_tensor_at(
+     name: str,
+     coords: tuple[str, ...],
+@@ -2356,7 +2466,15 @@ def _emit_reduce(local: str, op: ssa.Operation, ctx: _EmitContext) -> str:
+         ctx.lines.append(ctx.target.local_decl(result_type, local, init))
+         acc_expr = local
+ 
+-    ctx.lines.append(ctx.target.loop_header(loop_var, lower, upper, step))
++    ctx.lines.append(
++        ctx.target.loop_header(
++            loop_var,
++            lower,
++            upper,
++            step,
++            static=False,
++        )
++    )
+     inner_lines: list[str] = []
+     inner = ctx.child(
+         lines=inner_lines,
+@@ -2382,6 +2500,31 @@ def _emit_reduce(local: str, op: ssa.Operation, ctx: _EmitContext) -> str:
+     return acc_expr
+ 
+ 
++def _small_static_loop(ctx: _EmitContext) -> bool:
++    limit = ctx.target.max_static_loop_output_numel
++
++    if limit is None or not ctx.block_program:
++        return False
++
++    numel = 1
++
++    for axis in ctx.output_axes:
++        try:
++            extent = int(str(axis).strip())
++        except (TypeError, ValueError):
++            return False
++
++        if extent <= 0:
++            return False
++
++        numel *= extent
++
++        if numel > limit:
++            return False
++
++    return True
++
++
+ def _emit_scf_for(local: str, op: ssa.Operation, ctx: _EmitContext) -> str | None:
+     if ctx.native_block_program:
+         fused = ctx.target.emit_reduction_loop(local, op, ctx)
+@@ -2438,7 +2581,15 @@ def _emit_scf_for(local: str, op: ssa.Operation, ctx: _EmitContext) -> str | Non
+     loop_bindings = dict(ctx.bindings or {})
+     loop_bindings[induction] = loop_var
+     loop_bindings.update(loop_locals)
+-    ctx.lines.append(ctx.target.loop_header(loop_var, lower, upper, step))
++    ctx.lines.append(
++        ctx.target.loop_header(
++            loop_var,
++            lower,
++            upper,
++            step,
++            static=_small_static_loop(ctx),
++        )
++    )
+     body_lines: list[str] = []
+     body = ctx.child(
+         lines=body_lines,
+@@ -3955,6 +4106,10 @@ def _resolved_cast_dtype(op: ssa.Operation, ctx: _EmitContext) -> str:
+ 
+ def _cast_value(op: ssa.Operation, value: str, ctx: _EmitContext) -> str:
+     attr = op.attrs.get("dtype")
++    dtype = _resolved_cast_dtype(op, ctx)
++
++    if op.attrs.get("bitcast", False):
++        return ctx.target.bitcast(dtype, value)
+ 
+     if ctx.target.vector_value_semantics and isinstance(attr, str):
+         text = attr.strip().strip("'\"")
+@@ -3964,7 +4119,7 @@ def _cast_value(op: ssa.Operation, value: str, ctx: _EmitContext) -> str:
+ 
+             if match and match.group(1) in ctx.tensor_infos:
+                 return f"{value}.to({match.group(1)}.dtype.element_ty)"
+-    return ctx.target.cast(_resolved_cast_dtype(op, ctx), value)
++    return ctx.target.cast(dtype, value)
+ 
+ 
+ # Public analysis and traversal hooks used by backend strategies.  Keeping this
+diff --git a/src/ninetoothed/backends/emitters/tilelang.py b/src/ninetoothed/backends/emitters/tilelang.py
+index 820d6f36d5174edfd87adcc5113d3d9d922cfa43..35247967bfa44dd586314188c7e75f68f4a8fae3 100644
+--- a/src/ninetoothed/backends/emitters/tilelang.py
++++ b/src/ninetoothed/backends/emitters/tilelang.py
+@@ -138,7 +138,8 @@ class TileLangTarget(EmitterTarget):
+ 
+         return f"{name} = {expr}"
+ 
+-    def loop_header(self, var, lower, upper, step):
++    def loop_header(self, var, lower, upper, step, *, static=True):
++        del static
+         serial = (
+             f"T.serial({upper})"
+             if lower == "0" and step == "1"
+diff --git a/src/ninetoothed/backends/emitters/triton.py b/src/ninetoothed/backends/emitters/triton.py
+index 92eb53cc2d50a7efc3e17f36205db0ee0fb6dda2..8372c4955921638d4b11bdd507edd2a0d11c84d9 100644
+--- a/src/ninetoothed/backends/emitters/triton.py
++++ b/src/ninetoothed/backends/emitters/triton.py
+@@ -13,6 +13,22 @@ from ninetoothed.compiler.layout import LayoutTransfer, serialize_layout_transfe
+ from ninetoothed.ir import Kernel, ssa
+ from ninetoothed.naming import is_meta
+ 
++MAX_STATIC_UNROLL_TRIP_COUNT = 32
++
++
++def _static_trip_count(lower, upper, step):
++    try:
++        lower_value = int(str(lower).strip())
++        upper_value = int(str(upper).strip())
++        step_value = int(str(step).strip())
++    except (TypeError, ValueError):
++        return None
++
++    if step_value == 0:
++        return None
++
++    return len(range(lower_value, upper_value, step_value))
++
+ 
+ def _legal_pre_tiled_block(shape, *, max_numel):
+     static_numel = 1
+@@ -52,6 +68,9 @@ class TritonTarget(EmitterTarget):
+     source_route: str = "ssa-unified-triton-emitter"
+     vector_value_semantics: bool = True
+     max_vector_numel: int | None = 1 << 20
++    max_static_loop_output_numel: int | None = 2048
++    max_static_application_block_numel: int | None = 2048
++    fp8_dot_fallback: str = "none"
+ 
+     def program_id(self, axis: int = 0) -> str:
+         return f"tl.program_id({axis})"
+@@ -71,6 +90,42 @@ class TritonTarget(EmitterTarget):
+ 
+         return f"tl.full({shape}, {value}, {dtype_expr})"
+ 
++    def coerce_block_dot_operands(self, operation, operands, context):
++        if self.fp8_dot_fallback not in {"float16", "bfloat16"}:
++            return operands
++
++        coerced = []
++        result = common.local_symbol(operation.results[0].name, context)
++        target_dtype = f"tl.{self.fp8_dot_fallback}"
++
++        for index, (label, value) in enumerate(zip(("lhs", "rhs"), operands)):
++            operand_type = context.value_types.get(operation.operands[index])
++            operand_dtype = (
++                None
++                if operand_type is None or operand_type.dtype is None
++                else common.normalize_dtype(operand_type.dtype)
++            )
++
++            if operand_dtype is not None and not operand_dtype.startswith("float8_"):
++                coerced.append(value)
++                continue
++
++            local = f"{result}_fp8_{label}"
++            context.lines.append(f"{local} = {value}")
++
++            if operand_dtype is not None:
++                context.lines.append(f"{local} = {local}.to({target_dtype})")
++            else:
++                context.lines.extend(
++                    (
++                        f"if {local}.dtype == tl.float8e5:",
++                        f"    {local} = {local}.to({target_dtype})",
++                    )
++                )
++            coerced.append(local)
++
++        return tuple(coerced)
++
+     def literal(self, value: Any) -> str:
+         if isinstance(value, float) and math.isinf(value):
+             return "float('inf')" if value > 0 else "-float('inf')"
+@@ -97,6 +152,9 @@ class TritonTarget(EmitterTarget):
+     def cast(self, dtype, value):
+         return f"{value}.to(tl.{common.normalize_dtype(dtype)})"
+ 
++    def bitcast(self, dtype, value):
++        return f"{value}.to(tl.{common.normalize_dtype(dtype)}, bitcast=True)"
++
+     def where(self, cond, yes, no):
+         return f"tl.where({cond}, {yes}, {no})"
+ 
+@@ -118,6 +176,7 @@ class TritonTarget(EmitterTarget):
+ 
+         functions = {
+             "abs": "tl.abs",
++            "arange": "tl.arange",
+             "acos": "tl.acos",
+             "asin": "tl.asin",
+             "atan": "tl.atan",
+@@ -130,6 +189,7 @@ class TritonTarget(EmitterTarget):
+             "exp": "tl.exp",
+             "exp2": "tl.exp2",
+             "floor": "tl.floor",
++            "interleave": "tl.interleave",
+             "log": "tl.log",
+             "log1p": "tl.log",
+             "log2": "tl.log2",
+@@ -146,6 +206,7 @@ class TritonTarget(EmitterTarget):
+             "sqrt": "tl.sqrt",
+             "tan": "tl.tan",
+             "tanh": "tl.tanh",
++            "trans": "tl.trans",
+         }
+ 
+         if name == "log1p":
+@@ -166,8 +227,17 @@ class TritonTarget(EmitterTarget):
+ 
+         return f"{name} = {expr}"
+ 
+-    def loop_header(self, var, lower, upper, step):
+-        return f"for {var} in range({lower}, {upper}, {step}):"
++    def loop_header(self, var, lower, upper, step, *, static=True):
++        trip_count = _static_trip_count(lower, upper, step)
++        iterator = (
++            "tl.static_range"
++            if static
++            and trip_count is not None
++            and 0 < trip_count <= MAX_STATIC_UNROLL_TRIP_COUNT
++            else "range"
++        )
++
++        return f"for {var} in {iterator}({lower}, {upper}, {step}):"
+ 
+     def reduce_update(self, operator, acc, term):
+         if operator == "sum":
+@@ -200,6 +270,36 @@ class TritonTarget(EmitterTarget):
+             values += ","
+         return f"({values})"
+ 
++    def supports_application_block(self, axes: tuple[str, ...]) -> bool:
++        """Use one Triton program for a legal, statically tiled application."""
++        if not axes:
++            return False
++
++        numel = 1
++
++        for axis in axes:
++            try:
++                extent = int(str(axis).strip())
++            except (TypeError, ValueError):
++                return False
++
++            # Triton's block tensor dimensions must be powers of two.  Keep
++            # symbolic and irregular domains on the masked linear fallback.
++            if extent <= 0 or extent & (extent - 1):
++                return False
++
++            numel *= extent
++
++        limits = tuple(
++            limit
++            for limit in (
++                self.max_vector_numel,
++                self.max_static_application_block_numel,
++            )
++            if limit is not None
++        )
++        return not limits or numel <= min(limits)
++
+     def render_view(self, operation, context) -> str:
+         value = common.emit_value(operation.operands[0], context)
+         subscript = str(operation.attrs.get("subscript", "")).strip()
+@@ -509,7 +609,12 @@ TARGET = TritonTarget()
+ 
+ 
+ def emit(kernel: Kernel):
+-    return common.emit(kernel, TARGET)
++    backend_options = kernel.compiler_options.get("backend_options", {})
++    target = TritonTarget(
++        fp8_dot_fallback=backend_options.get("fp8_dot_fallback", "none")
++    )
++
++    return common.emit(kernel, target)
+ 
+ 
+ __all__ = ["TARGET", "TritonTarget", "emit"]
+diff --git a/src/ninetoothed/backends/materializers/cuda.py b/src/ninetoothed/backends/materializers/cuda.py
+index 5f4c09cbef108fc80f9b52afa1da7dcb9fc6e357..1b6877e3d777d881fd549988ad78dd79f14ff3a9 100644
+--- a/src/ninetoothed/backends/materializers/cuda.py
++++ b/src/ninetoothed/backends/materializers/cuda.py
+@@ -88,8 +88,14 @@ def _materialize(compilation, *, output_dir=None):
+     wrapped = _cuda_wrapper(
+         function, compilation.launch_abi, compilation.kernel.tensors
+     )
+-
+-    return Handle(compilation, function, wrapped, source, library_path)
++    handle = Handle(compilation, function, wrapped, source, library_path)
++    handle._launch_prevalidated_noalias = _prevalidated_noalias_cuda_launch(
++        function,
++        compilation.launch_abi,
++        compilation.kernel.tensors,
++        wrapped,
++    )
++    return handle
+ 
+ 
+ def _cuda_wrapper(function, abi, tensor_specs):
+@@ -129,6 +135,95 @@ def _cuda_wrapper(function, abi, tensor_specs):
+     return launch
+ 
+ 
++def _prevalidated_noalias_cuda_launch(function, abi, tensor_specs, checked_launch):
++    """Return a direct CUDA launcher for wrappers with validated contracts.
++
++    Operator wrappers sometimes reuse the exact same tensor objects for many
++    inference steps.  Their public entry point still performs the full runtime
++    validation once, while ``bind`` caches stable device pointers and scalar
++    conversions.  The bound call only resolves PyTorch's current stream and
++    invokes the generated host launcher.  Resolving the stream on every call
++    preserves PyTorch stream semantics without repeating Python tensor ABI
++    preparation.
++    """
++    from ninetoothed.compiler.runtime import (
++        KernelLaunchError,
++        _bound_values,
++        _empty_launch,
++        _first_output,
++    )
++
++    spec_by_name = {spec.name: spec for spec in tensor_specs}
++
++    def bind(*args, **kwargs):
++        if len(args) > len(abi.public_args):
++            return None
++
++        public = dict(zip(abi.public_args, args))
++        public.update(kwargs)
++        if any(name not in public for name in abi.public_args):
++            return None
++
++        output = _first_output(abi, public)
++        if _empty_launch(abi, public):
++            return lambda: output
++
++        values, keepalive = _bound_values(
++            abi,
++            public,
++            scalar_mode="cuda",
++            specs=spec_by_name,
++            cuda_scalar=_cuda_scalar,
++        )
++
++        import torch
++
++        tensor = next(
++            (
++                public[binding.source]
++                for binding in abi.kernel_args
++                if binding.kind in {"tensor", "jagged_values", "jagged_offsets"}
++                and binding.source in public
++            ),
++            None,
++        )
++        device_index = getattr(getattr(tensor, "device", None), "index", None)
++        if device_index is None:
++            device_index = torch.cuda.current_device()
++
++        raw_stream = getattr(torch._C, "_cuda_getCurrentRawStream", None)
++
++        def current_stream():
++            if raw_stream is not None:
++                return ctypes.c_void_p(raw_stream(device_index))
++            return ctypes.c_void_p(
++                torch.cuda.current_stream(device_index).cuda_stream
++            )
++
++        def invoke():
++            result = function(*values, current_stream())
++            if result != 0:
++                raise KernelLaunchError(result)
++            return output
++
++        # Keep tensor storage and converted ctypes arguments alive for the
++        # complete lifetime of the zero-argument bound invocation.
++        invoke._ninetoothed_bound_values = (args, kwargs, values, keepalive)
++        # CoreX 4.4 reports successful capture for externally launched CUDA
++        # kernels but records an empty graph.  Let wrappers retain direct
++        # launch on this backend instead of replaying the empty graph.
++        invoke._ninetoothed_external_graph_capture = not bool(
++            getattr(torch, "corex", False)
++        )
++        return invoke
++
++    def launch(*args, **kwargs):
++        return checked_launch(*args, **kwargs)
++
++    launch._ninetoothed_bind_prevalidated_noalias = bind
++    return launch
++
++
+ def _cuda_scalar(value, dtype):
+     dtype = str(dtype).split(".")[-1]
+     dtype = {
+diff --git a/src/ninetoothed/backends/materializers/triton.py b/src/ninetoothed/backends/materializers/triton.py
+index 2c8f0f8d40e4241b1bd3e4d0319480469cd90c5c..d6aced47bd5416f625ea60972691faea94a9cdb9 100644
+--- a/src/ninetoothed/backends/materializers/triton.py
++++ b/src/ninetoothed/backends/materializers/triton.py
+@@ -43,6 +43,115 @@ _TRITON_LOADER_PATTERN = re.compile(
+ )
+ 
+ 
++def _active_triton_target():
++    try:
++        from triton.runtime import driver
++
++        return driver.active.get_current_target()
++    except (AttributeError, ImportError):
++        return None
++    except (KeyError, RuntimeError, TypeError, UnicodeDecodeError):
++        return _torch_hip_target(driver.active)
++
++
++def _torch_hip_target(active_driver):
++    """Recover target discovery from vendor HIP runtime ABI mismatches."""
++    try:
++        import torch
++        from triton.backends.compiler import GPUTarget
++
++        try:
++            from triton import knobs
++
++            override_arch = knobs.runtime.override_arch
++        except (AttributeError, ImportError):
++            # Triton 3.1 vendor builds predate ``triton.knobs``.  Those builds
++            # still expose GPUTarget and report the HIP architecture through
++            # PyTorch, so target recovery does not require the newer knob API.
++            override_arch = None
++
++        if torch.version.hip is None or not torch.cuda.is_available():
++            return None
++
++        device = active_driver.get_current_device()
++        properties = torch.cuda.get_device_properties(device)
++        architecture = str(
++            override_arch or properties.gcnArchName
++        ).split(":", 1)[0]
++        warp_size = int(properties.warp_size)
++
++        if not architecture.startswith("gfx") or warp_size <= 0:
++            return None
++
++        target = GPUTarget("hip", architecture, warp_size)
++    except (AttributeError, ImportError, RuntimeError, TypeError, ValueError):
++        return None
++
++    def get_current_target(_driver):
++        return target
++
++    # Triton calls target discovery again during JIT compilation.  Cache the
++    # validated PyTorch result on the active driver so those calls use the same
++    # target instead of re-entering the incompatible vendor HIP helper.
++    active_driver.get_current_target = types.MethodType(
++        get_current_target,
++        active_driver,
++    )
++
++    return target
++
++
++def _legalize_triton_num_stages(num_stages):
++    stages = int(num_stages)
++    target = _active_triton_target()
++
++    if target is None:
++        return stages
++
++    backend = str(getattr(target, "backend", "")).lower()
++    warp_size = getattr(target, "warp_size", None)
++
++    # CoreX presents itself through Triton's CUDA target but uses a 64-thread
++    # warp and currently supports one software-pipeline stage.  A capability
++    # check keeps HIP wave64 and conventional CUDA warp32 targets unchanged.
++    if backend == "cuda" and warp_size == 64:
++        return 1
++
++    return stages
++
++
++def _legalized_tuning_candidates(compilation):
++    candidates = tuple(compilation.launch_plan.tuning_candidates)
++    legalized = []
++    configurations = set()
++
++    for candidate in candidates:
++        normalized = dict(candidate)
++        requested_stages = int(normalized.get("num_stages", 3))
++        stages = _legalize_triton_num_stages(requested_stages)
++        normalized["num_stages"] = stages
++
++        if stages != requested_stages:
++            normalized["id"] = f"{normalized.get('id', 'candidate')}_stages-{stages}"
++
++        configuration = (
++            int(normalized.get("num_warps", 4)),
++            stages,
++            tuple(sorted(dict(normalized.get("meta_parameters", {})).items())),
++            tuple(
++                sorted(dict(normalized.get("private_meta_parameters", {})).items())
++            ),
++        )
++
++        if configuration in configurations:
++            continue
++
++        configurations.add(configuration)
++        legalized.append(normalized)
++
++    return tuple(legalized)
++
++
+ class TritonMaterializer(Materializer):
+     target = Target.TRITON
+ 
+@@ -124,7 +233,7 @@ def _materialize(compilation):
+     module = import_python_module(source)
+     launch = getattr(module, artifact.entrypoint)
+     kernel = getattr(module, f"{artifact.kernel_name}_kernel", None)
+-    candidates = tuple(compilation.launch_plan.tuning_candidates)
++    candidates = _legalized_tuning_candidates(compilation)
+     validate_bindings = _runtime_binding_validator(compilation)
+     candidate_launches = tuple(
+         _candidate_launch(compilation, launch, kernel, candidate, validate_bindings)
+@@ -150,6 +259,11 @@ def _materialize(compilation):
+     elif candidate_launches:
+         wrapped = _verified_runtime_launch(candidate_launches[0])
+     else:
++        _, num_stages = _compile_schedule(compilation)
++        launch = functools.partial(
++            launch,
++            _ninetoothed_num_stages=num_stages,
++        )
+         wrapped = _verified_runtime_launch(
+             _runtime_wrapper(
+                 launch,
+@@ -163,9 +277,9 @@ def _materialize(compilation):
+     handle = Handle(compilation, kernel, wrapped, source)
+     handle._tuner = tuner
+     handle._selected_tuning_candidate = candidates[0] if len(candidates) == 1 else None
++    by_launch = dict(zip(candidate_launches, candidates))
+ 
+     if tuner is not None:
+-        by_launch = dict(zip(candidate_launches, candidates))
+         handle._launch = _tuned_runtime_launch(
+             tuner,
+             by_launch,
+@@ -174,9 +288,191 @@ def _materialize(compilation):
+             validate_bindings,
+         )
+ 
++    by_launch = dict(zip(candidate_launches, candidates))
++    handle._launch_prevalidated_noalias = _prevalidated_noalias_runtime_launch(
++        handle,
++        tuner,
++        compilation,
++        candidates_by_launch=by_launch,
++    )
++
+     return handle
+ 
+ 
++def _prevalidated_noalias_runtime_launch(
++    handle, tuner, compilation, *, candidates_by_launch=None
++):
++    """Build a low-overhead launcher for operator wrappers with static contracts.
++
++    The ordinary public handle remains fully checked.  This private launcher is
++    for wrappers which already validate tensor shape, stride, dtype, device and
++    output non-aliasing before every call.  It retains the normal first launch
++    (including auto-tuning), then reuses the resulting direct invocation plan
++    for later tensors with the same runtime scalar values.
++    """
++    from ninetoothed.compiler.runtime import (
++        _first_output_from_call,
++        _is_cacheable_runtime_literal,
++    )
++
++    candidates_by_launch = dict(candidates_by_launch or {})
++    scalar_sources = tuple(
++        dict.fromkeys(
++            binding.source
++            for binding in compilation.launch_abi.kernel_args
++            if binding.kind in {"scalar", "constexpr", "meta"}
++            and binding.source in compilation.launch_abi.public_args
++        )
++    )
++    plans = {}
++
++    def selected_candidate(args, kwargs):
++        """Return the launch selected by the verified public path.
++
++        Alias-safe calls intentionally bypass ``AutoTuner._best_func``: the
++        public path records the safe candidate on the handle instead.  The
++        private wrapper must honor that decision when arming its direct plan,
++        otherwise every in-place call pays the full runtime preparation cost.
++        """
++        selected = None if tuner is None else tuner._best_func.get(
++            tuner._make_arg_key(args, kwargs)
++        )
++        if selected is not None:
++            return selected
++
++        selected_id = getattr(handle, "_selected_tuning_candidate", None)
++        if isinstance(selected_id, dict):
++            selected_id = selected_id.get("id")
++
++        if selected_id is None:
++            return None
++
++        return next(
++            (
++                function
++                for function, candidate in candidates_by_launch.items()
++                if candidate.get("id") == selected_id
++            ),
++            None,
++        )
++
++    def plan_key(args, kwargs):
++        public = dict(zip(compilation.launch_abi.public_args, args))
++        public.update(kwargs)
++        values = []
++
++        for source in scalar_sources:
++            value = public.get(source)
++
++            # Scalar tensors may change their device value without changing
++            # object metadata; keep them on the fully verified path.
++            if getattr(value, "shape", None) is not None:
++                return None
++
++            if not _is_cacheable_runtime_literal(value):
++                return None
++
++            values.append((source, type(value), value))
++
++        key = tuple(values)
++
++        try:
++            hash(key)
++        except TypeError:
++            return None
++        return key
++
++    def launch(*args, **kwargs):
++        key = plan_key(args, kwargs)
++        invocation = plans.get(key) if key is not None else None
++
++        if invocation is not None:
++            invocation((), args, kwargs)
++            return _first_output_from_call(compilation.launch_abi, args, kwargs)
++
++        result = handle._launch(*args, **kwargs)
++
++        if key is None:
++            return result
++
++        selected = selected_candidate(args, kwargs)
++
++        if selected is None:
++            return result
++
++        try:
++            prepared = selected._ninetoothed_prepare(args, kwargs)
++        except Exception:  # noqa: BLE001
++            return result
++
++        invocation = prepared.invocation_plan
++
++        if invocation is not None and not getattr(
++            invocation, "requires_values", True
++        ):
++            plans[key] = invocation
++
++        return result
++
++    def bind(*args, **kwargs):
++        """Bind an already-armed direct plan to one validated argument set.
++
++        Operator wrappers may use the returned zero-argument callable only
++        while keeping these exact tensor objects alive and revalidating the
++        public contract before rebinding.  Returning the raw direct call keeps
++        repeated in-place operator launches off the Python ABI preparation
++        path without weakening the checked public handle.
++        """
++        key = plan_key(args, kwargs)
++        invocation = plans.get(key) if key is not None else None
++
++        if invocation is None or getattr(invocation, "requires_values", True):
++            selected = selected_candidate(args, kwargs)
++
++            if selected is None:
++                return None
++
++            try:
++                prepared = selected._ninetoothed_prepare(args, kwargs)
++                invocation = prepared.invocation_plan
++                resolved = prepared.binding_plan.resolve(flatten_tensors=True)
++            except (AttributeError, RuntimeError, TypeError):
++                return None
++
++            if invocation is None or resolved is None:
++                return None
++
++            values, keepalive = resolved
++            bind_invocation = getattr(invocation, "bind", None)
++            direct = (
++                bind_invocation(values, args, kwargs)
++                if bind_invocation is not None
++                else None
++            )
++
++            if direct is None:
++                return None
++
++            def bound():
++                result = direct()
++                _ = keepalive, prepared
++                return result
++
++            bound._ninetoothed_direct_compiled_launch = True
++            return bound
++
++        direct_call = getattr(invocation, "call", None)
++
++        if direct_call is not None:
++            return functools.partial(direct_call, args, kwargs)
++
++        return functools.partial(invocation, (), args, kwargs)
++
++    launch._ninetoothed_bind_prevalidated_noalias = bind
++
++    return launch
++
++
+ def _candidate_launch(compilation, launch, kernel, candidate, validate_bindings):
+     from ninetoothed.compiler.runtime import _runtime_wrapper
+ 
+@@ -206,6 +502,93 @@ def _candidate_launch(compilation, launch, kernel, candidate, validate_bindings)
+     )
+ 
+ 
++def _bind_compiled_triton_kernel(kernel, grid, args, kwargs):
++    """Bind one compiled Triton specialization to stable tensor objects.
++
++    ``JITFunction.run`` repeats argument binding, specialization-key creation,
++    backend option parsing, and cache lookup on every invocation.  Operator
++    wrappers which have already validated and retained the exact tensor
++    objects can safely perform those steps once.  The returned callable still
++    resolves the active stream for every launch, so normal stream semantics
++    are preserved.
++
++    Vendor Triton forks do not all expose the same low-level launcher.  This
++    helper therefore uses feature detection and returns ``None`` whenever the
++    installed runtime cannot provide the required stable ABI.
++    """
++    try:
++        from triton.runtime import driver
++
++        call_kwargs = dict(kwargs)
++        compiled = kernel.run(
++            *args,
++            grid=grid,
++            warmup=True,
++            **call_kwargs,
++        )
++        device = driver.active.get_current_device()
++
++        if hasattr(kernel, "binder"):
++            if kernel.binder is None:
++                kernel.create_binder()
++
++            binder = kernel.binder
++        else:
++            # Triton 3.1 vendor forks keep the specialization cache and binder
++            # together in a per-device tuple.
++            _cache, _target, _backend, binder = kernel.device_caches[device]
++
++        bound_args, _signature, _constexpr, runtime_args, _excess = binder(
++            *args,
++            **call_kwargs,
++        )
++        launch_grid = grid(bound_args) if callable(grid) else grid
++        launch_grid = tuple(launch_grid)
++
++        if not launch_grid or len(launch_grid) > 3:
++            return None
++
++        grid_x, grid_y, grid_z = (*launch_grid, 1, 1)[:3]
++        compiled_kernel_type = getattr(kernel, "CompiledKernel", type(compiled))
++
++        required = (
++            "function",
++            "launch_metadata",
++            "packed_metadata",
++            "run",
++        )
++
++        if compiled is None or any(
++            not hasattr(compiled, attribute) for attribute in required
++        ):
++            return None
++
++        def invoke():
++            stream = driver.active.get_current_stream(device)
++            launch_metadata = compiled.launch_metadata(
++                launch_grid,
++                stream,
++                *runtime_args,
++            )
++
++            return compiled.run(
++                grid_x,
++                grid_y,
++                grid_z,
++                stream,
++                compiled.function,
++                compiled.packed_metadata,
++                launch_metadata,
++                compiled_kernel_type.launch_enter_hook,
++                compiled_kernel_type.launch_exit_hook,
++                *runtime_args,
++            )
++
++        return invoke
++    except (AttributeError, ImportError, KeyError, RuntimeError, TypeError):
++        return None
++
++
+ def _triton_prepare_invocation(function, kernel):
+     from ninetoothed.compiler.runtime import _is_cacheable_runtime_literal
+ 
+@@ -257,6 +640,7 @@ def _triton_prepare_invocation(function, kernel):
+         function: object
+         args: tuple
+         kwargs: tuple
++        grid: object
+ 
+         def invoke(self, values, args, kwargs):
+             self.function(
+@@ -271,6 +655,7 @@ def _triton_prepare_invocation(function, kernel):
+     class InvocationPlan:
+         call: object
+         requires_values: bool
++        bound_call: object
+ 
+         def __call__(self, values, args, kwargs):
+             if self.requires_values:
+@@ -278,6 +663,22 @@ def _triton_prepare_invocation(function, kernel):
+             else:
+                 self.call(args, kwargs)
+ 
++        def bind(self, values, args, kwargs):
++            call = self.bound_call
++            resolved_args = tuple(
++                value.resolve(values, args, kwargs) for value in call.args
++            )
++            resolved_kwargs = {
++                name: value.resolve(values, args, kwargs) for name, value in call.kwargs
++            }
++
++            return _bind_compiled_triton_kernel(
++                kernel,
++                call.grid,
++                resolved_args,
++                resolved_kwargs,
++            )
++
+     def plan_value(value, values, static_values, call_sources):
+         for index, candidate in enumerate(values):
+             if value is candidate:
+@@ -332,7 +733,7 @@ def _triton_prepare_invocation(function, kernel):
+                 bound_kernel = kernel[grid]
+ 
+                 def capture(*args, **kwargs):
+-                    calls.append((bound_kernel, args, kwargs))
++                    calls.append((bound_kernel, grid, args, kwargs))
+ 
+                 return capture
+ 
+@@ -355,7 +756,7 @@ def _triton_prepare_invocation(function, kernel):
+         if len(calls) != 1:
+             return None
+ 
+-        bound_kernel, args, kwargs = calls[0]
++        bound_kernel, grid, args, kwargs = calls[0]
+         planned_args = tuple(
+             plan_value(value, values, static_values, call_sources) for value in args
+         )
+@@ -372,14 +773,19 @@ def _triton_prepare_invocation(function, kernel):
+         ):
+             return None
+ 
+-        planned_call = BoundCall(bound_kernel, planned_args, planned_kwargs)
++        planned_call = BoundCall(
++            bound_kernel,
++            planned_args,
++            planned_kwargs,
++            grid,
++        )
+ 
+         requires_values = any(
+             isinstance(value, ValueRef) for value in planned_args
+         ) or any(isinstance(value, ValueRef) for _name, value in planned_kwargs)
+ 
+         if requires_values:
+-            return InvocationPlan(planned_call, True)
++            return InvocationPlan(planned_call, True, planned_call)
+ 
+         direct_call = build_direct_invocation(
+             planned_call.function,
+@@ -387,7 +793,7 @@ def _triton_prepare_invocation(function, kernel):
+             planned_call.kwargs,
+         )
+ 
+-        return InvocationPlan(direct_call, False)
++        return InvocationPlan(direct_call, False, planned_call)
+ 
+     return prepare
+ 
+@@ -460,6 +866,57 @@ def _runtime_alias_signature(abi, public):
+     return tuple(aliases)
+ 
+ 
++def _runtime_rebind_signature(args, kwargs):
++    def is_literal(value):
++        return (
++            value is None
++            or type(value) in (bool, int, float, complex, str, bytes)
++            or (isinstance(value, tuple) and all(is_literal(item) for item in value))
++        )
++
++    def value_signature(value):
++        shape = getattr(value, "shape", None)
++
++        if shape is not None and hasattr(value, "dtype"):
++            stride = getattr(value, "stride", None)
++            storage_offset = getattr(value, "storage_offset", None)
++
++            try:
++                return (
++                    "tensor",
++                    type(value),
++                    tuple(shape),
++                    tuple(stride()) if callable(stride) else None,
++                    str(value.dtype),
++                    str(getattr(value, "device", None)),
++                    storage_offset() if callable(storage_offset) else None,
++                )
++            except (AttributeError, RuntimeError, TypeError):
++                return None
++
++        if not is_literal(value):
++            return None
++
++        return ("literal", type(value), value)
++
++    positional = tuple(value_signature(value) for value in args)
++    keywords = tuple((name, value_signature(value)) for name, value in kwargs.items())
++
++    if any(value is None for value in positional) or any(
++        value is None for _name, value in keywords
++    ):
++        return None
++
++    signature = positional, keywords
++
++    try:
++        hash(signature)
++    except TypeError:
++        return None
++
++    return signature
++
++
+ def _tuned_runtime_launch(
+     tuner,
+     candidates_by_launch,
+@@ -479,6 +936,7 @@ def _tuned_runtime_launch(
+     active_identity = None
+     active = None
+     prepared_calls = {}
++    rebindable_calls = {}
+ 
+     def evict(identity, token):
+         nonlocal active, active_identity
+@@ -523,6 +981,29 @@ def _tuned_runtime_launch(
+         except TypeError:
+             return None
+ 
++    def remember_rebindable(rebind_key, selected, prepared):
++        invocation = prepared.invocation_plan
++
++        if (
++            rebind_key is None
++            or prepared.empty
++            or invocation is None
++            or getattr(invocation, "requires_values", True)
++        ):
++            return
++
++        template = replace(
++            prepared,
++            binding_plan=None,
++            owner_refs=(),
++            cache_token=None,
++        )
++        _remember_verified_runtime_call(
++            rebindable_calls,
++            rebind_key,
++            (selected, template),
++        )
++
+     def launch(*args, **kwargs):
+         active_snapshot = active
+         active_identity_snapshot = active_identity
+@@ -571,6 +1052,29 @@ def _tuned_runtime_launch(
+         key = tuner._make_arg_key(args, kwargs)
+         alias_signature = _runtime_alias_signature(compilation.launch_abi, public)
+         selection_key = (key, alias_signature)
++        rebind_signature = _runtime_rebind_signature(args, kwargs)
++        rebind_key = (
++            (selection_key, rebind_signature)
++            if rebind_signature is not None
++            else None
++        )
++        rebindable = (
++            rebindable_calls.pop(rebind_key, None)
++            if rebind_key is not None
++            else None
++        )
++
++        if rebindable is not None:
++            if validate_bindings is not None:
++                validate_bindings(public)
++
++            rebindable_calls[rebind_key] = rebindable
++            selected, prepared = rebindable
++            result = selected._ninetoothed_invoke_prepared(prepared, args, kwargs)
++            record(selected)
++
++            return result
++
+         selected = next(
+             (
+                 entry[1]
+@@ -600,6 +1104,7 @@ def _tuned_runtime_launch(
+                     args,
+                     kwargs,
+                 )
++                remember_rebindable(rebind_key, selected, prepared)
+                 remember_best_effort(
+                     identity,
+                     selection_key,
+@@ -621,6 +1126,7 @@ def _tuned_runtime_launch(
+             except Exception:  # noqa: BLE001
+                 return result
+ 
++            remember_rebindable(rebind_key, selected, prepared)
+             remember_best_effort(identity, selection_key, selected, prepared)
+ 
+             return result
+@@ -639,6 +1145,7 @@ def _tuned_runtime_launch(
+             kwargs,
+         )
+         record(selected)
++        remember_rebindable(rebind_key, selected, prepared)
+         remember_best_effort(identity, selection_key, selected, prepared)
+ 
+         return result
+@@ -867,7 +1374,17 @@ def _select_aot_candidate(compilation):
+     if launch_plan is None:
+         return compilation
+ 
+-    candidates = tuple(launch_plan.tuning_candidates)
++    candidates = _legalized_tuning_candidates(compilation)
++
++    if candidates != tuple(launch_plan.tuning_candidates):
++        compilation = replace(
++            compilation,
++            launch_plan=replace(
++                launch_plan,
++                tuning_candidates=candidates,
++            ),
++        )
++        launch_plan = compilation.launch_plan
+ 
+     if len(candidates) <= 1:
+         return compilation
+@@ -1335,17 +1852,19 @@ def _private_meta_values(compilation) -> dict[str, int]:
+ 
+ 
+ def _compile_schedule(compilation) -> tuple[int, int]:
+-    schedule = dict(compilation.artifact.metadata.get("ssa_schedule", {}))
++    metadata = getattr(compilation.artifact, "metadata", {}) or {}
++    schedule = dict(metadata.get("ssa_schedule", {}))
+     candidates = tuple(compilation.launch_plan.tuning_candidates)
+     selected = dict(candidates[0]) if candidates else {}
++    request = getattr(compilation, "request", None)
+     warps = (
+-        compilation.request.num_warps
++        getattr(request, "num_warps", None)
+         or selected.get("num_warps")
+         or schedule.get("num_warps")
+         or 4
+     )
+     stages = (
+-        compilation.request.num_stages
++        getattr(request, "num_stages", None)
+         or selected.get("num_stages")
+         or schedule.get("num_stages")
+         or 3
+@@ -1356,7 +1875,7 @@ def _compile_schedule(compilation) -> tuple[int, int]:
+ 
+     if isinstance(stages, tuple):
+         stages = stages[0]
+-    return int(warps), int(stages)
++    return int(warps), _legalize_triton_num_stages(stages)
+ 
+ 
+ def _aot_wrapper(
+diff --git a/src/ninetoothed/backends/toolchain.py b/src/ninetoothed/backends/toolchain.py
+index dfc4d4ff74de25a9fd9058a58d3b98b8fef2266c..3526f2c0a459c50d62b90e1ba4363b9df151768b 100644
+--- a/src/ninetoothed/backends/toolchain.py
++++ b/src/ninetoothed/backends/toolchain.py
+@@ -41,7 +41,9 @@ def cuda_compute_capability(arch: str) -> str | None:
+ 
+ def find_nvcc() -> str:
+     """Locate NVCC using PATH first and CUDA_HOME second."""
++    configured = os.environ.get("NINETOOTHED_CUDA_COMPILER")
+     candidates = (
++        configured,
+         shutil.which("nvcc"),
+         str(Path(os.environ.get("CUDA_HOME", "/usr/local/cuda")) / "bin" / "nvcc"),
+     )
+@@ -61,8 +63,34 @@ def cuda_compile_command(
+     nvcc: str | None = None,
+ ) -> tuple[str, ...]:
+     """Construct the shared-library command used by the CUDA materializer."""
++    compiler = nvcc or find_nvcc()
++    # An explicitly supplied ``nvcc`` denotes the standard NVIDIA toolchain
++    # and must not inherit a vendor source-language override from the process.
++    # The override only participates in automatic compiler discovery, which is
++    # the path used by CUDA-compatible vendor materializers such as CoreX.
++    language = (
++        os.environ.get("NINETOOTHED_CUDA_LANGUAGE") if nvcc is None else None
++    )
++
++    if language:
++        cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda")
++        offload_arch = "native" if arch == "native" else normalize_cuda_arch(arch)
++        return (
++            compiler,
++            "-x",
++            language,
++            f"--cuda-path={cuda_home}",
++            f"--offload-arch={offload_arch}",
++            "-shared",
++            "-fPIC",
++            "-O3",
++            str(source),
++            "-o",
++            str(output),
++        )
++
+     return (
+-        nvcc or find_nvcc(),
++        compiler,
+         "-shared",
+         "-Xcompiler",
+         "-fPIC",
+diff --git a/src/ninetoothed/backends/triton.py b/src/ninetoothed/backends/triton.py
+index 3168a644e32384deabffaa80818ea8ed12b0a1ad..b99d0d7fe24a23e0d9719595473f3fabe77d6c6d 100644
+--- a/src/ninetoothed/backends/triton.py
++++ b/src/ninetoothed/backends/triton.py
+@@ -5,6 +5,7 @@ by operator family before emitting code; it delegates to the unified SSA
+ emitter, whose dispatch unit is a single SSA operation.
+ """
+ 
++import importlib.metadata
+ from typing import TYPE_CHECKING, Any, Mapping
+ 
+ from ninetoothed.backends.core import (
+@@ -28,6 +29,7 @@ if TYPE_CHECKING:
+ 
+ class TritonBackend(Backend):
+     name = Target.TRITON
++    supported_options = frozenset({"fp8_dot_fallback"})
+     capability = Capability(
+         name=name,
+         emits_source=True,
+@@ -39,6 +41,40 @@ class TritonBackend(Backend):
+         ),
+     )
+ 
++    def normalize_options(self, options: Mapping[str, Any]) -> Mapping[str, Any]:
++        normalized = dict(super().normalize_options(options))
++        fallback = normalized.get("fp8_dot_fallback", "auto")
++
++        if not isinstance(fallback, str):
++            raise TypeError(
++                "The Triton `fp8_dot_fallback` backend option must be a string."
++            )
++
++        fallback = fallback.strip().lower()
++
++        if fallback not in {"auto", "none", "float16", "bfloat16"}:
++            raise ValueError(
++                "The Triton `fp8_dot_fallback` backend option must be `auto`, "
++                "`none`, `float16`, or `bfloat16`."
++            )
++
++        if fallback == "auto":
++            try:
++                triton_version = importlib.metadata.version("triton").lower()
++            except importlib.metadata.PackageNotFoundError:
++                fallback = "none"
++            else:
++                if "+corex." in triton_version:
++                    fallback = "bfloat16"
++                elif ".dtk" in triton_version or "+das." in triton_version:
++                    fallback = "float16"
++                else:
++                    fallback = "none"
++
++        normalized["fp8_dot_fallback"] = fallback
++
++        return normalized
++
+     def emit(self, kernel: Kernel) -> Artifact:
+         return emit(kernel)
+ 
+diff --git a/src/ninetoothed/compiler/runtime.py b/src/ninetoothed/compiler/runtime.py
+index 6f81bd2346f175943cc1a62166aeabd7c7225e95..d466a8ee9c529a34e0d2d0436fad83647e9ba074 100644
+--- a/src/ninetoothed/compiler/runtime.py
++++ b/src/ninetoothed/compiler/runtime.py
+@@ -137,6 +137,7 @@ def _runtime_specs(artifact):
+             name=str(value["name"]),
+             ndim=int(value.get("ndim", 0)),
+             dtype=value.get("dtype"),
++            jagged_dim=value.get("jagged_dim"),
+             attrs=dict(value.get("attrs", {})),
+         )
+         for value in artifact.metadata.get("tensors", ())
+@@ -1205,6 +1206,31 @@ def _validate_tensor_contract(spec, value, expected_device):
+                 f"expected dimension {axis} to be {expected}."
+             )
+ 
++    # A jagged tensor's public value is a NestedTensor view.  Its stride is
++    # the stride of the flattened values storage, whereas source_strides are
++    # the logical strides used by the generated jagged indexing (including a
++    # zero stride for the jagged dimension).  Comparing those two contracts
++    # rejects valid NestedTensor launches, so static source-stride validation
++    # applies only to dense public tensor arguments.
++    if getattr(spec, "jagged_dim", None) is None:
++        expected_strides = spec.attrs.get("source_strides", ())
++        stride = getattr(value, "stride", None)
++        if expected_strides and callable(stride):
++            actual_strides = tuple(stride())
++            for axis, (actual, expected) in enumerate(
++                zip(actual_strides, expected_strides, strict=False)
++            ):
++                try:
++                    expected = int(expected)
++                except (TypeError, ValueError):
++                    continue
++
++                if actual != expected:
++                    raise TypeError(
++                        f"Kernel argument `{spec.name}` has strides {actual_strides}; "
++                        f"expected stride {axis} to be {expected}."
++                    )
++
+     device = getattr(value, "device", None)
+ 
+     if device is None:
+diff --git a/src/ninetoothed/frontend/layout.py b/src/ninetoothed/frontend/layout.py
+index 9dadcba7f5d4da50daa20eb786e72b6e7033ef3c..eded650a3635263ffcdee85442230868110089a3 100644
+--- a/src/ninetoothed/frontend/layout.py
++++ b/src/ninetoothed/frontend/layout.py
+@@ -6,6 +6,7 @@ It deliberately has no dependency on a backend source generator.
+ 
+ import ast
+ import copy
++import re
+ from typing import Any
+ 
+ import ninetoothed.naming as naming
+@@ -246,13 +247,24 @@ def _access_templates(tensor) -> tuple[dict[str, Any], ...]:
+     for offset, stride in zip(offsets, source_strides):
+         linear += Symbol(offset) * Symbol(stride)
+ 
++    static_ranges = _static_access_ranges(view.shape, shapes, level)
++    statically_in_bounds = _statically_in_bounds(
++        offsets,
++        source_shape,
++        static_ranges,
++    )
++    simplified_mask = _simplify_static_predicate(mask, static_ranges)
+     template = {
+         "level": level,
+         "shape": tuple(shape),
+         "linear_offset": _text(linear),
+         "offsets": tuple(_text(offset) for offset in offsets),
+-        "mask": _text(mask),
++        "mask": "True" if statically_in_bounds else simplified_mask,
+     }
++
++    if statically_in_bounds:
++        template["statically_in_bounds"] = True
++
+     source = view.source
+     jagged_dim = getattr(source, "jagged_dim", None)
+ 
+@@ -267,7 +279,7 @@ def _access_templates(tensor) -> tuple[dict[str, Any], ...]:
+     return (template,)
+ 
+ 
+-def _view_index_attrs(tensor) -> dict[str, str]:
++def _view_index_attrs(tensor) -> dict[str, Any]:
+     if int(getattr(tensor, "ndim", 0)) == 0:
+         return {}
+ 
+@@ -293,12 +305,294 @@ def _view_index_attrs(tensor) -> dict[str, str]:
+ 
+     for offset, stride in zip(offsets, source_strides):
+         linear += Symbol(offset) * Symbol(stride)
+-    return {
++    view_ranges = _static_view_ranges(view.shape)
++    statically_in_bounds = _statically_in_bounds(
++        offsets,
++        source_shape,
++        view_ranges,
++    )
++    simplified_mask = _simplify_static_predicate(mask, view_ranges)
++    attrs = {
+         "view_linear_offset": _text(linear),
+-        "view_mask": _text(mask),
++        "view_mask": "True" if statically_in_bounds else simplified_mask,
+         "view_offsets": tuple(_text(offset) for offset in offsets),
+     }
+ 
++    if statically_in_bounds:
++        attrs["view_statically_in_bounds"] = True
++
++    return attrs
++
++
++def _static_access_ranges(view_shape, dtype_shapes, level):
++    ranges = _static_view_ranges(view_shape, name="outer_index")
++
++    if ranges is None:
++        return None
++
++    for prior_level, prior_shape in enumerate(dtype_shapes[:level]):
++        extents = _static_extents(prior_shape)
++
++        if extents is None:
++            return None
++
++        ranges.update(
++            {
++                f"extract_{prior_level}_{dim}": (0, extent - 1)
++                for dim, extent in enumerate(extents)
++            }
++        )
++
++    value_extents = _static_extents(dtype_shapes[level])
++
++    if value_extents is None:
++        return None
++
++    ranges.update(
++        {
++            f"value_{dim}": (0, extent - 1)
++            for dim, extent in enumerate(value_extents)
++        }
++    )
++
++    return ranges
++
++
++def _static_view_ranges(shape, *, name="index"):
++    extents = _static_extents(shape)
++
++    if extents is None:
++        return None
++
++    total = 1
++
++    for extent in extents:
++        total *= extent
++
++    return {name: (0, total - 1)}
++
++
++def _static_extents(shape):
++    extents = []
++
++    for value in shape:
++        text = _text(value).strip()
++
++        if not re.fullmatch(r"[0-9]+", text):
++            return None
++
++        extent = int(text)
++
++        if extent <= 0:
++            return None
++
++        extents.append(extent)
++
++    return tuple(extents)
++
++
++def _statically_in_bounds(offsets, source_shape, ranges):
++    source_extents = _static_extents(source_shape)
++
++    if ranges is None or source_extents is None:
++        return False
++
++    if len(offsets) != len(source_extents):
++        return False
++
++    for offset, extent in zip(offsets, source_extents):
++        interval = _static_interval(_text(offset), ranges)
++
++        if interval is None or interval[0] < 0 or interval[1] >= extent:
++            return False
++
++    return True
++
++
++def _simplify_static_predicate(expression, ranges):
++    text = _text(expression)
++
++    if ranges is None:
++        return text
++
++    try:
++        root = ast.parse(text, mode="eval").body
++    except (SyntaxError, TypeError, ValueError):
++        return text
++
++    def is_true(node):
++        return isinstance(node, ast.Constant) and node.value is True
++
++    def comparison_is_true(lhs, operator, rhs):
++        if isinstance(operator, ast.Lt):
++            return lhs[1] < rhs[0]
++
++        if isinstance(operator, ast.LtE):
++            return lhs[1] <= rhs[0]
++
++        if isinstance(operator, ast.Gt):
++            return lhs[0] > rhs[1]
++
++        if isinstance(operator, ast.GtE):
++            return lhs[0] >= rhs[1]
++
++        if isinstance(operator, ast.Eq):
++            return lhs[0] == lhs[1] == rhs[0] == rhs[1]
++
++        if isinstance(operator, ast.NotEq):
++            return lhs[1] < rhs[0] or rhs[1] < lhs[0]
++
++        return False
++
++    def simplify(node):
++        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
++            lhs = simplify(node.left)
++            rhs = simplify(node.right)
++
++            if is_true(lhs):
++                return rhs
++
++            if is_true(rhs):
++                return lhs
++
++            return ast.copy_location(ast.BinOp(left=lhs, op=node.op, right=rhs), node)
++
++        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
++            values = [
++                value
++                for value in map(simplify, node.values)
++                if not is_true(value)
++            ]
++
++            if not values:
++                return ast.copy_location(ast.Constant(value=True), node)
++
++            if len(values) == 1:
++                return values[0]
++
++            return ast.copy_location(ast.BoolOp(op=node.op, values=values), node)
++
++        if isinstance(node, ast.Compare):
++            operands = (node.left, *node.comparators)
++            intervals = tuple(
++                _static_interval(ast.unparse(operand), ranges) for operand in operands
++            )
++
++            if all(interval is not None for interval in intervals) and all(
++                comparison_is_true(lhs, operator, rhs)
++                for lhs, operator, rhs in zip(intervals, node.ops, intervals[1:])
++            ):
++                return ast.copy_location(ast.Constant(value=True), node)
++
++        return node
++
++    return ast.unparse(simplify(root))
++
++
++def _static_interval(expression, ranges):
++    try:
++        node = ast.parse(expression, mode="eval").body
++    except (SyntaxError, TypeError, ValueError):
++        return None
++
++    def evaluate(current):
++        if isinstance(current, ast.Constant) and type(current.value) is int:
++            return current.value, current.value
++
++        if isinstance(current, ast.Name):
++            return ranges.get(current.id)
++
++        if isinstance(current, ast.UnaryOp):
++            operand = evaluate(current.operand)
++
++            if operand is None:
++                return None
++
++            if isinstance(current.op, ast.USub):
++                return -operand[1], -operand[0]
++
++            if isinstance(current.op, ast.UAdd):
++                return operand
++
++            return None
++
++        if isinstance(current, ast.BinOp):
++            lhs = evaluate(current.left)
++            rhs = evaluate(current.right)
++
++            if lhs is None or rhs is None:
++                return None
++
++            if isinstance(current.op, ast.Add):
++                return lhs[0] + rhs[0], lhs[1] + rhs[1]
++
++            if isinstance(current.op, ast.Sub):
++                return lhs[0] - rhs[1], lhs[1] - rhs[0]
++
++            if isinstance(current.op, ast.Mult):
++                products = (
++                    lhs[0] * rhs[0],
++                    lhs[0] * rhs[1],
++                    lhs[1] * rhs[0],
++                    lhs[1] * rhs[1],
++                )
++
++                return min(products), max(products)
++
++            if isinstance(current.op, ast.FloorDiv):
++                if rhs[0] != rhs[1] or rhs[0] <= 0:
++                    return None
++
++                divisor = rhs[0]
++
++                return lhs[0] // divisor, lhs[1] // divisor
++
++            if isinstance(current.op, ast.Mod):
++                if rhs[0] != rhs[1] or rhs[0] <= 0:
++                    return None
++
++                divisor = rhs[0]
++
++                if lhs[0] == lhs[1]:
++                    value = lhs[0] % divisor
++
++                    return value, value
++
++                if 0 <= lhs[0] and lhs[1] < divisor:
++                    return lhs
++
++                return 0, divisor - 1
++
++            return None
++
++        if isinstance(current, ast.Call) and isinstance(current.func, ast.Name):
++            if current.func.id == "Mod" and len(current.args) == 2:
++                return evaluate(
++                    ast.BinOp(
++                        left=current.args[0],
++                        op=ast.Mod(),
++                        right=current.args[1],
++                    )
++                )
++
++            if current.func.id == "floor" and len(current.args) == 1:
++                argument = current.args[0]
++
++                if isinstance(argument, ast.BinOp) and isinstance(argument.op, ast.Div):
++                    return evaluate(
++                        ast.BinOp(
++                            left=argument.left,
++                            op=ast.FloorDiv(),
++                            right=argument.right,
++                        )
++                    )
++
++                return evaluate(argument)
++
++        return None
++
++    return evaluate(node)
++
+ 
+ def _tensor_layout(attrs: dict[str, Any]) -> TensorLayout:
+     levels = tuple(
+diff --git a/src/ninetoothed/frontend/python.py b/src/ninetoothed/frontend/python.py
+index b65a10f17633b6be61dcaa141cc8bd0f9a174d8a..27a58cee4e1a75f0eeccd2ccda765125fd0cc024 100644
+--- a/src/ninetoothed/frontend/python.py
++++ b/src/ninetoothed/frontend/python.py
+@@ -21,6 +21,7 @@ from ninetoothed.frontend.types import (
+     _bool_type,
+     _broadcast_type,
+     _cast_type,
++    _interleave_type,
+     _load_type,
+     _math_result_type,
+     _matmul_type,
+@@ -1016,6 +1017,11 @@ class _ApplicationSSABuilder:
+         if method is not None:
+             return method
+ 
++        cast = self._lower_cast_call(node, operations, env)
++
++        if cast is not None:
++            return cast
++
+         name = _call_leaf_name(node.func)
+         constructor = self._lower_constructor_call(name, node, operations, env)
+ 
+@@ -1042,6 +1048,39 @@ class _ApplicationSSABuilder:
+             "be statically inlinable",
+         )
+ 
++    def _lower_cast_call(self, node, operations, env):
++        if _call_leaf_name(node.func) != "cast":
++            return None
++
++        if len(node.args) != 2:
++            raise _lowering_error(node, "`cast()` requires a value and dtype")
++
++        bitcast = False
++
++        for keyword in node.keywords:
++            if keyword.arg != "bitcast":
++                raise _lowering_error(
++                    node, f"Unsupported `cast()` keyword `{keyword.arg}`"
++                )
++
++            bitcast = _literal_value(keyword.value)
++
++            if not isinstance(bitcast, bool):
++                raise _lowering_error(
++                    node, "`cast()` bitcast must be a compile-time boolean"
++                )
++
++        value = self._lower_expr(node.args[0], operations, env)
++        dtype = _unparse(node.args[1])
++
++        return self._emit(
++            operations,
++            "tensor.cast",
++            operands=(value.name,),
++            attrs={"dtype": dtype, "bitcast": bitcast},
++            result_type=_cast_type(value.type, dtype),
++        )
++
+     def _lower_float_literal_call(self, node, operations):
+         if _call_leaf_name(node.func) != "float" or len(node.args) != 1:
+             return None
+@@ -1325,6 +1364,61 @@ class _ApplicationSSABuilder:
+         return None
+ 
+     def _lower_elementwise_call(self, name, node, operands, operations):
++        if name == "gather":
++            if len(operands) not in {2, 3}:
++                raise _lowering_error(
++                    node, "`gather()` requires an input, indices, and optional axis"
++                )
++
++            input_, indices = operands[:2]
++            axis = _literal_value(node.args[2]) if len(node.args) == 3 else 0
++
++            try:
++                axis = int(axis)
++            except (TypeError, ValueError) as exc:
++                raise _lowering_error(
++                    node, "`gather()` axis must be a compile-time integer"
++                ) from exc
++
++            rank = len(input_.type.shape)
++
++            if axis < 0:
++                axis += rank
++
++            # A rank-one gather is the portable primitive currently required
++            # by vector permutations such as RoPE.  Represent it explicitly in
++            # SSA so backends can lower it to indexed source access even when
++            # their native tensor language does not provide a gather builtin.
++            if rank != 1 or axis != 0:
++                raise _lowering_error(
++                    node, "`gather()` currently supports axis 0 of rank-one inputs"
++                )
++
++            result_kind = "tensor" if indices.type.shape else "scalar"
++            return self._emit(
++                operations,
++                "tensor.gather",
++                operands=(input_.name, indices.name),
++                attrs={"axis": axis},
++                result_type=ssa.Type(
++                    kind=result_kind,
++                    shape=indices.type.shape,
++                    dtype=input_.type.dtype,
++                    attrs=dict(input_.type.attrs),
++                ),
++            )
++        if name == "interleave":
++            if len(operands) != 2:
++                raise _lowering_error(node, "`interleave()` requires two operands")
++
++            return self._emit(
++                operations,
++                "call.interleave",
++                operands=tuple(value.name for value in operands),
++                attrs={"callee": _unparse(node.func)},
++                result_type=_interleave_type(operands[0].type, operands[1].type),
++            )
++
+         if name == "where":
+             if len(operands) != 3:
+                 raise _lowering_error(node, "`where()` requires three operands")
+diff --git a/src/ninetoothed/frontend/types.py b/src/ninetoothed/frontend/types.py
+index 49d607461ebf36ff991b5f7799f4e492433c9c23..aa85752231c00e4fb009d33df73a542b5716a95d 100644
+--- a/src/ninetoothed/frontend/types.py
++++ b/src/ninetoothed/frontend/types.py
+@@ -436,6 +436,31 @@ def _transpose_type(type_: ssa.Type) -> ssa.Type:
+     )
+ 
+ 
++def _interleave_type(lhs: ssa.Type, rhs: ssa.Type) -> ssa.Type:
++    lhs_shape = tuple(str(dim) for dim in lhs.shape)
++    rhs_shape = tuple(str(dim) for dim in rhs.shape)
++
++    if lhs_shape != rhs_shape:
++        raise LoweringError("Interleave requires operands with identical shapes.")
++
++    if not lhs_shape:
++        shape = ("2",)
++    else:
++        try:
++            last_dim = str(2 * int(lhs_shape[-1]))
++        except ValueError:
++            last_dim = f"2 * ({lhs_shape[-1]})"
++
++        shape = (*lhs_shape[:-1], last_dim)
++
++    return ssa.Type(
++        kind="tensor",
++        shape=shape,
++        dtype=lhs.dtype or rhs.dtype,
++        attrs=dict(lhs.attrs),
++    )
++
++
+ __all__ = [
+     "_shape_dim_from_type",
+     "_subscript_type",
+diff --git a/src/ninetoothed/tensor.py b/src/ninetoothed/tensor.py
+index 30cde263ab94a073f5d0e409ac2d508fbc863b76..518622b9bd8dee109f2c79b45cf0a74d14454a53 100644
+--- a/src/ninetoothed/tensor.py
++++ b/src/ninetoothed/tensor.py
+@@ -17,6 +17,9 @@ class Tensor:
+     :param jagged_dim: The jagged dimension of the tensor.
+     :param other: The values for out-of-bounds positions.
+     :param shape_options: The options for configuring shape symbols.
++    :param strides: Optional statically known source strides.  When provided,
++        generated kernels may specialize indexing for that layout and runtime
++        launch validation checks that callers still satisfy the contract.
+     :param name: The name of the tensor.
+     :param source: For internal use only.
+     :param target_dims: For internal use only.
+@@ -32,6 +35,7 @@ class Tensor:
+         jagged_dim=None,
+         other=None,
+         shape_options=None,
++        strides=None,
+         constexpr=None,
+         value=None,
+         name=None,
+@@ -75,6 +79,15 @@ class Tensor:
+             for i, (size, size_options) in enumerate(zip(shape, shape_options))
+         )
+ 
++        if strides is not None:
++            strides = tuple(strides)
++            if len(strides) != ndim:
++                raise ValueError(
++                    f"Expected {ndim} strides for a rank-{ndim} tensor, "
++                    f"but got {len(strides)}."
++                )
++        self.strides = strides
++
+         self.other = other
+ 
+         if constexpr and self.ndim != 0:
+@@ -625,6 +638,9 @@ class Tensor:
+         return naming.auto_generate(f"{self.name}_size_{dim}")
+ 
+     def stride_string(self, dim):
++        if self.strides is not None:
++            return self.strides[dim]
++
+         if self.jagged_dim is not None and dim == 0:
+             return 0
+ 
+diff --git a/tests/test_backend_registry.py b/tests/test_backend_registry.py
+index 38e0d7931b6b2e36bd52abe942cdfe41d364cfac..34d82e2933ad5ad87e198e86ac917883d173b196 100644
+--- a/tests/test_backend_registry.py
++++ b/tests/test_backend_registry.py
+@@ -103,7 +103,8 @@ class TestRegistry:
+                 "triton",
+             )
+ 
+-    def test_cuda_arch_is_materialized_in_nvcc_command(self):
++    def test_cuda_arch_is_materialized_in_nvcc_command(self, monkeypatch):
++        monkeypatch.setenv("NINETOOTHED_CUDA_LANGUAGE", "ivcore")
+         command = cuda_compile_command(
+             "kernel.cu",
+             "kernel.so",
+@@ -111,6 +112,7 @@ class TestRegistry:
+             nvcc="/opt/cuda/bin/nvcc",
+         )
+         assert "-arch=sm_90" in command
++        assert "ivcore" not in command
+ 
+     def test_default_registry_reports_three_backends(self):
+         names = {capability.name for capability in backend_capabilities()}
+diff --git a/tests/test_compiler_cache_runtime.py b/tests/test_compiler_cache_runtime.py
+index 4515cb07edcfb2afe40b33ea9c2f4a97e9c27cb6..0eacf0a36cdd2c706583bb9b2f47c1f5f7812295 100644
+--- a/tests/test_compiler_cache_runtime.py
++++ b/tests/test_compiler_cache_runtime.py
+@@ -1,16 +1,20 @@
++import sys
+ from concurrent.futures import ThreadPoolExecutor
+ from types import SimpleNamespace
+ 
+ import pytest
+ 
+-from ninetoothed.backends.materializers.cuda import _cuda_wrapper
++from ninetoothed.backends.materializers.cuda import (
++    _cuda_wrapper,
++    _prevalidated_noalias_cuda_launch,
++)
+ from ninetoothed.compiler.cache import (
+     compilation_cache_key,
+     stable_digest,
+     write_source,
+ )
+ from ninetoothed.compiler.runtime import _public_values, _runtime_wrapper
+-from ninetoothed.ir import LaunchABI, TensorSpec
++from ninetoothed.ir import LaunchABI, LaunchBinding, TensorSpec
+ 
+ 
+ class _Tensor:
+@@ -20,6 +24,15 @@ class _Tensor:
+         self.device = SimpleNamespace(type=device_type, index=device_index)
+ 
+ 
++class _StridedTensor(_Tensor):
++    def __init__(self, shape, strides, **kwargs):
++        super().__init__(shape, **kwargs)
++        self._strides = tuple(strides)
++
++    def stride(self):
++        return self._strides
++
++
+ def _abi():
+     return LaunchABI(public_args=("x", "out"), outputs=("out",))
+ 
+@@ -97,6 +110,32 @@ def test_runtime_binding_validates_static_dimensions_of_dynamic_shape():
+         )
+ 
+ 
++def test_runtime_binding_skips_dense_stride_contract_for_jagged_public_values():
++    spec = TensorSpec(
++        name="x",
++        ndim=3,
++        shape=("experts", "tokens", "features"),
++        dtype="float32",
++        jagged_dim=1,
++        attrs={
++            "source_ndim": 3,
++            "source_shape": ("experts", "tokens", "features"),
++            "source_strides": ("0", "row_stride", "1"),
++        },
++    )
++    value = _StridedTensor(
++        (2, 3, 4),
++        (12, 4, 1),
++    )
++
++    _public_values(
++        LaunchABI(public_args=("x",)),
++        (value,),
++        {},
++        specs=(spec,),
++    )
++
++
+ def test_runtime_wrappers_skip_empty_launches():
+     abi = LaunchABI(public_args=("out",), outputs=("out",))
+     output = SimpleNamespace(numel=lambda: 0)
+@@ -110,6 +149,61 @@ def test_runtime_wrappers_skip_empty_launches():
+     assert not calls
+ 
+ 
++def test_cuda_prevalidated_binding_caches_pointers_and_tracks_current_stream(
++    monkeypatch,
++):
++    calls = []
++    checked = []
++
++    class Tensor:
++        shape = (4,)
++        dtype = "float32"
++        device = SimpleNamespace(type="cuda", index=2)
++
++        @staticmethod
++        def data_ptr():
++            return 1234
++
++        @staticmethod
++        def numel():
++            return 4
++
++    def function(pointer, stream):
++        calls.append((pointer.value, stream.value))
++        return 0
++
++    output = Tensor()
++    abi = LaunchABI(
++        public_args=("out",),
++        kernel_args=(
++            LaunchBinding(name="out", kind="tensor", source="out"),
++        ),
++        outputs=("out",),
++    )
++    specs = (TensorSpec(name="out", ndim=1, shape=(4,), dtype="float32"),)
++    fake_torch = SimpleNamespace(
++        corex=True,
++        _C=SimpleNamespace(_cuda_getCurrentRawStream=lambda index: 9000 + index),
++        cuda=SimpleNamespace(current_device=lambda: 0),
++    )
++    monkeypatch.setitem(sys.modules, "torch", fake_torch)
++
++    launch = _prevalidated_noalias_cuda_launch(
++        function,
++        abi,
++        specs,
++        lambda value: checked.append(value) or value,
++    )
++    assert launch(output) is output
++    assert checked == [output]
++
++    invoke = launch._ninetoothed_bind_prevalidated_noalias(output)
++    assert invoke is not None
++    assert invoke._ninetoothed_external_graph_capture is False
++    assert invoke() is output
++    assert calls == [(1234, 9002)]
++
++
+ def test_content_digest_is_stable_for_a_b_a_sources():
+     a1 = stable_digest({"name": "same", "source": "A"})
+     b = stable_digest({"name": "same", "source": "B"})
+diff --git a/tests/test_ssa_first_backend_lowering.py b/tests/test_ssa_first_backend_lowering.py
+index d1b35b966f0264ad877184ccdc9095cd40a12d1a..6bcfc3afbf1ff127a64975035828a732f29c86c2 100644
+--- a/tests/test_ssa_first_backend_lowering.py
++++ b/tests/test_ssa_first_backend_lowering.py
+@@ -57,6 +57,14 @@ def ternary_arrangement(x, y, z, out, BLOCK_SIZE=block_size()):
+     return (x[0:BLOCK_SIZE], y[0:BLOCK_SIZE], z[0:BLOCK_SIZE], out[0:BLOCK_SIZE])
+ 
+ 
++def static_application_block_arrangement(x, out):
++    x = x.tile((1, 2048))
++    x.dtype = x.dtype.squeeze(0)
++    out = out.tile((1, 2048))
++    out.dtype = out.dtype.squeeze(0)
++    return x, out
++
++
+ def dot_reduction_application(x, y, out):
+     out = (x * y).sum()  # noqa: F841
+ 
+@@ -148,6 +156,21 @@ def _triton_load_mask(source: str, *, tensor: str | None = None) -> ast.AST | No
+ 
+ 
+ class TestSSAFirstBackendLowering:
++    def test_triton_uses_one_program_for_legal_static_application_block(self):
++        artifact = lower_application(
++            static_application_block_arrangement,
++            add_application,
++            (Tensor(2), Tensor(2)),
++            backend="triton",
++            kernel_name="ssa_static_application_block",
++        )
++        source = artifact.primary_source
++
++        assert artifact.metadata["program_mode"]["block"] is True
++        assert "offsets = 0" in source
++        assert "tl.arange(0, 2048)" in source
++        assert "grid = (" in source and "if True" in source
++
+     def test_cuda_injects_curand_support_only_for_rand_operations(self):
+         add_artifact = lower_application(
+             arrangement,
+@@ -761,6 +784,39 @@ def canonical_math_application(x, y, out):
+             assert ">>" in artifact.primary_source
+             assert "^" in artifact.primary_source
+ 
++    def test_rank_one_gather_lowers_to_portable_indexed_source_load(self):
++        kernel = _ssa_kernel(
++            """
++def gather_application(x, indices, out):
++    out = gather(x, indices, 0)
++""",
++            "ssa_rank_one_gather",
++            (
++                TensorSpec(ndim=1, shape=("n",), dtype="float32", name="x"),
++                TensorSpec(ndim=1, shape=("n",), dtype="int32", name="indices"),
++                TensorSpec(ndim=1, shape=("n",), dtype="float32", name="out"),
++            ),
++        )
++        operations = kernel.ssa.blocks[0].operations
++        assert [operation.opcode for operation in operations] == [
++            "arith.constant",
++            "tensor.gather",
++            "mem.store",
++        ]
++
++        for backend in ("triton", "cuda", "tilelang"):
++            artifact = emit_kernel(kernel, backend)
++            source = artifact.primary_source
++            assert "tl.gather(" not in source
++            assert " = gather(" not in source
++
++            if backend == "triton":
++                assert "tl.load(x +" in source
++            elif backend == "cuda":
++                assert "x[" in source
++            else:
++                assert "x_buf[" in source
++
+     def test_from_source_preserves_subscript_store_indices_for_native_backends(self):
+         cases = {
+             "one_dimensional": (
+@@ -808,6 +864,39 @@ def canonical_math_application(x, y, out):
+                 assert artifact.metadata["source_route"] == route
+                 assert fragments[backend] in artifact.primary_source
+ 
++    def test_cuda_sinks_masked_store_producers_into_bounds_guard(self):
++        kernel = _ssa_kernel(
++            "\ndef masked_producer_application(x, out):\n    out = x + 1.0\n",
++            "ssa_masked_producer",
++            (
++                TensorSpec(ndim=1, shape=("n",), dtype="float32", name="x"),
++                TensorSpec(ndim=1, shape=("n",), dtype="float32", name="out"),
++            ),
++        )
++        source = emit_kernel(kernel, "cuda").primary_source
++        guard = source.index("if (")
++        load = source.index("x[index]", guard)
++        store = source.index("out[index]", load)
++
++        assert guard < load < store
++        assert "x[index]" not in source[:guard]
++
++    def test_cuda_casts_mixed_where_branches_to_result_dtype(self):
++        kernel = _ssa_kernel(
++            (
++                "\ndef mixed_where_application(x, out):\n"
++                "    out = where(x > 0, x, x + 0.0)\n"
++            ),
++            "ssa_mixed_where",
++            (
++                TensorSpec(ndim=1, shape=("n",), dtype="float16", name="x"),
++                TensorSpec(ndim=1, shape=("n",), dtype="float32", name="out"),
++            ),
++        )
++        source = emit_kernel(kernel, "cuda").primary_source
++
++        assert source.count("static_cast<float>(") >= 2
++
+     def test_from_source_expands_subscript_augassign_for_native_backends(self):
+         kernel = _ssa_kernel(
+             "\ndef indexed_augassign_application(x, out):\n    i = x.offsets(0)\n    out[i] += x\n",
+diff --git a/tests/test_ssa_scalar_argument_emission.py b/tests/test_ssa_scalar_argument_emission.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..60b036d0c6a7a2d96fd5e4c91e41a2f2b20137c5
+--- /dev/null
++++ b/tests/test_ssa_scalar_argument_emission.py
+@@ -0,0 +1,31 @@
++import ninetoothed
++from ninetoothed import Tensor
++from ninetoothed.compiler import DEFAULT_COMPILER, CompileRequest
++
++
++def _arrangement(input, scale, output):
++    return input.tile((128,)), scale, output.tile((128,))
++
++
++def _scale(input, scale, output):
++    output = input * scale  # noqa: F841
++
++
++def test_triton_scalar_input_is_passed_by_value():
++    compilation = DEFAULT_COMPILER.compile(
++        CompileRequest(
++            arrangement=_arrangement,
++            application=_scale,
++            tensors=(
++                Tensor(1, dtype=ninetoothed.float32),
++                Tensor(0, dtype=ninetoothed.float64),
++                Tensor(1, dtype=ninetoothed.float32),
++            ),
++            backend="triton",
++            max_num_configs=1,
++        )
++    )
++    source = compilation.artifact.primary_source
++
++    assert "tl.load(scale + 0)" not in source
++    assert "* scale" in source
+diff --git a/tests/test_ssa_validation.py b/tests/test_ssa_validation.py
+index 9df138c5f01bee5181f7e928b2fabf535cfd4801..cbd6f23383a306e222bcf5a857935b54117bf6a3 100644
+--- a/tests/test_ssa_validation.py
++++ b/tests/test_ssa_validation.py
+@@ -98,6 +98,24 @@ def application(x, out):
+     assert cast.results[0].type.dtype == "float16"
+ 
+ 
++def test_function_cast_preserves_bitcast_semantics():
++    program = from_source(
++        """
++def application(x, out):
++    out = cast(x, float32, bitcast=True)
++""",
++        (_tensor("x", ("n",), "int32"), _tensor("out", ("n",))),
++    )
++    cast = next(
++        operation
++        for operation in program.blocks[0].operations
++        if operation.opcode == "tensor.cast"
++    )
++
++    assert cast.attrs["bitcast"] is True
++    assert cast.results[0].type.dtype == "float32"
++
++
+ def test_batched_matmul_type_preserves_broadcast_batch_domain():
+     program = from_source(
+         """
+diff --git a/tests/test_static_layout_bounds.py b/tests/test_static_layout_bounds.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6ef6fd18af858f9e49d2640f4bbbed65bf3647d2
+--- /dev/null
++++ b/tests/test_static_layout_bounds.py
+@@ -0,0 +1,125 @@
++import ninetoothed.language as ntl
++from ninetoothed import Tensor
++from ninetoothed.compiler import lower
++from ninetoothed.frontend.layout import tensor_spec
++
++
++def _matmul_arrangement(lhs, rhs, output):
++    output_tiled = output.tile((16, 128))
++    lhs_tiled = (
++        lhs.tile((16, 128))
++        .tile((1, -1))
++        .expand((-1, output_tiled.shape[1]))
++    )
++    lhs_tiled.dtype = lhs_tiled.dtype.squeeze(0)
++    rhs_tiled = (
++        rhs.tile((128, 128))
++        .tile((-1, 1))
++        .expand((output_tiled.shape[0], -1))
++    )
++    rhs_tiled.dtype = rhs_tiled.dtype.squeeze(1)
++
++    return lhs_tiled, rhs_tiled, output_tiled
++
++
++def _matmul_application(lhs, rhs, output):
++    accumulator = ntl.zeros(output.shape, dtype=ntl.float32)
++
++    for k in range(lhs.shape[0]):
++        accumulator += ntl.dot(lhs[k], rhs[k])
++
++    output = accumulator  # noqa: F841
++
++
++def _singleton_broadcast_arrangement(input, output):
++    output_tiled = output.tile((16, 128))
++    input_tiled = input.tile((16, 128), dilation=(0, 1))
++    input_tiled = input_tiled.tile((1, -1)).expand(
++        (-1, output_tiled.shape[1])
++    )
++    input_tiled.dtype = input_tiled.dtype.squeeze(0)
++
++    return input_tiled, output_tiled
++
++
++def _singleton_broadcast_application(input, output):
++    row = input[0].to(ntl.float16)
++    output = row.to(ntl.float16)  # noqa: F841
++
++
++def test_exact_static_tile_is_marked_in_bounds():
++    spec = tensor_spec("input", Tensor(shape=(16, 4096)).tile((16, 128)))
++    template = spec.attrs["access_templates"][0]
++
++    assert template["mask"] == "True"
++    assert template["statically_in_bounds"] is True
++    assert spec.attrs["view_mask"] == "True"
++    assert spec.attrs["view_statically_in_bounds"] is True
++
++
++def test_static_tail_tile_keeps_bounds_mask():
++    spec = tensor_spec("input", Tensor(shape=(17, 4097)).tile((16, 128)))
++    template = spec.attrs["access_templates"][0]
++
++    assert template["mask"] != "True"
++    assert "statically_in_bounds" not in template
++
++
++def test_static_partial_tile_keeps_only_unproven_bounds():
++    spec = tensor_spec("input", Tensor(shape=(1, 128)).tile((16, 128)))
++    template = spec.attrs["access_templates"][0]
++
++    assert template["mask"] != "True"
++    assert template["mask"].count("<") == 1
++    assert ">=" not in template["mask"]
++
++
++def test_dynamic_tile_keeps_bounds_mask():
++    spec = tensor_spec("input", Tensor(2).tile((16, 128)))
++    template = spec.attrs["access_templates"][0]
++
++    assert template["mask"] != "True"
++    assert "statically_in_bounds" not in template
++
++
++def test_triton_emission_elides_masks_only_for_exact_static_tile():
++    exact = lower(
++        _matmul_arrangement,
++        _matmul_application,
++        (
++            Tensor(shape=(16, 128), dtype="float16"),
++            Tensor(shape=(128, 128), dtype="float16"),
++            Tensor(shape=(16, 128), dtype="float16"),
++        ),
++        backend="triton",
++        kernel_name="static_exact_tile",
++    )
++    tail = lower(
++        _matmul_arrangement,
++        _matmul_application,
++        (
++            Tensor(shape=(17, 129), dtype="float16"),
++            Tensor(shape=(129, 129), dtype="float16"),
++            Tensor(shape=(17, 129), dtype="float16"),
++        ),
++        backend="triton",
++        kernel_name="static_tail_tile",
++    )
++
++    assert "mask=" not in exact.primary_source
++    assert "mask=" in tail.primary_source
++
++
++def test_triton_emits_static_row_broadcast_for_singleton_tile():
++    artifact = lower(
++        _singleton_broadcast_arrangement,
++        _singleton_broadcast_application,
++        (
++            Tensor(shape=(1, 128), dtype="float16"),
++            Tensor(shape=(16, 128), dtype="float16"),
++        ),
++        backend="triton",
++        kernel_name="singleton_block_broadcast",
++    )
++
++    assert "tl.load(input" in artifact.primary_source
+diff --git a/tests/test_static_tensor_strides.py b/tests/test_static_tensor_strides.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd1828b5e7574a746e1dfb6f87c46917c24f4678
+--- /dev/null
++++ b/tests/test_static_tensor_strides.py
+@@ -0,0 +1,49 @@
++import pytest
++
++from ninetoothed import Tensor
++from ninetoothed.compiler import lower
++from ninetoothed.compiler.runtime import _validate_tensor_contract
++from ninetoothed.frontend.layout import tensor_spec
++
++
++def _arrangement(input, output):
++    return input.tile((1, 128)), output.tile((1, 128))
++
++
++def _application(input, output):
++    output = input  # noqa: F841
++
++
++def test_static_strides_are_removed_from_triton_launch_abi():
++    artifact = lower(
++        _arrangement,
++        _application,
++        (
++            Tensor(shape=(64, 128), strides=(128, 1), dtype="float16"),
++            Tensor(shape=(64, 128), strides=(128, 1), dtype="float16"),
++        ),
++        backend="triton",
++        kernel_name="static_strides",
++    )
++
++    assert "stride_0" not in artifact.primary_source
++    assert "stride_1" not in artifact.primary_source
++
++
++class _FakeTensor:
++    shape = (64, 128)
++    dtype = "float16"
++    device = "cuda:0"
++
++    def stride(self):
++        return (129, 1)
++
++
++def test_runtime_rejects_a_layout_that_breaks_static_strides():
++    spec = tensor_spec(
++        "input",
++        Tensor(shape=(64, 128), strides=(128, 1), dtype="float16"),
++    )
++
++    with pytest.raises(TypeError, match="expected stride 0 to be 128"):
++        _validate_tensor_contract(spec, _FakeTensor(), None)
+diff --git a/tests/test_triton_emitter_target.py b/tests/test_triton_emitter_target.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4004d2ab7fb2f7dc7c36cdfb3cea97b3b3e71e2b
+--- /dev/null
++++ b/tests/test_triton_emitter_target.py
+@@ -0,0 +1,38 @@
++"""Focused tests for Triton emitter syntax mappings."""
++
++from ninetoothed.backends.emitters.ssa import _nested_python_conjunction
++from ninetoothed.backends.emitters.triton import TritonTarget
++from ninetoothed.frontend.types import _interleave_type
++from ninetoothed.ir import ssa
++
++
++def test_triton_interleave_call_is_namespace_qualified():
++    target = TritonTarget()
++
++    assert target.call("interleave", ("left", "right")) == (
++        "tl.interleave(left, right)"
++    )
++
++
++def test_interleave_type_doubles_the_last_dimension():
++    type_ = ssa.Type(kind="tensor", shape=("16", "32"), dtype="bfloat16")
++
++    assert _interleave_type(type_, type_).shape == ("16", "64")
++
++
++def test_triton_transpose_call_is_namespace_qualified():
++    target = TritonTarget()
++
++    assert target.call("trans", ("value",)) == "tl.trans(value)"
++
++
++def test_triton_bitcast_preserves_raw_bits():
++    target = TritonTarget()
++
++    assert target.bitcast("float32", "value") == ("value.to(tl.float32, bitcast=True)")
++
++
++def test_triton_runtime_stride_guard_uses_binary_conjunctions():
++    predicate = _nested_python_conjunction(("(a == 1)", "(b == 1)", "(c == 1)"))
++
++    assert predicate == "(((a == 1) and (b == 1)) and (c == 1))"
+diff --git a/tests/test_triton_fp8_dot_fallback.py b/tests/test_triton_fp8_dot_fallback.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3112362dfb82903a99232589eb8c6e4722e05f71
+--- /dev/null
++++ b/tests/test_triton_fp8_dot_fallback.py
+@@ -0,0 +1,339 @@
++import ast
++import importlib.metadata
++import re
++from types import SimpleNamespace
++
++import pytest
++
++import ninetoothed.language as ntl
++from ninetoothed import Symbol, Tensor
++from ninetoothed.backends.core import Target
++from ninetoothed.backends.emitters.triton import TritonTarget
++from ninetoothed.backends.triton import TritonBackend
++from ninetoothed.compiler import CompileRequest, compile_kernel
++from ninetoothed.compiler.cache import compilation_cache_key
++from ninetoothed.ir import ssa
++
++BLOCK_SIZE_M = Symbol("BLOCK_SIZE_M", meta=True)
++BLOCK_SIZE_N = Symbol("BLOCK_SIZE_N", meta=True)
++BLOCK_SIZE_K = Symbol("BLOCK_SIZE_K", meta=True)
++
++
++def _matmul_arrangement(
++    lhs,
++    rhs,
++    output,
++    BLOCK_SIZE_M=BLOCK_SIZE_M,
++    BLOCK_SIZE_N=BLOCK_SIZE_N,
++    BLOCK_SIZE_K=BLOCK_SIZE_K,
++):
++    output_tiled = output.tile((BLOCK_SIZE_M, BLOCK_SIZE_N))
++    lhs_tiled = (
++        lhs.tile((BLOCK_SIZE_M, BLOCK_SIZE_K))
++        .tile((1, -1))
++        .expand((-1, output_tiled.shape[1]))
++    )
++    lhs_tiled.dtype = lhs_tiled.dtype.squeeze(0)
++    rhs_tiled = (
++        rhs.tile((BLOCK_SIZE_K, BLOCK_SIZE_N))
++        .tile((-1, 1))
++        .expand((output_tiled.shape[0], -1))
++    )
++    rhs_tiled.dtype = rhs_tiled.dtype.squeeze(1)
++
++    return lhs_tiled, rhs_tiled, output_tiled
++
++
++def _matmul_application(lhs, rhs, output):
++    accumulator = ntl.zeros(output.shape, dtype=ntl.float32)
++
++    for k in range(lhs.shape[0]):
++        accumulator += ntl.dot(lhs[k], rhs[k])
++
++    output = accumulator.to(ntl.float16)  # noqa: F841
++
++
++def _matmul_tensors(dtype):
++    return (
++        Tensor(2, dtype=dtype),
++        Tensor(2, dtype=dtype),
++        Tensor(2, dtype="float16"),
++    )
++
++
++def _compile_matmul(dtype, backend_options=None, *, tensors=None):
++    return compile_kernel(
++        CompileRequest(
++            arrangement=_matmul_arrangement,
++            application=_matmul_application,
++            tensors=tensors or _matmul_tensors(dtype),
++            backend="triton",
++            backend_options=backend_options,
++        )
++    )
++
++
++def _dot_operation(dtype):
++    operand_type = ssa.Type(kind="tensor", shape=("M", "K"), dtype=dtype)
++
++    return ssa.Operation(
++        opcode="linalg.dot",
++        operands=("%lhs", "%rhs"),
++        results=(
++            ssa.Value(
++                name="%result",
++                type=ssa.Type(kind="tensor", shape=("M", "N"), dtype="float32"),
++            ),
++        ),
++    ), {
++        "%lhs": operand_type,
++        "%rhs": operand_type,
++    }
++
++
++def _coercion_context(value_types, target, *, local_suffix=""):
++    return SimpleNamespace(
++        target=target,
++        value_types=value_types,
++        lines=[],
++        temp_counter=[0],
++        local_suffix=local_suffix,
++    )
++
++
++def _cache_compilation(backend_options):
++    return SimpleNamespace(
++        request=SimpleNamespace(
++            backend_options=backend_options,
++            pipeline=None,
++            pass_options=None,
++        ),
++        artifact=SimpleNamespace(
++            backend=Target.TRITON,
++            sources={"kernel": "source"},
++        ),
++        kernel=SimpleNamespace(
++            ssa=(),
++            compiler_options={"backend_options": backend_options},
++        ),
++        launch_plan=(),
++    )
++
++
++@pytest.mark.parametrize(
++    "triton_version, expected",
++    (
++        ("3.1.0+corex.4.4.0", "bfloat16"),
++        ("3.1+das.opt1.dtk25042", "float16"),
++        ("3.5.1", "none"),
++        ("3.3.0+rocm6.3", "none"),
++    ),
++)
++@pytest.mark.parametrize("options", ({}, {"fp8_dot_fallback": "auto"}))
++def test_auto_fallback_uses_triton_distribution_metadata(
++    triton_version, expected, options, monkeypatch
++):
++    calls = []
++
++    def distribution_version(package):
++        calls.append(package)
++
++        return triton_version
++
++    monkeypatch.setattr(importlib.metadata, "version", distribution_version)
++
++    assert TritonBackend().normalize_options(options) == {"fp8_dot_fallback": expected}
++    assert calls == ["triton"]
++
++
++def test_auto_fallback_defaults_to_none_without_distribution_metadata(monkeypatch):
++    def missing_distribution(package):
++        raise importlib.metadata.PackageNotFoundError(package)
++
++    monkeypatch.setattr(importlib.metadata, "version", missing_distribution)
++
++    assert TritonBackend().normalize_options({}) == {"fp8_dot_fallback": "none"}
++
++
++@pytest.mark.parametrize("fallback", ("none", "float16", "bfloat16"))
++def test_explicit_fallback_does_not_query_triton_metadata(fallback, monkeypatch):
++    def unexpected_query(package):
++        raise AssertionError(f"Explicit fallback queried `{package}` metadata.")
++
++    monkeypatch.setattr(importlib.metadata, "version", unexpected_query)
++
++    assert TritonBackend().normalize_options({"fp8_dot_fallback": fallback}) == {
++        "fp8_dot_fallback": fallback
++    }
++
++
++def test_invalid_fallback_is_rejected():
++    backend = TritonBackend()
++
++    with pytest.raises(TypeError, match="must be a string"):
++        backend.normalize_options({"fp8_dot_fallback": None})
++
++    with pytest.raises(ValueError, match="`auto`, `none`, `float16`, or `bfloat16`"):
++        backend.normalize_options({"fp8_dot_fallback": "fp16"})
++
++
++def test_corex_auto_fallback_is_carried_into_compilation_and_casts_both_operands(
++    monkeypatch,
++):
++    monkeypatch.setattr(
++        importlib.metadata,
++        "version",
++        lambda package: "3.1.0+corex.4.4.0",
++    )
++
++    compilation = _compile_matmul("float8_e5m2")
++    expected_options = {"fp8_dot_fallback": "bfloat16"}
++    assert compilation.request.backend_options == expected_options
++    assert compilation.kernel.compiler_options["backend_options"] == expected_options
++
++    source = compilation.artifact.primary_source
++    casts = re.findall(
++        r"([A-Za-z_]\w*_fp8_(?:lhs|rhs)) = \1\.to\(tl\.bfloat16\)",
++        source,
++    )
++    dot = re.search(
++        r"tl\.dot\(([A-Za-z_]\w*_fp8_lhs), ([A-Za-z_]\w*_fp8_rhs)\)",
++        source,
++    )
++    assert len(casts) == 2
++    assert dot is not None
++    assert set(dot.groups()) == set(casts)
++    ast.parse(source)
++
++
++def test_explicit_float16_fallback_reaches_source_without_distribution_metadata(
++    monkeypatch,
++):
++    def missing_distribution(package):
++        raise importlib.metadata.PackageNotFoundError(package)
++
++    monkeypatch.setattr(importlib.metadata, "version", missing_distribution)
++
++    compilation = _compile_matmul("float8_e5m2", {"fp8_dot_fallback": "float16"})
++
++    assert compilation.request.backend_options == {"fp8_dot_fallback": "float16"}
++    source = compilation.artifact.primary_source
++    casts = re.findall(
++        r"([A-Za-z_]\w*_fp8_(?:lhs|rhs)) = \1\.to\(tl\.float16\)",
++        source,
++    )
++    dot = re.search(
++        r"tl\.dot\(([A-Za-z_]\w*_fp8_lhs), ([A-Za-z_]\w*_fp8_rhs)\)",
++        source,
++    )
++    assert len(casts) == 2
++    assert dot is not None
++    assert set(dot.groups()) == set(casts)
++    ast.parse(source)
++
++
++@pytest.mark.parametrize("triton_version", ("3.5.1", "3.3.0+rocm6.3", None))
++def test_non_corex_auto_fallback_preserves_original_dot_source(
++    triton_version, monkeypatch
++):
++    def distribution_version(package):
++        if triton_version is None:
++            raise importlib.metadata.PackageNotFoundError(package)
++
++        return triton_version
++
++    monkeypatch.setattr(importlib.metadata, "version", distribution_version)
++
++    tensors = _matmul_tensors("float8_e5m2")
++    compilation = _compile_matmul("float8_e5m2", tensors=tensors)
++    explicit_none = _compile_matmul(
++        "float8_e5m2",
++        {"fp8_dot_fallback": "none"},
++        tensors=tensors,
++    )
++    expected_options = {"fp8_dot_fallback": "none"}
++    assert compilation.request.backend_options == expected_options
++    assert compilation.kernel.compiler_options["backend_options"] == expected_options
++    assert "tl.dot(" in compilation.artifact.primary_source
++    assert ".dtype == tl.float8e5" not in compilation.artifact.primary_source
++    assert compilation.artifact.primary_source == explicit_none.artifact.primary_source
++
++
++def test_unknown_ssa_dtype_is_guarded_by_float16_fallback():
++    operation, value_types = _dot_operation(None)
++    target = TritonTarget(fp8_dot_fallback="float16")
++    context = _coercion_context(value_types, target, local_suffix="_loop_body")
++    operands = target.coerce_block_dot_operands(
++        operation, ("lhs_value", "rhs_value"), context
++    )
++    source = "\n".join(
++        (*context.lines, f"result = tl.dot({operands[0]}, {operands[1]})")
++    )
++
++    assert source.count(".dtype == tl.float8e5") == 2
++    assert operands == (
++        "vresult_loop_body_fp8_lhs",
++        "vresult_loop_body_fp8_rhs",
++    )
++    ast.parse(source)
++
++
++def test_known_float16_operands_do_not_need_fallback_guards():
++    operation, value_types = _dot_operation("float16")
++    target = TritonTarget(fp8_dot_fallback="float16")
++    context = _coercion_context(value_types, target)
++    operands = target.coerce_block_dot_operands(
++        operation, ("lhs_value", "rhs_value"), context
++    )
++
++    assert operands == ("lhs_value", "rhs_value")
++    assert not context.lines
++
++
++@pytest.mark.parametrize(
++    "dtype",
++    (
++        "float8_e4m3fn",
++        "torch.float8_e4m3fn",
++        "float8_e5m2",
++        "torch.float8_e5m2",
++    ),
++)
++def test_known_fp8_operands_are_normalized_before_fallback(dtype):
++    operation, value_types = _dot_operation(dtype)
++    target = TritonTarget(fp8_dot_fallback="float16")
++    context = _coercion_context(value_types, target)
++    operands = target.coerce_block_dot_operands(
++        operation, ("lhs_value", "rhs_value"), context
++    )
++    source = "\n".join(context.lines)
++
++    assert operands == ("vresult_fp8_lhs", "vresult_fp8_rhs")
++    assert source.count(".to(tl.float16)") == 2
++    assert ".dtype == tl.float8e5" not in source
++
++
++def test_default_target_does_not_guard_block_dot_operands():
++    operation, value_types = _dot_operation("float8_e5m2")
++    target = TritonTarget()
++    context = _coercion_context(value_types, target)
++    operands = target.coerce_block_dot_operands(
++        operation, ("lhs_value", "rhs_value"), context
++    )
++
++    assert operands == ("lhs_value", "rhs_value")
++    assert not context.lines
++
++
++def test_effective_fallback_is_part_of_compilation_cache_key(monkeypatch):
++    import ninetoothed.compiler.cache as cache
++
++    monkeypatch.setattr(cache, "_architecture", lambda compilation: {})
++    monkeypatch.setattr(cache, "_compiler_versions", lambda: {"triton": "fixed"})
++    backend = TritonBackend()
++    none = backend.normalize_options({"fp8_dot_fallback": "none"})
++    float16 = backend.normalize_options({"fp8_dot_fallback": "float16"})
++
++    assert compilation_cache_key(_cache_compilation(none)) != compilation_cache_key(
++        _cache_compilation(float16)
++    )
+diff --git a/tests/test_triton_runtime_auto_tuning.py b/tests/test_triton_runtime_auto_tuning.py
+index 6f4756dd94d93f3e1683e9f77e024524c7c64410..968ab391c1cd3413f6a47399e884d4542f78e6f2 100644
+--- a/tests/test_triton_runtime_auto_tuning.py
++++ b/tests/test_triton_runtime_auto_tuning.py
+@@ -28,6 +28,75 @@ def _application(input, other, output):
+     output = input + other  # noqa: F841
+ 
+ 
++@pytest.mark.parametrize(
++    "target,requested,expected",
++    (
++        (SimpleNamespace(backend="cuda", arch=71, warp_size=64), 3, 1),
++        (SimpleNamespace(backend="cuda", arch=90, warp_size=32), 3, 3),
++        (SimpleNamespace(backend="hip", arch="gfx936", warp_size=64), 3, 3),
++        (None, 2, 2),
++    ),
++)
++def test_triton_num_stages_are_legalized_by_target_capability(
++    monkeypatch,
++    target,
++    requested,
++    expected,
++):
++    monkeypatch.setattr(
++        triton_materializer,
++        "_active_triton_target",
++        lambda: target,
++    )
++
++    assert triton_materializer._legalize_triton_num_stages(requested) == expected
++
++
++def test_triton_target_falls_back_to_torch_for_vendor_hip_abi(monkeypatch):
++    active = SimpleNamespace(
++        get_current_device=lambda: 0,
++    )
++    monkeypatch.setattr(torch.version, "hip", "6.3")
++    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
++    monkeypatch.setattr(
++        torch.cuda,
++        "get_device_properties",
++        lambda _device: SimpleNamespace(
++            gcnArchName="gfx936:sramecc+:xnack-",
++            warp_size=64,
++        ),
++    )
++
++    target = triton_materializer._torch_hip_target(active)
++
++    assert target.backend == "hip"
++    assert target.arch == "gfx936"
++    assert target.warp_size == 64
++    assert active.get_current_target() == target
++
++
++def test_corex_stage_legalization_deduplicates_runtime_candidates(monkeypatch):
++    monkeypatch.setattr(
++        triton_materializer,
++        "_active_triton_target",
++        lambda: SimpleNamespace(backend="cuda", arch=71, warp_size=64),
++    )
++    compilation = SimpleNamespace(
++        launch_plan=SimpleNamespace(
++            tuning_candidates=(
++                {"id": "stages-2", "num_warps": 4, "num_stages": 2},
++                {"id": "stages-3", "num_warps": 4, "num_stages": 3},
++                {"id": "warps-8", "num_warps": 8, "num_stages": 3},
++            )
++        )
++    )
++
++    assert triton_materializer._legalized_tuning_candidates(compilation) == (
++        {"id": "stages-2_stages-1", "num_warps": 4, "num_stages": 1},
++        {"id": "warps-8_stages-1", "num_warps": 8, "num_stages": 1},
++    )
++
++
+ def _control_dependent_inplace_arrangement(output):
+     return (output.tile((1,)),)
+ 
+@@ -253,6 +322,111 @@ def test_triton_single_and_plain_materialization_use_verified_launch(
+     assert len(inspect.getclosurevars(handle._launch).nonlocals["prepared_calls"]) == 1
+ 
+ 
++def test_prevalidated_noalias_arms_alias_safe_selected_candidate_without_tuner_key():
++    abi = LaunchABI(
++        public_args=("value",),
++        kernel_args=(LaunchBinding(name="value", kind="tensor", source="value"),),
++        outputs=("value",),
++    )
++    calls = []
++    preparations = []
++
++    class RebindableInvocation:
++        requires_values = False
++
++        def __init__(self):
++            self.call = lambda args, _kwargs: calls.append(("bound", args[0]))
++
++        def __call__(self, _values, args, _kwargs):
++            calls.append(("prepared", args[0]))
++            return args[0]
++
++    def prepare_invocation(_values, _static_values, _call_sources):
++        preparations.append(True)
++        return RebindableInvocation()
++
++    candidate = runtime._runtime_wrapper(
++        lambda value: calls.append(("raw", value)) or value,
++        abi,
++        prepare_invocation=prepare_invocation,
++    )
++    value = _FakeTensor((4,))
++    handle = SimpleNamespace(
++        _launch=candidate,
++        _selected_tuning_candidate={"id": "single"},
++    )
++    compilation = SimpleNamespace(launch_abi=abi)
++    launch = triton_materializer._prevalidated_noalias_runtime_launch(
++        handle,
++        None,
++        compilation,
++        candidates_by_launch={candidate: {"id": "single"}},
++    )
++
++    assert launch(value) is value
++    assert launch(value) is value
++    assert preparations == [True]
++    assert calls == [("raw", value), ("prepared", value)]
++
++    bound = launch._ninetoothed_bind_prevalidated_noalias(value)
++
++    assert bound is not None
++    assert bound() is None
++    assert calls == [("raw", value), ("prepared", value), ("bound", value)]
++
++
++def test_prevalidated_noalias_binds_compiled_dynamic_invocation_once():
++    abi = LaunchABI(
++        public_args=("value",),
++        kernel_args=(LaunchBinding(name="value", kind="tensor", source="value"),),
++        outputs=("value",),
++    )
++    calls = []
++
++    class DirectInvocation:
++        requires_values = True
++
++        def __call__(self, values, args, _kwargs):
++            calls.append(("prepared", values[0], args[0]))
++            return args[0]
++
++        def bind(self, values, args, _kwargs):
++            calls.append(("bind", values[0], args[0]))
++            return lambda: calls.append(("direct", values[0], args[0]))
++
++    candidate = runtime._runtime_wrapper(
++        lambda value: calls.append(("raw", value)) or value,
++        abi,
++        prepare_invocation=lambda *_: DirectInvocation(),
++    )
++    value = _FakeTensor((4,))
++    handle = SimpleNamespace(
++        _launch=candidate,
++        _selected_tuning_candidate={"id": "single"},
++    )
++    compilation = SimpleNamespace(launch_abi=abi)
++    launch = triton_materializer._prevalidated_noalias_runtime_launch(
++        handle,
++        None,
++        compilation,
++        candidates_by_launch={candidate: {"id": "single"}},
++    )
++
++    assert launch(value) is value
++    bound = launch._ninetoothed_bind_prevalidated_noalias(value)
++
++    assert bound is not None
++    assert bound._ninetoothed_direct_compiled_launch
++    assert bound() is None
++    assert bound() is None
++    assert calls == [
++        ("raw", value),
++        ("bind", value, value),
++        ("direct", value, value),
++        ("direct", value, value),
++    ]
++
++
+ def _verified_runtime_fixture(*, with_constexpr=False, outputs=()):
+     public_args = ("value", "scale") if with_constexpr else ("value",)
+     bindings = [LaunchBinding(name="value", kind="tensor", source="value")]
+@@ -583,6 +757,71 @@ def test_triton_direct_winner_reuses_verified_binding_and_restores_aba(monkeypat
+     assert binding_calls == 0
+ 
+ 
++def test_triton_direct_winner_rebinds_new_tensor_without_preparing_again():
++    abi = LaunchABI(
++        public_args=("value",),
++        kernel_args=(LaunchBinding(name="value", kind="tensor", source="value"),),
++    )
++    calls = []
++    preparations = []
++
++    class RebindableInvocation:
++        requires_values = False
++
++        def __init__(self, name):
++            self.name = name
++
++        def __call__(self, _values, args, kwargs):
++            value = args[0] if args else kwargs["value"]
++            calls.append((self.name, value))
++
++            return value
++
++    def candidate(name):
++        def prepare_invocation(_values, _static_values, _call_sources):
++            preparations.append(name)
++
++            return RebindableInvocation(name)
++
++        return runtime._runtime_wrapper(
++            lambda value: calls.append((name, value)) or value,
++            abi,
++            prepare_invocation=prepare_invocation,
++        )
++
++    candidates = (candidate("first"), candidate("second"))
++    tuner = _FakeTuner(candidates, lambda args, kwargs: "shared-key")
++    handle = SimpleNamespace(_selected_tuning_candidate=None)
++    launch = triton_materializer._tuned_runtime_launch(
++        tuner,
++        dict(zip(candidates, ({"id": "first"}, {"id": "second"}))),
++        handle,
++        SimpleNamespace(launch_abi=abi, kernel=SimpleNamespace(tensors=())),
++    )
++    first = _FakeTensor((4,))
++
++    assert launch(first) is first
++    assert tuner.calls == 1
++    assert preparations == ["first"]
++
++    calls.clear()
++    first_reference = weakref.ref(first)
++    del first
++    gc.collect()
++
++    nonlocals = inspect.getclosurevars(launch).nonlocals
++    assert first_reference() is None
++    assert nonlocals["prepared_calls"] == {}
++    assert len(nonlocals["rebindable_calls"]) == 1
++
++    second = _FakeTensor((4,))
++    assert launch(second) is second
++    assert calls == [("first", second)]
++    assert tuner.calls == 1
++    assert preparations == ["first"]
++    assert handle._selected_tuning_candidate == {"id": "first"}
++
++
+ def test_triton_alias_selection_does_not_pollute_non_alias_tuning():
+     abi = LaunchABI(
+         public_args=("value", "output"),
