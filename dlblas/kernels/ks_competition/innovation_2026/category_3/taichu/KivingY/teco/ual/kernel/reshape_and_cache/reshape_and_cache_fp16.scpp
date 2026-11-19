@@ -1,0 +1,196 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+// reshape_and_cache: 将 key/value 按 slot_mapping 写入 paged KV cache
+//
+// 输入: key   [num_tokens, num_kv_heads, head_size] (HBM)
+//       value [num_tokens, num_kv_heads, head_size] (HBM)
+// 输出: key_cache   [num_blocks, num_kv_heads, block_size, head_size]
+//       value_cache [num_blocks, num_kv_heads, block_size, head_size]
+//
+// 实现: 32 SPE 按 token 维度并行，逐 head 做 HBM→HBM 阻塞式 memcpy
+//   - 不经过 SPM，直接用 memcpy 的 Global→Global 方向
+//   - reshape 通过每个 head 写入时的 stride offset 实现
+
+#include <simd.h>
+#include <slave.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+__global__ void teco_slave_reshape_and_cache_decode_gqa2(
+    ReshapeAndCacheDecodeGqa2Args args) {
+    const int head = threadIdx;
+    if (head >= 2) {
+        return;
+    }
+
+    constexpr int kHeadBytes = 64 * sizeof(half);
+    constexpr int kBlockSize = 32;
+    constexpr int kBlockStride = 2 * kBlockSize * kHeadBytes;
+    constexpr int kHeadStride = kBlockSize * kHeadBytes;
+    const int64_t slot = args.slot_mapping[0];
+    if (slot < 0) {
+        return;
+    }
+
+    const int block_id = slot / kBlockSize;
+    const int block_offset = slot % kBlockSize;
+    const char *key = static_cast<const char *>(args.key) +
+        head * kHeadBytes;
+    const char *value = static_cast<const char *>(args.value) +
+        head * kHeadBytes;
+    char *key_cache = static_cast<char *>(args.key_cache) +
+        block_id * kBlockStride + head * kHeadStride +
+        block_offset * kHeadBytes;
+    char *value_cache = static_cast<char *>(args.value_cache) +
+        block_id * kBlockStride + head * kHeadStride +
+        block_offset * kHeadBytes;
+    memcpy(key_cache, key, kHeadBytes);
+    memcpy(value_cache, value, kHeadBytes);
+}
+
+__global__ void teco_slave_reshape_and_cache_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_bytes = D * sizeof(half);
+
+    // The model produces K and V as adjacent views of a fused QKV projection.
+    // The extension only forwards tensor sizes, so args.key_stride/value_stride
+    // describe a compact [T, H, D] tensor even when the real token stride still
+    // includes Q, K and V. Detect that layout from the adjacent K/V pointers.
+    // OneGenomeRice has two query heads per KV head on each tensor-parallel rank,
+    // hence a fused token contains 2 * KV (Q) + KV (K) + KV (V).
+    const int compact_token_bytes = H * head_bytes;
+    const char *key_bytes = (const char *)key;
+    const char *value_bytes = (const char *)value;
+    if (value_bytes == key_bytes + compact_token_bytes) {
+        key_stride = 4 * compact_token_bytes;
+        value_stride = 4 * compact_token_bytes;
+    }
+
+    // Decode and small-prefill calls have too few tokens to occupy all SPEs
+    // when parallelized by token alone. Flatten [token, head] so even a
+    // one-token call can use every available KV-head lane.
+    if (T < 4 * block_size) {
+        for (int index = tid; index < T * H; index += CORE_NUM) {
+            const int t = index / H;
+            const int h = index - t * H;
+            const int64_t slot = slot_mapping[t];
+            if (slot < 0) continue;
+
+            const int block_id = slot / block_size;
+            const int block_off = slot % block_size;
+            const char *src_key = (const char *)key
+                + t * key_stride + h * head_bytes;
+            const char *src_value = (const char *)value
+                + t * value_stride + h * head_bytes;
+            char *dst_key = (char *)key_cache
+                + block_id * block_stride + h * head_stride
+                + block_off * entry_stride;
+            char *dst_value = (char *)value_cache
+                + block_id * block_stride + h * head_stride
+                + block_off * entry_stride;
+            memcpy(dst_key, src_key, head_bytes);
+            memcpy(dst_value, src_value, head_bytes);
+        }
+        return;
+    }
+
+    // Prefill slot mappings normally contain long consecutive runs. Assign
+    // each SPE a cache-aligned token tile and turn the many tiny per-token
+    // copies into one strided DMA per (K/V, head, run). The fallback for a
+    // non-consecutive mapping is still a length-one strided copy and therefore
+    // preserves the generic semantics.
+    int tile_size = T >= CORE_NUM * block_size
+        ? block_size : block_size / 2;
+    if (tile_size < 1) tile_size = 1;
+    for (int chunk = tid * tile_size; chunk < T;
+         chunk += CORE_NUM * tile_size) {
+        const int chunk_end = chunk + tile_size < T
+            ? chunk + tile_size : T;
+        int t = chunk;
+        while (t < chunk_end) {
+            const int64_t slot = slot_mapping[t];
+            if (slot < 0) {
+                t++;
+                continue;
+            }
+
+            const int block_off = slot % block_size;
+            const int max_run = chunk_end - t < block_size - block_off
+                ? chunk_end - t : block_size - block_off;
+            int run = 1;
+            while (run < max_run && slot_mapping[t + run] == slot + run) {
+                run++;
+            }
+
+            const int block_id = slot / block_size;
+            for (int h = 0; h < H; h++) {
+                char *dst_key = (char *)key_cache
+                    + block_id * block_stride + h * head_stride
+                    + block_off * entry_stride;
+                char *dst_value = (char *)value_cache
+                    + block_id * block_stride + h * head_stride
+                    + block_off * entry_stride;
+                const char *src_key = (const char *)key
+                    + t * key_stride + h * head_bytes;
+                const char *src_value = (const char *)value
+                    + t * value_stride + h * head_bytes;
+                memcpy_stride(
+                    dst_key, src_key, run * head_bytes, head_bytes,
+                    {static_cast<size_t>(entry_stride - head_bytes),
+                     static_cast<size_t>(key_stride - head_bytes)});
+                memcpy_stride(
+                    dst_value, src_value, run * head_bytes, head_bytes,
+                    {static_cast<size_t>(entry_stride - head_bytes),
+                     static_cast<size_t>(value_stride - head_bytes)});
+            }
+            t += run;
+        }
+    }
+}
