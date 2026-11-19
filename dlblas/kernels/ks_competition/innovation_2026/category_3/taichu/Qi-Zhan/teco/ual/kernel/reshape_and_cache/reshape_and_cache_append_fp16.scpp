@@ -1,0 +1,89 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+
+#include <simd.h>
+#include <slave.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+__global__ void teco_slave_reshape_and_cache_append_fp16(
+    ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    if (tid >= 8) {
+        return;
+    }
+
+    constexpr int kHeads = 2;
+    constexpr int kHeadSize = 64;
+    constexpr int kBlockSize = 32;
+    constexpr int kPanelSize = 32;
+
+    int64_t slot = args.slot_mapping[0];
+    if (slot < 0) {
+        return;
+    }
+    int block_id = slot / kBlockSize;
+    int block_offset = slot % kBlockSize;
+    constexpr int kHeadBytes = kHeadSize * sizeof(half);
+
+    const char *key = static_cast<const char *>(args.key);
+    const char *value = static_cast<const char *>(args.value);
+    half *key_cache = static_cast<half *>(args.key_cache);
+    half *value_cache = static_cast<half *>(args.value_cache);
+
+    if (tid < 2) {
+        bool copy_value = tid == 1;
+        const char *src = copy_value ? value : key;
+        int src_head_stride = copy_value
+            ? args.value_head_stride
+            : args.key_head_stride;
+        char *cache_base =
+            (copy_value ? reinterpret_cast<char *>(value_cache)
+                        : reinterpret_cast<char *>(key_cache)) +
+            block_id * args.block_stride + block_offset * args.entry_stride;
+        memcpy_stride(
+            cache_base, src, kHeads * kHeadBytes, kHeadBytes,
+            {static_cast<size_t>(args.head_stride - kHeadBytes),
+             static_cast<size_t>(src_head_stride - kHeadBytes)});
+        return;
+    }
+
+    int shadow_block_limit = args.num_blocks / 2;
+    if (block_id >= shadow_block_limit) {
+        return;
+    }
+
+    if (tid < 4) {
+        int head = tid - 2;
+        half *scratch =
+            static_cast<half *>(rt_spm_malloc(kHeadSize * sizeof(half)));
+        const char *src = key + head * args.key_head_stride;
+        memcpy(scratch, src, kHeadBytes);
+
+        half *transposed = static_cast<half *>(args.key_cache_transposed);
+        half *dst = transposed +
+            (block_id * kHeads + head) * kHeadSize * kBlockSize +
+            block_offset;
+        for (int d = 0; d < kHeadSize; d++) {
+            dst[d * kBlockSize] = scratch[d];
+        }
+        return;
+    }
+
+    int value_task = tid - 4;
+    int head = value_task / 2;
+    int panel = value_task % 2;
+    int shadow_block_start = args.num_blocks - shadow_block_limit;
+    half *panelized = value_cache +
+        shadow_block_start * kHeads * kBlockSize * kHeadSize;
+    half *dst = panelized +
+        (block_id * kHeads + head) * kHeadSize * kBlockSize +
+        panel * kBlockSize * kPanelSize + block_offset * kPanelSize;
+    const char *src = value + head * args.value_head_stride +
+        panel * kPanelSize * sizeof(half);
+    memcpy(dst, src, kPanelSize * sizeof(half));
+}

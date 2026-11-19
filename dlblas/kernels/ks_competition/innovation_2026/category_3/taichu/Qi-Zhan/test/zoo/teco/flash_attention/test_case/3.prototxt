@@ -1,0 +1,120 @@
+op_name: "flash_attention"
+input {
+  id: "blockTable"
+  shape {
+    dims: 3
+    dims: 16
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_INT32
+  ttype: TENSOR
+  random_data {
+    seed: 100
+    lower_bound: 0
+    upper_bound: 255
+    distribution: UNIFORM
+  }
+}
+input {
+  id: "qData"
+  shape {
+    dims: 385
+    dims: 16
+    dims: 128
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data {
+    seed: 20
+    lower_bound: -1.0
+    upper_bound: 1.0
+    distribution: UNIFORM
+  }
+}
+input {
+  id: "kCache"
+  shape {
+    dims: 256
+    dims: 4
+    dims: 32
+    dims: 128
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data {
+    seed: 21
+    lower_bound: -1.0
+    upper_bound: 1.0
+    distribution: UNIFORM
+  }
+}
+input {
+  id: "vCache"
+  shape {
+    dims: 256
+    dims: 4
+    dims: 32
+    dims: 128
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data {
+    seed: 22
+    lower_bound: -1.0
+    upper_bound: 1.0
+    distribution: UNIFORM
+  }
+}
+input {
+  id: "q_seq_lens"
+  shape {
+    dims: 3
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_INT32
+  ttype: TENSOR
+  prev_value {
+    value_i: 1
+    value_i: 256
+    value_i: 128
+  }
+}
+input {
+  id: "kv_seq_lens"
+  shape {
+    dims: 3
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_INT32
+  ttype: TENSOR
+  prev_value {
+    value_i: 512
+    value_i: 256
+    value_i: 512
+  }
+}
+output {
+  id: "oData"
+  shape {
+    dims: 385
+    dims: 16
+    dims: 128
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  reused: false
+}
+tecokernel_param {
+  flash_attention_param {
+    max_seqlen_q: 512
+    max_seqlen_k: 1024
+  }
+}
+test_param: {
+    error_func: DIFF1
+    error_threshold: 1e-4
+}

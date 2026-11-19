@@ -1,0 +1,776 @@
+// BSD 3-Clause License
+// Copyright (c) 2024, Tecorigin Co., Ltd. All rights reserved.
+
+#include <simd.h>
+#include <slave.h>
+#include <sdaa_memcpy.h>
+#include <sdaa_rma.h>
+#include <sdaa_transpose.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/flash_attention/flash_attention.h"
+#include "teco_hal.h"
+
+using namespace sdaa;  // NOLINT
+using namespace teco::hal;  // NOLINT
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#ifndef FLT_MAX
+#define FLT_MAX 3.402823466e+38F
+#endif
+
+namespace {
+
+constexpr int GQA_GROUP = 2;
+constexpr int BM = GQA_GROUP;
+constexpr int BN = 64;
+constexpr int PANEL = 32;
+constexpr int BK = 64;
+constexpr int DECODE_SHARDS = 16;
+constexpr int PARTIAL_OUTPUT = 16;
+constexpr int HEAD_PARTIAL_STRIDE = PARTIAL_OUTPUT + BK;
+constexpr int PARTIAL_STRIDE = GQA_GROUP * HEAD_PARTIAL_STRIDE;
+
+__device__ __always_inline void decode_zero_half(half *buf, int len) {
+    halfv16 zero = (half)0.0f;
+    int i = 0;
+    for (; i + 16 <= len; i += 16) {
+        simd_store(zero, buf + i);
+    }
+    for (; i < len; i++) {
+        buf[i] = 0;
+    }
+}
+
+__device__ __always_inline float decode_negative_inf() {
+    int bits = 0xFF800000;
+    float value;
+    memcpy(&value, &bits, sizeof(float));
+    return value;
+}
+
+__device__ __always_inline float decode_exp(float x) {
+    x = MAX(x, -16.0f);
+    float y = 1.0f + x * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y *= y;
+    }
+    return y;
+}
+
+__device__ __always_inline void decode_exp2(float &x0, float &x1) {
+    x0 = MAX(x0, -16.0f);
+    x1 = MAX(x1, -16.0f);
+    float y0 = 1.0f + x0 * (1.0f / 2048.0f);
+    float y1 = 1.0f + x1 * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y0 *= y0;
+        y1 *= y1;
+    }
+    x0 = y0;
+    x1 = y1;
+}
+
+__device__ __always_inline floatv16 decode_exp(floatv16 x) {
+    floatv16 lower = -16.0f;
+    floatv16 y = 1.0f + simd_max(x, lower) * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y = simd_mul(y, y);
+    }
+    return y;
+}
+
+__device__ __always_inline void decode_exp4(
+    floatv16 &x0, floatv16 &x1, floatv16 &x2, floatv16 &x3) {
+    floatv16 lower = -16.0f;
+    floatv16 y0 = 1.0f + simd_max(x0, lower) * (1.0f / 2048.0f);
+    floatv16 y1 = 1.0f + simd_max(x1, lower) * (1.0f / 2048.0f);
+    floatv16 y2 = 1.0f + simd_max(x2, lower) * (1.0f / 2048.0f);
+    floatv16 y3 = 1.0f + simd_max(x3, lower) * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y0 = simd_mul(y0, y0);
+        y1 = simd_mul(y1, y1);
+        y2 = simd_mul(y2, y2);
+        y3 = simd_mul(y3, y3);
+    }
+    x0 = y0;
+    x1 = y1;
+    x2 = y2;
+    x3 = y3;
+}
+
+__device__ __always_inline void decode_exp8(
+    floatv16 &x0, floatv16 &x1, floatv16 &x2, floatv16 &x3,
+    floatv16 &x4, floatv16 &x5, floatv16 &x6, floatv16 &x7) {
+    floatv16 lower = -16.0f;
+    floatv16 y0 = 1.0f + simd_max(x0, lower) * (1.0f / 2048.0f);
+    floatv16 y1 = 1.0f + simd_max(x1, lower) * (1.0f / 2048.0f);
+    floatv16 y2 = 1.0f + simd_max(x2, lower) * (1.0f / 2048.0f);
+    floatv16 y3 = 1.0f + simd_max(x3, lower) * (1.0f / 2048.0f);
+    floatv16 y4 = 1.0f + simd_max(x4, lower) * (1.0f / 2048.0f);
+    floatv16 y5 = 1.0f + simd_max(x5, lower) * (1.0f / 2048.0f);
+    floatv16 y6 = 1.0f + simd_max(x6, lower) * (1.0f / 2048.0f);
+    floatv16 y7 = 1.0f + simd_max(x7, lower) * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y0 = simd_mul(y0, y0);
+        y1 = simd_mul(y1, y1);
+        y2 = simd_mul(y2, y2);
+        y3 = simd_mul(y3, y3);
+        y4 = simd_mul(y4, y4);
+        y5 = simd_mul(y5, y5);
+        y6 = simd_mul(y6, y6);
+        y7 = simd_mul(y7, y7);
+    }
+    x0 = y0;
+    x1 = y1;
+    x2 = y2;
+    x3 = y3;
+    x4 = y4;
+    x5 = y5;
+    x6 = y6;
+    x7 = y7;
+}
+
+__device__ __always_inline void decode_softmax64_pair(
+    float *scores, half *probabilities, float *max_state,
+    float *sum_state, float softmax_scale, float *tile_scale) {
+    floatv16 r00;
+    floatv16 r01;
+    floatv16 r02;
+    floatv16 r03;
+    floatv16 r10;
+    floatv16 r11;
+    floatv16 r12;
+    floatv16 r13;
+    floatv16 vscale = softmax_scale;
+    simd_load(r00, scores);
+    simd_load(r01, scores + 16);
+    simd_load(r02, scores + BM * PANEL);
+    simd_load(r03, scores + BM * PANEL + 16);
+    simd_load(r10, scores + PANEL);
+    simd_load(r11, scores + PANEL + 16);
+    simd_load(r12, scores + BM * PANEL + PANEL);
+    simd_load(r13, scores + BM * PANEL + PANEL + 16);
+    r00 = simd_mul(r00, vscale);
+    r01 = simd_mul(r01, vscale);
+    r02 = simd_mul(r02, vscale);
+    r03 = simd_mul(r03, vscale);
+    r10 = simd_mul(r10, vscale);
+    r11 = simd_mul(r11, vscale);
+    r12 = simd_mul(r12, vscale);
+    r13 = simd_mul(r13, vscale);
+
+    floatv16 vmax0 = simd_max(
+        simd_max(r00, r01), simd_max(r02, r03));
+    floatv16 vmax1 = simd_max(
+        simd_max(r10, r11), simd_max(r12, r13));
+    float block_max0 = -FLT_MAX;
+    float block_max1 = -FLT_MAX;
+    float *lanes0 = (float *)&vmax0;
+    float *lanes1 = (float *)&vmax1;
+    for (int lane = 0; lane < 16; lane++) {
+        block_max0 = MAX(block_max0, lanes0[lane]);
+        block_max1 = MAX(block_max1, lanes1[lane]);
+    }
+
+    float new_max0 = MAX(max_state[0], block_max0);
+    float new_max1 = MAX(max_state[1], block_max1);
+    float old_scale0 = max_state[0] - new_max0;
+    float old_scale1 = max_state[1] - new_max1;
+    decode_exp2(old_scale0, old_scale1);
+    floatv16 vnew_max0 = new_max0;
+    floatv16 vnew_max1 = new_max1;
+    r00 -= vnew_max0;
+    r01 -= vnew_max0;
+    r02 -= vnew_max0;
+    r03 -= vnew_max0;
+    r10 -= vnew_max1;
+    r11 -= vnew_max1;
+    r12 -= vnew_max1;
+    r13 -= vnew_max1;
+    decode_exp8(r00, r01, r02, r03, r10, r11, r12, r13);
+
+    sum_state[0] = sum_state[0] * old_scale0 +
+                   simd_redsum(r00) + simd_redsum(r01) +
+                   simd_redsum(r02) + simd_redsum(r03);
+    sum_state[1] = sum_state[1] * old_scale1 +
+                   simd_redsum(r10) + simd_redsum(r11) +
+                   simd_redsum(r12) + simd_redsum(r13);
+    max_state[0] = new_max0;
+    max_state[1] = new_max1;
+    tile_scale[0] = old_scale0;
+    tile_scale[1] = old_scale1;
+    simd_store((halfv16)r00, probabilities);
+    simd_store((halfv16)r01, probabilities + 16);
+    simd_store((halfv16)r02, probabilities + PANEL);
+    simd_store((halfv16)r03, probabilities + PANEL + 16);
+    simd_store((halfv16)r10, probabilities + BN);
+    simd_store((halfv16)r11, probabilities + BN + 16);
+    simd_store((halfv16)r12, probabilities + BN + PANEL);
+    simd_store((halfv16)r13, probabilities + BN + PANEL + 16);
+}
+
+__device__ __always_inline float decode_softmax64(
+    float *scores, half *probabilities, int valid0, int valid1,
+    float &max_state, float &sum_state, float softmax_scale) {
+    if (valid0 == PANEL && valid1 == PANEL) {
+        floatv16 v0;
+        floatv16 v1;
+        floatv16 v2;
+        floatv16 v3;
+        floatv16 vscale = softmax_scale;
+        simd_load(v0, scores);
+        simd_load(v1, scores + 16);
+        simd_load(v2, scores + BM * PANEL);
+        simd_load(v3, scores + BM * PANEL + 16);
+        v0 = simd_mul(v0, vscale);
+        v1 = simd_mul(v1, vscale);
+        v2 = simd_mul(v2, vscale);
+        v3 = simd_mul(v3, vscale);
+
+        floatv16 vmax = simd_max(
+            simd_max(v0, v1), simd_max(v2, v3));
+        float block_max = -FLT_MAX;
+        float *lanes = (float *)&vmax;
+        for (int lane = 0; lane < 16; lane++) {
+            block_max = MAX(block_max, lanes[lane]);
+        }
+
+        float new_max = MAX(max_state, block_max);
+        float old_scale = decode_exp(max_state - new_max);
+        floatv16 vnew_max = new_max;
+        v0 -= vnew_max;
+        v1 -= vnew_max;
+        v2 -= vnew_max;
+        v3 -= vnew_max;
+        decode_exp4(v0, v1, v2, v3);
+        sum_state = sum_state * old_scale +
+                    simd_redsum(v0) + simd_redsum(v1) +
+                    simd_redsum(v2) + simd_redsum(v3);
+        max_state = new_max;
+        simd_store((halfv16)v0, probabilities);
+        simd_store((halfv16)v1, probabilities + 16);
+        simd_store((halfv16)v2, probabilities + PANEL);
+        simd_store((halfv16)v3, probabilities + PANEL + 16);
+        return old_scale;
+    }
+
+    decode_zero_half(probabilities, BN);
+    floatv16 vmax = -FLT_MAX;
+    float block_max = -FLT_MAX;
+    floatv16 vscale = softmax_scale;
+    for (int panel = 0; panel < 2; panel++) {
+        int valid = panel == 0 ? valid0 : valid1;
+        float *src = scores + panel * BM * PANEL;
+        int i = 0;
+        int vector_end = valid / 16 * 16;
+        for (; i < vector_end; i += 16) {
+            floatv16 values;
+            simd_load(values, src + i);
+            values = simd_mul(values, vscale);
+            simd_store(values, src + i);
+            vmax = simd_max(vmax, values);
+        }
+        for (; i < valid; i++) {
+            src[i] *= softmax_scale;
+            block_max = MAX(block_max, src[i]);
+        }
+    }
+    float *lanes = (float *)&vmax;
+    for (int lane = 0; lane < 16; lane++) {
+        block_max = MAX(block_max, lanes[lane]);
+    }
+    float new_max = MAX(max_state, block_max);
+    float old_scale = decode_exp(max_state - new_max);
+    float block_sum = 0.0f;
+    for (int panel = 0; panel < 2; panel++) {
+        int valid = panel == 0 ? valid0 : valid1;
+        float *src = scores + panel * BM * PANEL;
+        half *dst = probabilities + panel * PANEL;
+        int i = 0;
+        int vector_end = valid / 16 * 16;
+        for (; i < vector_end; i += 16) {
+            floatv16 values;
+            simd_load(values, src + i);
+            values = decode_exp(values - (floatv16)new_max);
+            simd_store((halfv16)values, dst + i);
+            block_sum += simd_redsum(values);
+        }
+        for (; i < valid; i++) {
+            float value = decode_exp(src[i] - new_max);
+            dst[i] = (half)value;
+            block_sum += value;
+        }
+    }
+    sum_state = sum_state * old_scale + block_sum;
+    max_state = new_max;
+    return old_scale;
+}
+
+__device__ __always_inline void decode_pv(
+    half *probabilities, half *values, float *output) {
+    MatmulConfig cfg;
+    Matmul matmul(cfg);
+    auto p = make_tensor<2>(probabilities,
+                            {(size_t)BM, (size_t)BN});
+    auto v = make_tensor<2>(values,
+                            {(size_t)BN, (size_t)BK});
+    auto c = make_tensor<2>(output,
+                            {(size_t)BM, (size_t)BK});
+    matmul.compute_async<MatmulBlockConfig::M64_N64>(p, v, true);
+    matmul.storeC_spm_async(c);
+    matmul.wait_storeC(1);
+}
+
+__device__ __always_inline void decode_update_output(
+    float *accum, const float *update, float scale) {
+    floatv16 vscale = scale;
+    for (int panel = 0; panel < 2; panel++) {
+        float *dst = accum + panel * PANEL;
+        const float *src = update + panel * BM * PANEL;
+        for (int d = 0; d < PANEL; d += 16) {
+            floatv16 va;
+            floatv16 vu;
+            simd_load(va, dst + d);
+            simd_load(vu, src + d);
+            va = simd_vfmas(va, vscale, vu);
+            simd_store(va, dst + d);
+        }
+    }
+}
+
+__device__ __always_inline void decode_append_cache(
+    const FlashAttentionArgs &args, int tid, half *key_scratch) {
+    if (tid >= 8) {
+        return;
+    }
+
+    constexpr int kHeads = 2;
+    constexpr int kHeadSize = 64;
+    constexpr int kBlockSize = 32;
+    constexpr int kPanelSize = 32;
+    constexpr int kHeadBytes = kHeadSize * sizeof(half);
+    constexpr int kEntryBytes = kHeadBytes;
+    constexpr int kCacheHeadBytes = kBlockSize * kEntryBytes;
+    constexpr int kBlockBytes = kHeads * kCacheHeadBytes;
+
+    int64_t slot = args.append_slot_mapping[0];
+    if (slot < 0) {
+        return;
+    }
+    int block_id = slot / kBlockSize;
+    int block_offset = slot % kBlockSize;
+    const char *key = static_cast<const char *>(args.append_key);
+    const char *value = static_cast<const char *>(args.append_value);
+
+    if (tid < 2) {
+        bool copy_value = tid == 1;
+        const char *src = copy_value ? value : key;
+        int src_head_stride = copy_value
+            ? args.append_value_head_stride
+            : args.append_key_head_stride;
+        char *cache = copy_value
+            ? static_cast<char *>(args.value_cache)
+            : static_cast<char *>(args.key_cache);
+        char *dst = cache + block_id * kBlockBytes +
+                    block_offset * kEntryBytes;
+        memcpy_stride(
+            dst, src, kHeads * kHeadBytes, kHeadBytes,
+            {static_cast<size_t>(kCacheHeadBytes - kHeadBytes),
+             static_cast<size_t>(src_head_stride - kHeadBytes)});
+        return;
+    }
+
+    int shadow_block_limit = args.max_block_num / 2;
+    if (block_id >= shadow_block_limit || args.workspace == nullptr) {
+        return;
+    }
+
+    if (tid < 4) {
+        int head = tid - 2;
+        half *scratch = key_scratch;
+        memcpy(scratch,
+               key + head * args.append_key_head_stride,
+               kHeadBytes);
+        half *transposed = static_cast<half *>(args.workspace);
+        half *dst = transposed +
+            (block_id * kHeads + head) * kHeadSize * kBlockSize +
+            block_offset;
+        for (int d = 0; d < kHeadSize; d++) {
+            dst[d * kBlockSize] = scratch[d];
+        }
+        return;
+    }
+
+    int value_task = tid - 4;
+    int head = value_task / 2;
+    int panel = value_task % 2;
+    int shadow_block_start = args.max_block_num - shadow_block_limit;
+    half *panelized = static_cast<half *>(args.value_cache) +
+        shadow_block_start * kHeads * kBlockSize * kHeadSize;
+    half *dst = panelized +
+        (block_id * kHeads + head) * kHeadSize * kBlockSize +
+        panel * kBlockSize * kPanelSize + block_offset * kPanelSize;
+    const char *src = value + head * args.append_value_head_stride +
+        panel * kPanelSize * sizeof(half);
+    memcpy(dst, src, kPanelSize * sizeof(half));
+}
+
+}  // namespace
+
+__global__ __attribute__((aligned(2048))) void
+teco_slave_flash_attention_decode_m64(FlashAttentionArgs args) {
+    int tid = threadIdx;
+    if (tid >= args.spe_num || tid >= 32) {
+        return;
+    }
+
+    int k_seq_len = args.kv_seq_lens[0];
+    int tile_count = (k_seq_len + BN - 1) / BN;
+    // Threads 0..7 own the fused append. Keeping at least eight active lanes
+    // lets their K scratch reuse qbuf without a second SPM allocation.
+    int active_shards = MAX(MIN(DECODE_SHARDS, tile_count), 8);
+    int kv_head_idx = tid / DECODE_SHARDS;
+    int decode_lane = tid % DECODE_SHARDS;
+    bool active_lane = decode_lane < active_shards;
+    int q_head_base = kv_head_idx * GQA_GROUP;
+
+    half *qbuf = nullptr;
+    half *bpanel = nullptr;
+    half *ktmp = nullptr;
+    float *cpanel = nullptr;
+    half *probabilities = nullptr;
+    half *vpanel = nullptr;
+    float *o_accum = nullptr;
+    half *obuf = nullptr;
+    float *partials = nullptr;
+    float sum_state[GQA_GROUP];
+
+    if (active_lane) {
+        // Preserve 256-byte sub-buffer alignment and pay the allocator once.
+        constexpr size_t SPM_BYTES =
+            BM * BK * sizeof(half) + BK * BN * sizeof(half) +
+            PANEL * BK * sizeof(half) +
+            BM * BN * sizeof(float) + BM * BN * sizeof(half) +
+            BN * BK * sizeof(half) + GQA_GROUP * BK * sizeof(float) +
+            GQA_GROUP * BK * sizeof(half) +
+            DECODE_SHARDS * PARTIAL_STRIDE * sizeof(float);
+        char *spm_cursor = (char *)rt_spm_malloc(SPM_BYTES);
+        qbuf = (half *)spm_cursor;
+        spm_cursor += BM * BK * sizeof(half);
+        bpanel = (half *)spm_cursor;
+        spm_cursor += BK * BN * sizeof(half);
+        ktmp = (half *)spm_cursor;
+        spm_cursor += PANEL * BK * sizeof(half);
+        cpanel = (float *)spm_cursor;
+        spm_cursor += BM * BN * sizeof(float);
+        probabilities = (half *)spm_cursor;
+        spm_cursor += BM * BN * sizeof(half);
+        vpanel = (half *)spm_cursor;
+        spm_cursor += BN * BK * sizeof(half);
+        o_accum = (float *)spm_cursor;
+        spm_cursor += GQA_GROUP * BK * sizeof(float);
+        obuf = (half *)spm_cursor;
+        spm_cursor += GQA_GROUP * BK * sizeof(half);
+        partials = (float *)spm_cursor;
+    }
+
+    if (args.append_pending) {
+        decode_append_cache(args, tid, qbuf);
+        sync_threads();
+    }
+
+    if (active_lane) {
+    const half *key_cache_transposed =
+        (const half *)args.workspace;
+    int shadow_block_limit = args.max_block_num / 2;
+    int shadow_block_start = args.max_block_num - shadow_block_limit;
+    int shadow_block_elements = args.local_kv_head_num *
+        args.block_size * BK;
+    const half *expected_key_shadow =
+        (const half *)args.key_cache +
+        shadow_block_start * shadow_block_elements;
+    const half *value_cache_panelized =
+        key_cache_transposed == expected_key_shadow
+            ? (const half *)args.value_cache +
+                  shadow_block_start * shadow_block_elements
+            : nullptr;
+
+    for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+        const half *src_q = (const half *)args.q +
+            (q_head_base + qrow) * args.q_head_stride;
+        memcpy(qbuf + qrow * BK, src_q, BK * sizeof(half));
+    }
+
+    floatv16 zero_float = 0.0f;
+    for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+        for (int d = 0; d < BK; d += 16) {
+            simd_store(zero_float, o_accum + qrow * BK + d);
+        }
+    }
+    float max_state[GQA_GROUP];
+    for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+        max_state[qrow] = decode_negative_inf();
+        sum_state[qrow] = 0.0f;
+    }
+
+    for (int j = decode_lane * BN; j < k_seq_len;
+         j += active_shards * BN) {
+        int tile_tokens = MIN(BN, k_seq_len - j);
+        int valid0 = MIN(PANEL, tile_tokens);
+        int valid1 = MAX(tile_tokens - PANEL, 0);
+
+        TransposeHandle k00;
+        TransposeHandle k01;
+        TransposeHandle k10;
+        TransposeHandle k11;
+        MemcpyHandle key_copy;
+        MemcpyHandle value_copy;
+        bool used_shadow = false;
+        MemoryStride transpose_stride = {0, PANEL * sizeof(half)};
+        MemoryStride value_stride = {0, (BK - PANEL) * sizeof(half)};
+
+        for (int block = 0; block < 2; block++) {
+            int valid = block == 0 ? valid0 : valid1;
+            half *dst = bpanel + block * BK * PANEL;
+            int key_start = j + block * PANEL;
+            int block_id = valid > 0
+                ? args.block_table[key_start / args.block_size]
+                : -1;
+            if (valid > 0 && key_cache_transposed != nullptr &&
+                block_id < shadow_block_limit) {
+                const half *src = key_cache_transposed +
+                    (block_id * args.local_kv_head_num + kv_head_idx) *
+                        BK * args.block_size;
+                memcpy_async(dst, src, BK * PANEL * sizeof(half),
+                             MemcpyGlobalToSpm, key_copy);
+                used_shadow = true;
+            } else if (valid == PANEL) {
+                const half *src = (const half *)args.key_cache +
+                    block_id * args.local_kv_head_num *
+                        args.block_size * BK +
+                    kv_head_idx * args.block_size * BK;
+                if (block == 0) {
+                    transpose_async(dst, src, PANEL, PANEL, sizeof(half),
+                                    transpose_stride, TransposeGlobalToSpm,
+                                    k00);
+                    transpose_async(dst + PANEL * PANEL, src + PANEL,
+                                    PANEL, PANEL, sizeof(half),
+                                    transpose_stride, TransposeGlobalToSpm,
+                                    k01);
+                } else {
+                    transpose_async(dst, src, PANEL, PANEL, sizeof(half),
+                                    transpose_stride, TransposeGlobalToSpm,
+                                    k10);
+                    transpose_async(dst + PANEL * PANEL, src + PANEL,
+                                    PANEL, PANEL, sizeof(half),
+                                    transpose_stride, TransposeGlobalToSpm,
+                                    k11);
+                }
+            } else {
+                decode_zero_half(dst, BK * PANEL);
+                if (valid > 0) {
+                    const half *src = (const half *)args.key_cache +
+                        block_id * args.local_kv_head_num *
+                            args.block_size * BK +
+                        kv_head_idx * args.block_size * BK;
+                    memcpy(ktmp, src, valid * BK * sizeof(half));
+                    for (int token = 0; token < valid; token++) {
+                        for (int d = 0; d < BK; d++) {
+                            dst[d * PANEL + token] =
+                                ktmp[token * BK + d];
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int panel = 0; panel < 2; panel++) {
+            for (int block = 0; block < 2; block++) {
+                int valid = block == 0 ? valid0 : valid1;
+                half *dst = vpanel + panel * BN * PANEL +
+                            block * PANEL * PANEL;
+                if (valid < PANEL) {
+                    decode_zero_half(dst, PANEL * PANEL);
+                }
+                if (valid > 0) {
+                    int key_start = j + block * PANEL;
+                    int block_id =
+                        args.block_table[key_start / args.block_size];
+                    const half *src = (const half *)args.value_cache +
+                        block_id * args.local_kv_head_num *
+                            args.block_size * BK +
+                        kv_head_idx * args.block_size * BK + panel * PANEL;
+                    if (value_cache_panelized != nullptr &&
+                        block_id < shadow_block_limit) {
+                        src = value_cache_panelized +
+                            (block_id * args.local_kv_head_num + kv_head_idx) *
+                                BK * args.block_size +
+                            panel * args.block_size * PANEL;
+                        memcpy_async(dst, src, valid * PANEL * sizeof(half),
+                                     MemcpyGlobalToSpm, value_copy);
+                    } else {
+                        memcpy_async(dst, src, valid * PANEL * sizeof(half),
+                                     PANEL * sizeof(half), value_stride,
+                                     MemcpyGlobalToSpm, value_copy);
+                    }
+                }
+            }
+        }
+
+        if (used_shadow) {
+            memcpy_wait(key_copy);
+        }
+        if (tile_tokens >= PANEL &&
+            !(key_cache_transposed != nullptr &&
+              args.block_table[j / args.block_size] <
+                  shadow_block_limit)) {
+            transpose_wait(k00);
+            transpose_wait(k01);
+        }
+        if (tile_tokens >= BN &&
+            !(key_cache_transposed != nullptr &&
+              args.block_table[(j + PANEL) / args.block_size] <
+                  shadow_block_limit)) {
+            transpose_wait(k10);
+            transpose_wait(k11);
+        }
+
+        {
+            MatmulConfig cfg;
+            Matmul matmul(cfg);
+            auto q = make_tensor<2>(qbuf,
+                                    {(size_t)BM, (size_t)BK});
+            auto k = make_tensor<2>(bpanel,
+                                    {(size_t)BK, (size_t)BN});
+            auto c = make_tensor<2>(cpanel,
+                                    {(size_t)BM, (size_t)BN});
+            matmul.compute_async<MatmulBlockConfig::M64_N64>(q, k, true);
+            matmul.storeC_spm_async(c);
+            matmul.wait_storeC(1);
+        }
+
+        float tile_scale[GQA_GROUP];
+        if (valid0 == PANEL && valid1 == PANEL) {
+            decode_softmax64_pair(
+                cpanel, probabilities, max_state, sum_state,
+                args.softmax_scale, tile_scale);
+        } else {
+            for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+                tile_scale[qrow] = decode_softmax64(
+                    cpanel + qrow * PANEL,
+                    probabilities + qrow * BN,
+                    valid0, valid1, max_state[qrow], sum_state[qrow],
+                    args.softmax_scale);
+            }
+        }
+
+        memcpy_wait(value_copy);
+        decode_pv(probabilities, vpanel, cpanel);
+        for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+            decode_update_output(
+                o_accum + qrow * BK,
+                cpanel + qrow * PANEL,
+                tile_scale[qrow]);
+        }
+    }
+
+    float *partial = partials + decode_lane * PARTIAL_STRIDE;
+    for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+        float *head_partial = partial + qrow * HEAD_PARTIAL_STRIDE;
+        head_partial[0] = max_state[qrow];
+        head_partial[1] = sum_state[qrow];
+        for (int d = 0; d < BK; d++) {
+            head_partial[PARTIAL_OUTPUT + d] =
+                o_accum[qrow * BK + d];
+        }
+    }
+    }
+
+    sync_threads();
+    if (active_lane) {
+    floatv16 zero_float = 0.0f;
+    float *partial = partials + decode_lane * PARTIAL_STRIDE;
+    RmaHandle rma_handle;
+    int leader = kv_head_idx * DECODE_SHARDS;
+    if (decode_lane != 0) {
+        rma_set_thread_id(rma_handle, leader);
+        rma_async_put(partial, partial,
+                      PARTIAL_STRIDE * sizeof(float), rma_handle);
+        rma_complete(rma_handle);
+    } else {
+        if (active_shards > 1) {
+            unsigned long active_mask =
+                (static_cast<unsigned long>(1) << active_shards) - 1;
+            unsigned long remote_mask =
+                (active_mask & ~static_cast<unsigned long>(1)) << leader;
+            ThreadGroup remote_group(remote_mask);
+            rma_set_thread_group(rma_handle, &remote_group);
+            rma_wait(rma_handle);
+        }
+
+        for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+            float *head0 = partials + qrow * HEAD_PARTIAL_STRIDE;
+            float merged_max = head0[0];
+            for (int lane = 1; lane < active_shards; lane++) {
+                float *lane_head = partials + lane * PARTIAL_STRIDE +
+                    qrow * HEAD_PARTIAL_STRIDE;
+                merged_max = MAX(merged_max, lane_head[0]);
+            }
+
+            float merged_sum = 0.0f;
+            for (int d = 0; d < BK; d += 16) {
+                simd_store(zero_float, o_accum + qrow * BK + d);
+            }
+            for (int lane = 0; lane < active_shards; lane++) {
+                float *lane_head = partials + lane * PARTIAL_STRIDE +
+                    qrow * HEAD_PARTIAL_STRIDE;
+                float lane_scale = decode_exp(
+                    lane_head[0] - merged_max);
+                merged_sum += lane_head[1] * lane_scale;
+                floatv16 vscale = lane_scale;
+                for (int d = 0; d < BK; d += 16) {
+                    floatv16 accum_vec;
+                    floatv16 partial_vec;
+                    simd_load(accum_vec, o_accum + qrow * BK + d);
+                    simd_load(partial_vec,
+                              lane_head + PARTIAL_OUTPUT + d);
+                    accum_vec = simd_vfmas(
+                        partial_vec, vscale, accum_vec);
+                    simd_store(accum_vec, o_accum + qrow * BK + d);
+                }
+            }
+            sum_state[qrow] = merged_sum;
+        }
+    }
+    }
+    sync_threads();
+    if (!active_lane) {
+        return;
+    }
+    if (decode_lane != 0) {
+        return;
+    }
+
+    for (int qrow = 0; qrow < GQA_GROUP; qrow++) {
+        float inv_sum = sum_state[qrow] > 0.0f ?
+                        1.0f / sum_state[qrow] : 0.0f;
+        floatv16 vinv = inv_sum;
+        for (int d = 0; d < BK; d += 16) {
+            floatv16 values;
+            simd_load(values, o_accum + qrow * BK + d);
+            simd_store((halfv16)(values * vinv),
+                       obuf + qrow * BK + d);
+        }
+
+        half *out = (half *)args.fmha_out +
+            (q_head_base + qrow) * args.out_head_stride;
+        memcpy(out, obuf + qrow * BK, BK * sizeof(half));
+    }
+}
