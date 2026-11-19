@@ -1,0 +1,98 @@
+op_name: "reshape_and_cache"
+
+input {
+  id: "key"
+  shape: {
+    dims: 512
+    dims: 2
+    dims: 128
+  }
+  layout: LAYOUT_NCHW
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data: {
+    seed: 62
+    upper_bound: 1.0
+    lower_bound: -1.0
+    distribution: UNIFORM
+  }
+}
+
+input {
+  id: "value"
+  shape: {
+    dims: 512
+    dims: 2
+    dims: 128
+  }
+  layout: LAYOUT_NCHW
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data: {
+    seed: 63
+    upper_bound: 1.0
+    lower_bound: -1.0
+    distribution: UNIFORM
+  }
+}
+
+input {
+  id: "slot_mapping"
+  shape: {
+    dims: 512
+  }
+  layout: LAYOUT_ARRAY
+  dtype: DTYPE_INT64
+  ttype: TENSOR
+  random_data: {
+    seed: 64
+    upper_bound: 1024.0
+    lower_bound: -1.0
+    distribution: UNIFORM
+  }
+}
+
+output {
+  id: "key_cache"
+  shape: {
+    dims: 64
+    dims: 2
+    dims: 16
+    dims: 128
+  }
+  reused: true
+  layout: LAYOUT_NCHW
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data: {
+    seed: 65
+    upper_bound: 5.0
+    lower_bound: 1.0
+    distribution: UNIFORM
+  }
+}
+
+output {
+  id: "value_cache"
+  shape: {
+    dims: 64
+    dims: 2
+    dims: 16
+    dims: 128
+  }
+  reused: true
+  layout: LAYOUT_NCHW
+  dtype: DTYPE_HALF
+  ttype: TENSOR
+  random_data: {
+    seed: 66
+    upper_bound: 5.0
+    lower_bound: 1.0
+    distribution: UNIFORM
+  }
+}
+
+tecokernel_param: {
+  reshape_and_cache_param: {}
+}
+
