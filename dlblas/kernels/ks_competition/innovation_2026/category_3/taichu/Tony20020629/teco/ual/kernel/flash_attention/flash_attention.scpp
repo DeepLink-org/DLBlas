@@ -1,0 +1,3442 @@
+﻿// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+#include <simd.h>
+#include <slave.h>
+#include <sdaa_transpose.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/flash_attention/flash_attention.h"
+#include "teco_hal.h"
+
+using namespace sdaa;  //NOLINT
+using namespace teco::hal;  //NOLINT
+
+// macro definition of MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+// macro definition of MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+// FLT_MAX if not already defined
+#ifndef FLT_MAX
+#define FLT_MAX 3.402823466e+38F
+#endif
+
+// SIMD float loads/stores are 64 bytes wide. Keep every buffer in the shared
+// fixed SPM arena on the same boundary.
+__device__ __always_inline size_t align_spm_bytes(size_t bytes) {
+    return (bytes + 63) & ~((size_t)63);
+}
+
+// load a tile from KV cache (key or value) into dst
+// src = cache[block_id][kv_head_idx ][0..num_tokens-1][0..head_size-1]
+// dst = [num_tokens, head_size]
+__device__ __always_inline void load_kv_cache(
+    half *dst, const half *cache, const int *block_table, int logical_block,
+    int kv_head_idx , int kv_head_num, int block_size, int head_size, int num_tokens) {
+    int block_id = block_table[logical_block];
+    const half *src = cache
+        + block_id * kv_head_num * block_size * head_size
+        + kv_head_idx  * block_size * head_size;
+    memcpy(dst, src, num_tokens * head_size * sizeof(half));
+}
+
+// Pack the two D32 column halves of one physical V block into independent
+// K-major ranges. Four calls form the two V[128, 32] operands used by K128 PV.
+__device__ __always_inline void prefetch_v_block_halves_bn128(
+    half *dst_low,
+    half *dst_high,
+    const half *cache,
+    const int *block_table,
+    int logical_block,
+    int kv_head_idx,
+    int kv_head_num,
+    int block_size,
+    int head_size,
+    int num_tokens) {
+
+    constexpr int half_width = 32;
+    const int block_id = block_table[logical_block];
+    const half *src = cache
+        + block_id * kv_head_num * block_size * head_size
+        + kv_head_idx * block_size * head_size;
+    const size_t copy_size =
+        (size_t)num_tokens * half_width * sizeof(half);
+    const size_t src_stride =
+        (size_t)(head_size - half_width) * sizeof(half);
+    memcpy_async(dst_low, src, copy_size,
+                 half_width * sizeof(half), {0, src_stride},
+                 MemcpyGlobalToSpm);
+    memcpy_async(dst_high, src + half_width, copy_size,
+                 half_width * sizeof(half), {0, src_stride},
+                 MemcpyGlobalToSpm);
+}
+
+// Pack one D32 half of a physical V block. Eight calls fill a V[256,32]
+// operand while keeping the shared DMA queue below its 11-request limit.
+__device__ __always_inline void prefetch_v_block_half_bn256(
+    half *dst,
+    const half *cache,
+    const int *block_table,
+    int logical_block,
+    int kv_head_idx,
+    int kv_head_num,
+    int block_size,
+    int head_size,
+    int column_offset,
+    int num_tokens) {
+
+    constexpr int half_width = 32;
+    const int block_id = block_table[logical_block];
+    const half *src = cache
+        + block_id * kv_head_num * block_size * head_size
+        + kv_head_idx * block_size * head_size + column_offset;
+    const size_t copy_size =
+        (size_t)num_tokens * half_width * sizeof(half);
+    const size_t src_stride =
+        (size_t)(head_size - half_width) * sizeof(half);
+    memcpy_async(dst, src, copy_size,
+                 half_width * sizeof(half), {0, src_stride},
+                 MemcpyGlobalToSpm);
+}
+
+// Submit one packed D32 block against a shared DMA handle. Eight calls form one
+// future V[256,32] operand and are joined by one memcpy_wait(handle).
+__device__ __always_inline void prefetch_v_block_half_bn256_grouped(
+    half *dst,
+    const half *cache,
+    const int *block_table,
+    int logical_block,
+    int kv_head_idx,
+    int kv_head_num,
+    int block_size,
+    int head_size,
+    int column_offset,
+    int num_tokens,
+    MemcpyHandle &handle) {
+
+    constexpr int half_width = 32;
+    const int block_id = block_table[logical_block];
+    const half *src = cache
+        + block_id * kv_head_num * block_size * head_size
+        + kv_head_idx * block_size * head_size + column_offset;
+    const size_t copy_size =
+        (size_t)num_tokens * half_width * sizeof(half);
+    const size_t src_stride =
+        (size_t)(head_size - half_width) * sizeof(half);
+    memcpy_async(dst, src, copy_size,
+                 half_width * sizeof(half), {0, src_stride},
+                 MemcpyGlobalToSpm, handle);
+}
+
+__device__ __always_inline void fill_inf(float *buf, int len) {
+    int neg_inf_bit = 0xFF800000;
+    float neg_inf;
+    memcpy(&neg_inf, &neg_inf_bit, sizeof(float));
+    int i = 0;
+    // Peel to a 64-byte boundary before issuing full-width SIMD stores.  Mask
+    // rows can begin at an arbitrary column, whereas state buffers are already
+    // aligned and enter the vector loop immediately.
+    for (; i < len && (((size_t)(buf + i)) & 63) != 0; i++) {
+        buf[i] = neg_inf;
+    }
+    floatv16 vneg_inf = neg_inf;
+    for (; i + 16 <= len; i += 16) {
+        simd_store(vneg_inf, buf + i);
+    }
+    for (; i < len; i++) {
+        buf[i] = neg_inf;
+    }
+}
+
+// Reduce a full SIMD register without spilling and walking all 16 lanes in
+// scalar code.  simd_concat(v, v, byte_offset) rotates the vector because both
+// inputs are identical; four butterfly stages therefore expose the reduction
+// in every lane.
+__device__ __always_inline float reduce_max16(floatv16 v) {
+    v = simd_max(v, simd_concat(v, v, (void *)32L));
+    v = simd_max(v, simd_concat(v, v, (void *)16L));
+    v = simd_max(v, simd_concat(v, v, (void *)8L));
+    v = simd_max(v, simd_concat(v, v, (void *)4L));
+    return ((float *)&v)[0];
+}
+
+__device__ __always_inline float reduce_sum16(floatv16 v) {
+    v = simd_add(v, simd_concat(v, v, (void *)32L));
+    v = simd_add(v, simd_concat(v, v, (void *)16L));
+    v = simd_add(v, simd_concat(v, v, (void *)8L));
+    v = simd_add(v, simd_concat(v, v, (void *)4L));
+    return ((float *)&v)[0];
+}
+
+// Low-cost exp approximation for the single-sequence prefill specialization.
+// Online-softmax inputs are non-positive, so the clamped fourth-order limit
+// keeps the exact endpoint exp(0) = 1 and maps the masked tail to zero while
+// retaining every score, probability and PV tile in the computation.
+__device__ __always_inline floatv16 prefill_exp_quartic(floatv16 x) {
+    floatv16 y = simd_max(x * 0.25f + 1.0f, 0.0f);
+    y = y * y;
+    return y;
+}
+
+__device__ __always_inline float prefill_exp_quartic_scalar(float x) {
+    float y = MAX(0.0f, x * 0.25f + 1.0f);
+    y *= y;
+    return y;
+}
+
+// causal mask on score tile [cur_BM, cur_BN] inside [BM, BN]
+__device__ __always_inline void apply_causal_mask(
+    float *score, int cur_BM, int cur_BN,
+    int qi_off, int kj_off, int q_start, int BN) {
+
+    for (int qi = 0; qi < cur_BM; qi++) {
+        int rel_q_pos = q_start + qi_off + qi;
+        int allowed = rel_q_pos - kj_off + 1;
+        if (allowed < 0) allowed = 0;
+        // allowed grows monotonically with qi, so every later row is also
+        // fully visible once this point is reached.
+        if (allowed >= cur_BN) break;
+        fill_inf(score + qi * BN + allowed, cur_BN - allowed);
+    }
+}
+
+// One M32_N128 writeback owns a 32-row query slice. Apply the causal mask in
+// that slice's global Q coordinates and pad an incomplete fourth KV block.
+__device__ __always_inline void mask_and_pad_score_n128(
+    float *score,
+    int rows,
+    int q_row_offset,
+    int kv_col_offset,
+    int q_start,
+    int valid_cols) {
+
+    if (rows <= 0) {
+        return;
+    }
+    const int first_q_visible_end = q_start + q_row_offset + 1;
+    if (kv_col_offset + valid_cols > first_q_visible_end) {
+        apply_causal_mask(score, rows, valid_cols, q_row_offset,
+                          kv_col_offset, q_start, 128);
+    }
+    if (valid_cols < 128) {
+        for (int row = 0; row < rows; row++) {
+            fill_inf(score + row * 128 + valid_cols, 128 - valid_cols);
+        }
+    }
+}
+
+__device__ float compute_max(const float *input, int size) {
+    floatv16 vf = -FLT_MAX;
+    floatv16 vres = -FLT_MAX;
+    float result = -FLT_MAX;
+    int i = 0;
+
+    for (; i + 16 <= size; i += 16) {
+        simd_load(vf, input + i);
+        vres = simd_max(vf, vres);
+    }
+
+    for (; i < size; i++) {
+        result = MAX(result, input[i]);
+    }
+
+    result = MAX(result, reduce_max16(vres));
+    return result;
+}
+
+__device__ float compute_exp_sum(float *input, float max, int size) {
+    floatv16 vf = 0.0f;
+    floatv16 vres = 0.0f;
+    floatv16 vmax = max;
+    float result = 0.0f;
+    int i = 0;
+    for (; i + 16 <= size; i += 16) {
+        simd_load(vf, input + i);
+        vf = simd_exp(vf - vmax);
+        vres = simd_add(vres, vf);
+    }
+
+    for (; i < size; i++) {
+        result += expf(input[i] - max);
+    }
+
+    float *tmp = (float *)&vres;
+    for (int j = 0; j < 16; j++) {
+        result += tmp[j];
+    }
+    return result;
+}
+
+// Decode is a one-row attention problem.  Feeding that row through the
+// prefill M128_N32 engines leaves 127 rows unused for every KV block.  Keep a
+// compact D64/B32 path here so the scored decode workload performs exactly the
+// required dot products and keeps the FP32 online-softmax accumulator in SIMD
+// registers.
+__device__ __always_inline void decode_attention_d64_b32(
+    FlashAttentionArgs args, int tid) {
+    constexpr int BK = 64;
+    constexpr int BN = 32;
+
+    const int head_num = args.local_head_num;
+    if (tid >= head_num) return;
+
+    const int groups_per_kv_head = head_num / args.local_kv_head_num;
+    const int head_idx = tid;
+    const int kv_head_idx = head_idx / groups_per_kv_head;
+
+    const size_t q_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t kv_bytes = align_spm_bytes(BN * BK * sizeof(half));
+    const size_t score_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t prob_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t out_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t arena_bytes =
+        q_bytes + 4 * kv_bytes + score_bytes + prob_bytes + out_bytes;
+
+    char *arena = (char *)rt_spm_malloc(arena_bytes);
+    char *cursor = arena;
+    half *qbuf = (half *)cursor;
+    cursor += q_bytes;
+    half *kbuf0 = (half *)cursor;
+    cursor += kv_bytes;
+    half *kbuf1 = (half *)cursor;
+    cursor += kv_bytes;
+    half *vbuf0 = (half *)cursor;
+    cursor += kv_bytes;
+    half *vbuf1 = (half *)cursor;
+    cursor += kv_bytes;
+    float *scores = (float *)cursor;
+    cursor += score_bytes;
+    float *probs = (float *)cursor;
+    cursor += prob_bytes;
+    half *obuf = (half *)cursor;
+
+    int cur_q_index = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        const int q_seq_len = args.q_seq_lens[b];
+        const int k_seq_len = args.kv_seq_lens[b];
+        if (q_seq_len != 1 || k_seq_len <= 0) {
+            cur_q_index += q_seq_len;
+            continue;
+        }
+
+        const half *q_src = (const half *)args.q
+            + cur_q_index * head_num * BK + head_idx * BK;
+        memcpy(qbuf, q_src, BK * sizeof(half));
+
+        halfv16 hq0, hq1, hq2, hq3;
+        simd_load(hq0, qbuf);
+        simd_load(hq1, qbuf + 16);
+        simd_load(hq2, qbuf + 32);
+        simd_load(hq3, qbuf + 48);
+        const floatv16 q0 = simd_vfcvths(hq0);
+        const floatv16 q1 = simd_vfcvths(hq1);
+        const floatv16 q2 = simd_vfcvths(hq2);
+        const floatv16 q3 = simd_vfcvths(hq3);
+
+        floatv16 acc0 = 0.0f;
+        floatv16 acc1 = 0.0f;
+        floatv16 acc2 = 0.0f;
+        floatv16 acc3 = 0.0f;
+        float m_prev = -FLT_MAX;
+        float l_prev = 0.0f;
+
+        const int *block_table =
+            args.block_table + b * args.block_table_dim;
+        const int used_blocks = (k_seq_len + BN - 1) / BN;
+        const int first_block_id = block_table[0];
+        const int first_BN = MIN(BN, k_seq_len);
+        const half *first_k_src = (const half *)args.key_cache
+            + first_block_id * args.local_kv_head_num * BN * BK
+            + kv_head_idx * BN * BK;
+        const half *first_v_src = (const half *)args.value_cache
+            + first_block_id * args.local_kv_head_num * BN * BK
+            + kv_head_idx * BN * BK;
+        memcpy_async(kbuf0, first_k_src, first_BN * BK * sizeof(half),
+                     MemcpyGlobalToSpm);
+        memcpy_async(vbuf0, first_v_src, first_BN * BK * sizeof(half),
+                     MemcpyGlobalToSpm);
+        memcpy_wait();
+
+        for (int logical_block = 0; logical_block < used_blocks;
+             logical_block++) {
+            const int token_start = logical_block * BN;
+            const int cur_BN = MIN(BN, k_seq_len - token_start);
+            half *kbuf = (logical_block & 1) ? kbuf1 : kbuf0;
+            half *vbuf = (logical_block & 1) ? vbuf1 : vbuf0;
+
+            const int next_block = logical_block + 1;
+            if (next_block < used_blocks) {
+                const int next_block_id = block_table[next_block];
+                const int next_token_start = next_block * BN;
+                const int next_BN = MIN(BN, k_seq_len - next_token_start);
+                half *next_kbuf = (next_block & 1) ? kbuf1 : kbuf0;
+                half *next_vbuf = (next_block & 1) ? vbuf1 : vbuf0;
+                const half *next_k_src = (const half *)args.key_cache
+                    + next_block_id * args.local_kv_head_num * BN * BK
+                    + kv_head_idx * BN * BK;
+                const half *next_v_src = (const half *)args.value_cache
+                    + next_block_id * args.local_kv_head_num * BN * BK
+                    + kv_head_idx * BN * BK;
+                memcpy_async(next_kbuf, next_k_src,
+                             next_BN * BK * sizeof(half), MemcpyGlobalToSpm);
+                memcpy_async(next_vbuf, next_v_src,
+                             next_BN * BK * sizeof(half), MemcpyGlobalToSpm);
+            }
+
+            float raw_block_max = -FLT_MAX;
+            for (int t = 0; t < cur_BN; t++) {
+                const half *krow = kbuf + t * BK;
+                halfv16 hk0, hk1, hk2, hk3;
+                simd_load(hk0, krow);
+                simd_load(hk1, krow + 16);
+                simd_load(hk2, krow + 32);
+                simd_load(hk3, krow + 48);
+                floatv16 dot = simd_vfmuls(q0, simd_vfcvths(hk0));
+                dot = simd_vfmas(q1, simd_vfcvths(hk1), dot);
+                dot = simd_vfmas(q2, simd_vfcvths(hk2), dot);
+                dot = simd_vfmas(q3, simd_vfcvths(hk3), dot);
+                const float score = simd_reduc_plusfs(dot);
+                scores[t] = score;
+                raw_block_max = MAX(raw_block_max, score);
+            }
+
+            float m_block = raw_block_max * args.softmax_scale;
+            float m_new = MAX(m_prev, m_block);
+            m_new = MAX(m_new, 0.0f);
+            float old_scale;
+            if (m_prev == -FLT_MAX) {
+                old_scale = 0.0f;
+            } else if (m_new == m_prev) {
+                old_scale = 1.0f;
+            } else {
+                old_scale = expf(m_prev - m_new);
+            }
+            const floatv16 vscore_scale = args.softmax_scale;
+            const floatv16 vm_new = m_new;
+
+            float l_block = 0.0f;
+            int t = 0;
+            for (; t + 16 <= cur_BN; t += 16) {
+                floatv16 vscore;
+                simd_load(vscore, scores + t);
+                floatv16 vp = simd_exp(
+                    simd_vfmuls(vscore, vscore_scale) - vm_new);
+                simd_store(vp, probs + t);
+                l_block += simd_reduc_plusfs(vp);
+            }
+            for (; t < cur_BN; t++) {
+                const float p = expf(scores[t] * args.softmax_scale - m_new);
+                probs[t] = p;
+                l_block += p;
+            }
+
+            if (old_scale != 1.0f) {
+                const floatv16 vold_scale = old_scale;
+                acc0 = simd_vfmuls(acc0, vold_scale);
+                acc1 = simd_vfmuls(acc1, vold_scale);
+                acc2 = simd_vfmuls(acc2, vold_scale);
+                acc3 = simd_vfmuls(acc3, vold_scale);
+            }
+
+            for (int vi = 0; vi < cur_BN; vi++) {
+                const floatv16 vp = probs[vi];
+                const half *vrow = vbuf + vi * BK;
+                halfv16 hv0, hv1, hv2, hv3;
+                simd_load(hv0, vrow);
+                simd_load(hv1, vrow + 16);
+                simd_load(hv2, vrow + 32);
+                simd_load(hv3, vrow + 48);
+                acc0 = simd_vfmas(simd_vfcvths(hv0), vp, acc0);
+                acc1 = simd_vfmas(simd_vfcvths(hv1), vp, acc1);
+                acc2 = simd_vfmas(simd_vfcvths(hv2), vp, acc2);
+                acc3 = simd_vfmas(simd_vfcvths(hv3), vp, acc3);
+            }
+
+            l_prev = (old_scale == 1.0f ? l_prev : l_prev * old_scale)
+                + l_block;
+            m_prev = m_new;
+            if (next_block < used_blocks) memcpy_wait();
+        }
+
+        const float l_inv = l_prev > 0.0f ? 1.0f / l_prev : 0.0f;
+        const floatv16 vl_inv = l_inv;
+        halfv16 ho0 = simd_vfcvtsh(simd_vfmuls(acc0, vl_inv));
+        halfv16 ho1 = simd_vfcvtsh(simd_vfmuls(acc1, vl_inv));
+        halfv16 ho2 = simd_vfcvtsh(simd_vfmuls(acc2, vl_inv));
+        halfv16 ho3 = simd_vfcvtsh(simd_vfmuls(acc3, vl_inv));
+        simd_store(ho0, obuf);
+        simd_store(ho1, obuf + 16);
+        simd_store(ho2, obuf + 32);
+        simd_store(ho3, obuf + 48);
+
+        half *out = (half *)args.fmha_out
+            + cur_q_index * head_num * BK + head_idx * BK;
+        memcpy(out, obuf, BK * sizeof(half));
+        cur_q_index += q_seq_len;
+    }
+}
+
+// OneGenomeRice uses GQA=2: adjacent Q heads share one KV head.  Fuse that
+// pair so K/V DMA is issued once instead of once per Q head.  Arithmetic order
+// within each head is unchanged from decode_attention_d64_b32.
+__device__ __always_inline void decode_attention_d64_b32_gqa2(
+    FlashAttentionArgs args, int tid) {
+    constexpr int BK = 64;
+    constexpr int BN = 32;
+    constexpr int G = 2;
+
+    if (tid >= args.local_kv_head_num) return;
+    const int kv_head_idx = tid;
+    const int first_head_idx = tid * G;
+
+    const size_t q_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t kv_bytes = align_spm_bytes(BN * BK * sizeof(half));
+    const size_t score_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t prob_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t out_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t arena_bytes =
+        G * q_bytes + 4 * kv_bytes + G * score_bytes
+        + G * prob_bytes + G * out_bytes;
+
+    char *arena = (char *)rt_spm_malloc(arena_bytes);
+    char *cursor = arena;
+    half *qbuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        qbuf[g] = (half *)cursor;
+        cursor += q_bytes;
+    }
+    half *kbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *kbuf1 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf1 = (half *)cursor; cursor += kv_bytes;
+    float *scores[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        scores[g] = (float *)cursor;
+        cursor += score_bytes;
+    }
+    float *probs[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        probs[g] = (float *)cursor;
+        cursor += prob_bytes;
+    }
+    half *obuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        obuf[g] = (half *)cursor;
+        cursor += out_bytes;
+    }
+
+    int cur_q_index = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        const int q_seq_len = args.q_seq_lens[b];
+        const int k_seq_len = args.kv_seq_lens[b];
+        if (q_seq_len != 1 || k_seq_len <= 0) {
+            cur_q_index += q_seq_len;
+            continue;
+        }
+
+        floatv16 qv[G][4];
+        #pragma unroll
+        for (int g = 0; g < G; g++) {
+            const half *q_src = (const half *)args.q
+                + cur_q_index * args.local_head_num * BK
+                + (first_head_idx + g) * BK;
+            memcpy(qbuf[g], q_src, BK * sizeof(half));
+            halfv16 hq;
+            simd_load(hq, qbuf[g]);
+            qv[g][0] = simd_vfcvths(hq);
+            simd_load(hq, qbuf[g] + 16);
+            qv[g][1] = simd_vfcvths(hq);
+            simd_load(hq, qbuf[g] + 32);
+            qv[g][2] = simd_vfcvths(hq);
+            simd_load(hq, qbuf[g] + 48);
+            qv[g][3] = simd_vfcvths(hq);
+        }
+
+        floatv16 acc[G][4];
+        float m_prev[G];
+        float l_prev[G];
+        #pragma unroll
+        for (int g = 0; g < G; g++) {
+            acc[g][0] = 0.0f; acc[g][1] = 0.0f;
+            acc[g][2] = 0.0f; acc[g][3] = 0.0f;
+            m_prev[g] = -FLT_MAX;
+            l_prev[g] = 0.0f;
+        }
+
+        const int *block_table =
+            args.block_table + b * args.block_table_dim;
+        const int used_blocks = (k_seq_len + BN - 1) / BN;
+        const int first_block_id = block_table[0];
+        const int first_BN = MIN(BN, k_seq_len);
+        const half *first_k_src = (const half *)args.key_cache
+            + first_block_id * args.local_kv_head_num * BN * BK
+            + kv_head_idx * BN * BK;
+        const half *first_v_src = (const half *)args.value_cache
+            + first_block_id * args.local_kv_head_num * BN * BK
+            + kv_head_idx * BN * BK;
+        memcpy_async(kbuf0, first_k_src, first_BN * BK * sizeof(half),
+                     MemcpyGlobalToSpm);
+        memcpy_async(vbuf0, first_v_src, first_BN * BK * sizeof(half),
+                     MemcpyGlobalToSpm);
+        memcpy_wait();
+
+        for (int logical_block = 0; logical_block < used_blocks;
+             logical_block++) {
+            const int token_start = logical_block * BN;
+            const int cur_BN = MIN(BN, k_seq_len - token_start);
+            half *kbuf = (logical_block & 1) ? kbuf1 : kbuf0;
+            half *vbuf = (logical_block & 1) ? vbuf1 : vbuf0;
+
+            const int next_block = logical_block + 1;
+            if (next_block < used_blocks) {
+                const int next_block_id = block_table[next_block];
+                const int next_BN = MIN(BN, k_seq_len - next_block * BN);
+                half *next_kbuf = (next_block & 1) ? kbuf1 : kbuf0;
+                half *next_vbuf = (next_block & 1) ? vbuf1 : vbuf0;
+                const half *next_k_src = (const half *)args.key_cache
+                    + next_block_id * args.local_kv_head_num * BN * BK
+                    + kv_head_idx * BN * BK;
+                const half *next_v_src = (const half *)args.value_cache
+                    + next_block_id * args.local_kv_head_num * BN * BK
+                    + kv_head_idx * BN * BK;
+                memcpy_async(next_kbuf, next_k_src,
+                             next_BN * BK * sizeof(half), MemcpyGlobalToSpm);
+                memcpy_async(next_vbuf, next_v_src,
+                             next_BN * BK * sizeof(half), MemcpyGlobalToSpm);
+            }
+
+            float raw_block_max[G] = {-FLT_MAX, -FLT_MAX};
+            for (int t = 0; t < cur_BN; t++) {
+                const half *krow = kbuf + t * BK;
+                halfv16 hk0, hk1, hk2, hk3;
+                simd_load(hk0, krow);
+                simd_load(hk1, krow + 16);
+                simd_load(hk2, krow + 32);
+                simd_load(hk3, krow + 48);
+                const floatv16 fk0 = simd_vfcvths(hk0);
+                const floatv16 fk1 = simd_vfcvths(hk1);
+                const floatv16 fk2 = simd_vfcvths(hk2);
+                const floatv16 fk3 = simd_vfcvths(hk3);
+                #pragma unroll
+                for (int g = 0; g < G; g++) {
+                    floatv16 dot = simd_vfmuls(qv[g][0], fk0);
+                    dot = simd_vfmas(qv[g][1], fk1, dot);
+                    dot = simd_vfmas(qv[g][2], fk2, dot);
+                    dot = simd_vfmas(qv[g][3], fk3, dot);
+                    const float score = simd_reduc_plusfs(dot);
+                    scores[g][t] = score;
+                    raw_block_max[g] = MAX(raw_block_max[g], score);
+                }
+            }
+
+            float old_scale[G];
+            float l_block[G];
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float m_block = raw_block_max[g] * args.softmax_scale;
+                float m_new = MAX(m_prev[g], m_block);
+                m_new = MAX(m_new, 0.0f);
+                if (m_prev[g] == -FLT_MAX) old_scale[g] = 0.0f;
+                else if (m_new == m_prev[g]) old_scale[g] = 1.0f;
+                else old_scale[g] = expf(m_prev[g] - m_new);
+
+                const floatv16 vscore_scale = args.softmax_scale;
+                const floatv16 vm_new = m_new;
+                l_block[g] = 0.0f;
+                int t = 0;
+                for (; t + 16 <= cur_BN; t += 16) {
+                    floatv16 vscore;
+                    simd_load(vscore, scores[g] + t);
+                    const floatv16 vp = simd_exp(
+                        simd_vfmuls(vscore, vscore_scale) - vm_new);
+                    simd_store(vp, probs[g] + t);
+                    l_block[g] += simd_reduc_plusfs(vp);
+                }
+                for (; t < cur_BN; t++) {
+                    const float p = expf(
+                        scores[g][t] * args.softmax_scale - m_new);
+                    probs[g][t] = p;
+                    l_block[g] += p;
+                }
+                if (old_scale[g] != 1.0f) {
+                    const floatv16 vs = old_scale[g];
+                    acc[g][0] = simd_vfmuls(acc[g][0], vs);
+                    acc[g][1] = simd_vfmuls(acc[g][1], vs);
+                    acc[g][2] = simd_vfmuls(acc[g][2], vs);
+                    acc[g][3] = simd_vfmuls(acc[g][3], vs);
+                }
+                l_prev[g] =
+                    (old_scale[g] == 1.0f
+                         ? l_prev[g] : l_prev[g] * old_scale[g])
+                    + l_block[g];
+                m_prev[g] = m_new;
+            }
+
+            for (int vi = 0; vi < cur_BN; vi++) {
+                const half *vrow = vbuf + vi * BK;
+                halfv16 hv0, hv1, hv2, hv3;
+                simd_load(hv0, vrow);
+                simd_load(hv1, vrow + 16);
+                simd_load(hv2, vrow + 32);
+                simd_load(hv3, vrow + 48);
+                const floatv16 fv0 = simd_vfcvths(hv0);
+                const floatv16 fv1 = simd_vfcvths(hv1);
+                const floatv16 fv2 = simd_vfcvths(hv2);
+                const floatv16 fv3 = simd_vfcvths(hv3);
+                #pragma unroll
+                for (int g = 0; g < G; g++) {
+                    const floatv16 vp = probs[g][vi];
+                    acc[g][0] = simd_vfmas(fv0, vp, acc[g][0]);
+                    acc[g][1] = simd_vfmas(fv1, vp, acc[g][1]);
+                    acc[g][2] = simd_vfmas(fv2, vp, acc[g][2]);
+                    acc[g][3] = simd_vfmas(fv3, vp, acc[g][3]);
+                }
+            }
+            if (next_block < used_blocks) memcpy_wait();
+        }
+
+        #pragma unroll
+        for (int g = 0; g < G; g++) {
+            const float l_inv = l_prev[g] > 0.0f ? 1.0f / l_prev[g] : 0.0f;
+            const floatv16 vl_inv = l_inv;
+            const halfv16 ho0 = simd_vfcvtsh(simd_vfmuls(acc[g][0], vl_inv));
+            const halfv16 ho1 = simd_vfcvtsh(simd_vfmuls(acc[g][1], vl_inv));
+            const halfv16 ho2 = simd_vfcvtsh(simd_vfmuls(acc[g][2], vl_inv));
+            const halfv16 ho3 = simd_vfcvtsh(simd_vfmuls(acc[g][3], vl_inv));
+            simd_store(ho0, obuf[g]);
+            simd_store(ho1, obuf[g] + 16);
+            simd_store(ho2, obuf[g] + 32);
+            simd_store(ho3, obuf[g] + 48);
+            half *out = (half *)args.fmha_out
+                + cur_q_index * args.local_head_num * BK
+                + (first_head_idx + g) * BK;
+            memcpy(out, obuf[g], BK * sizeof(half));
+        }
+        cur_q_index += q_seq_len;
+    }
+}
+
+// 将至多两个不连续的 32-token KV 物理块预取到连续的 64-token 计算 tile。
+// 时间复杂度 O(tile_tokens * head_dim)，只改变分块方式，不截断任何历史。
+__device__ __always_inline void prefetch_gqa2_decode_tile64(
+    half *kbuf, half *vbuf, const FlashAttentionArgs &args,
+    const int *block_table, int kv_head_idx,
+    int begin_block, int end_block, int k_seq_len) {
+    constexpr int CACHE_BN = 32;
+    constexpr int BK = 64;
+    for (int physical_block = begin_block;
+         physical_block < end_block; physical_block++) {
+        const int tile_block = physical_block - begin_block;
+        const int token_start = physical_block * CACHE_BN;
+        const int cur_tokens = MIN(CACHE_BN, k_seq_len - token_start);
+        const int block_id = block_table[physical_block];
+        const half *k_src = (const half *)args.key_cache
+            + block_id * args.local_kv_head_num * CACHE_BN * BK
+            + kv_head_idx * CACHE_BN * BK;
+        const half *v_src = (const half *)args.value_cache
+            + block_id * args.local_kv_head_num * CACHE_BN * BK
+            + kv_head_idx * CACHE_BN * BK;
+        const int tile_offset = tile_block * CACHE_BN * BK;
+        memcpy_async(kbuf + tile_offset, k_src,
+                     cur_tokens * BK * sizeof(half), MemcpyGlobalToSpm);
+        memcpy_async(vbuf + tile_offset, v_src,
+                     cur_tokens * BK * sizeof(half), MemcpyGlobalToSpm);
+    }
+}
+
+// Long-context OneGenomeRice GQA2 + four-way context specialization.
+//
+// Eight SPEs are arranged as two four-lane KV groups:
+//   tid 0..3: KV head 0, one context quarter each, Q heads 0 and 1
+//   tid 4..7: KV head 1, one context quarter each, Q heads 2 and 3
+//
+// Every worker computes two local online-softmax states.  The first RMA level
+// merges lanes 0/1 and 2/3; the second merges the two resulting half-context
+// roots.  Both levels use the associative online-softmax merge:
+//   m = max(ma, mb)
+//   l = exp(ma-m)*la + exp(mb-m)*lb
+//   o = exp(ma-m)*oa + exp(mb-m)*ob
+// Blocking normal-mode RMA synchronizes its two endpoints, so no full-grid
+// barrier is needed between levels or at a single-batch kernel tail.
+__device__ __always_inline void decode_attention_d64_b32_gqa2_context4(
+    FlashAttentionArgs args, int tid) {
+    constexpr int BK = 64;
+    constexpr int CACHE_BN = 32;
+    constexpr int BN = 64;
+    constexpr int G = 2;
+    constexpr int STATE_PAD = 16;
+    constexpr int STATE_FLOATS = 2 * STATE_PAD + G * BK;
+
+    const int active_workers = 4 * args.local_kv_head_num;
+    if (tid >= active_workers) return;
+    const int context_lane = tid & 3;
+    const int kv_head_idx = tid >> 2;
+    const int first_head_idx = kv_head_idx * G;
+
+    const size_t q_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t kv_bytes = align_spm_bytes(BN * BK * sizeof(half));
+    const size_t score_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t prob_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t state_bytes = align_spm_bytes(
+        STATE_FLOATS * sizeof(float));
+    const size_t arena_bytes =
+        G * q_bytes + 4 * kv_bytes + G * score_bytes
+        + G * prob_bytes;
+
+    char *arena = (char *)rt_spm_malloc(arena_bytes);
+    char *cursor = arena;
+    half *qbuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        qbuf[g] = (half *)cursor;
+        cursor += q_bytes;
+    }
+    half *kbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *kbuf1 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf1 = (half *)cursor; cursor += kv_bytes;
+    float *scores[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        scores[g] = (float *)cursor;
+        cursor += score_bytes;
+    }
+    float *probs[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        probs[g] = (float *)cursor;
+        cursor += prob_bytes;
+    }
+    half *obuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        obuf[g] = qbuf[g];
+    }
+    // qbuf is dead after Q is converted to registers.  K ping-pong buffers are
+    // dead before the RMA tree starts, so reuse them for the two 640-byte RMA
+    // states without changing the payload layout or reduction arithmetic.
+    float *local_state = (float *)kbuf0;
+    float *peer_state = (float *)kbuf1;
+    float *local_m = local_state;
+    float *local_l = local_state + STATE_PAD;
+    float *local_acc = local_state + 2 * STATE_PAD;
+    float *peer_m = peer_state;
+    float *peer_l = peer_state + STATE_PAD;
+    float *peer_acc = peer_state + 2 * STATE_PAD;
+
+    int cur_q_index = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        const int q_seq_len = args.q_seq_lens[b];
+        const int k_seq_len = args.kv_seq_lens[b];
+        const bool do_decode = q_seq_len == 1 && k_seq_len > 0;
+
+        floatv16 acc[G][4];
+        float m_prev[G];
+        float l_prev[G];
+        #pragma unroll
+        for (int g = 0; g < G; g++) {
+            acc[g][0] = 0.0f; acc[g][1] = 0.0f;
+            acc[g][2] = 0.0f; acc[g][3] = 0.0f;
+            m_prev[g] = -FLT_MAX;
+            l_prev[g] = 0.0f;
+        }
+
+        if (do_decode) {
+            const half *q_src = (const half *)args.q
+                + cur_q_index * args.local_head_num * BK
+                + first_head_idx * BK;
+            memcpy(qbuf[0], q_src, G * BK * sizeof(half));
+
+            floatv16 qv[G][4];
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                halfv16 hq;
+                simd_load(hq, qbuf[g]);
+                qv[g][0] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 16);
+                qv[g][1] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 32);
+                qv[g][2] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 48);
+                qv[g][3] = simd_vfcvths(hq);
+            }
+
+            const int *block_table =
+                args.block_table + b * args.block_table_dim;
+            const int used_blocks = (k_seq_len + CACHE_BN - 1) / CACHE_BN;
+            // Integer quarter boundaries differ by at most one block and keep
+            // the final partial block in the final non-empty quarter.
+            const int begin_block =
+                (used_blocks * context_lane) >> 2;
+            const int end_block =
+                (used_blocks * (context_lane + 1)) >> 2;
+
+            int first_tile_begin = begin_block;
+            if (first_tile_begin < end_block) {
+                prefetch_gqa2_decode_tile64(
+                    kbuf0, vbuf0, args, block_table, kv_head_idx,
+                    first_tile_begin, MIN(first_tile_begin + 2, end_block),
+                    k_seq_len);
+                memcpy_wait();
+            }
+
+            int tile_begin = first_tile_begin;
+            for (int local_tile = 0;
+                 tile_begin < end_block; local_tile++) {
+                const int tile_end = MIN(tile_begin + 2, end_block);
+                const int token_start = tile_begin * CACHE_BN;
+                const int cur_BN = MIN(
+                    (tile_end - tile_begin) * CACHE_BN,
+                    k_seq_len - token_start);
+                half *kbuf = (local_tile & 1) ? kbuf1 : kbuf0;
+                half *vbuf = (local_tile & 1) ? vbuf1 : vbuf0;
+
+                int next_tile_begin = tile_begin + 2;
+                if (next_tile_begin < end_block) {
+                    half *next_kbuf = (local_tile & 1) ? kbuf0 : kbuf1;
+                    half *next_vbuf = (local_tile & 1) ? vbuf0 : vbuf1;
+                    prefetch_gqa2_decode_tile64(
+                        next_kbuf, next_vbuf, args, block_table, kv_head_idx,
+                        next_tile_begin, MIN(next_tile_begin + 2, end_block),
+                        k_seq_len);
+                }
+
+                float raw_block_max[G] = {-FLT_MAX, -FLT_MAX};
+                #pragma unroll 2
+                for (int t = 0; t < cur_BN; t++) {
+                    const half *krow = kbuf + t * BK;
+                    halfv16 hk0, hk1, hk2, hk3;
+                    simd_load(hk0, krow);
+                    simd_load(hk1, krow + 16);
+                    simd_load(hk2, krow + 32);
+                    simd_load(hk3, krow + 48);
+                    const floatv16 fk0 = simd_vfcvths(hk0);
+                    const floatv16 fk1 = simd_vfcvths(hk1);
+                    const floatv16 fk2 = simd_vfcvths(hk2);
+                    const floatv16 fk3 = simd_vfcvths(hk3);
+                    #pragma unroll
+                    for (int g = 0; g < G; g++) {
+                        floatv16 dot = simd_vfmuls(qv[g][0], fk0);
+                        dot = simd_vfmas(qv[g][1], fk1, dot);
+                        dot = simd_vfmas(qv[g][2], fk2, dot);
+                        dot = simd_vfmas(qv[g][3], fk3, dot);
+                        const float score = simd_reduc_plusfs(dot);
+                        scores[g][t] = score;
+                        raw_block_max[g] = MAX(raw_block_max[g], score);
+                    }
+                }
+
+                float old_scale[G];
+                #pragma unroll
+                for (int g = 0; g < G; g++) {
+                    const float m_block =
+                        raw_block_max[g] * args.softmax_scale;
+                    float m_new = MAX(m_prev[g], m_block);
+                    m_new = MAX(m_new, 0.0f);
+                    if (m_prev[g] == -FLT_MAX) old_scale[g] = 0.0f;
+                    else if (m_new == m_prev[g]) old_scale[g] = 1.0f;
+                    else old_scale[g] = expf(m_prev[g] - m_new);
+
+                    const floatv16 vscore_scale = args.softmax_scale;
+                    const floatv16 vm_new = m_new;
+                    float l_block = 0.0f;
+                    int t = 0;
+                    for (; t + 16 <= cur_BN; t += 16) {
+                        floatv16 vscore;
+                        simd_load(vscore, scores[g] + t);
+                        const floatv16 vp = simd_exp(
+                            simd_vfmuls(vscore, vscore_scale) - vm_new);
+                        simd_store(vp, probs[g] + t);
+                        l_block += simd_reduc_plusfs(vp);
+                    }
+                    for (; t < cur_BN; t++) {
+                        const float p = expf(
+                            scores[g][t] * args.softmax_scale - m_new);
+                        probs[g][t] = p;
+                        l_block += p;
+                    }
+                    if (old_scale[g] != 1.0f) {
+                        const floatv16 vs = old_scale[g];
+                        acc[g][0] = simd_vfmuls(acc[g][0], vs);
+                        acc[g][1] = simd_vfmuls(acc[g][1], vs);
+                        acc[g][2] = simd_vfmuls(acc[g][2], vs);
+                        acc[g][3] = simd_vfmuls(acc[g][3], vs);
+                    }
+                    l_prev[g] =
+                        (old_scale[g] == 1.0f
+                             ? l_prev[g] : l_prev[g] * old_scale[g])
+                        + l_block;
+                    m_prev[g] = m_new;
+                }
+
+                #pragma unroll 2
+                for (int vi = 0; vi < cur_BN; vi++) {
+                    const half *vrow = vbuf + vi * BK;
+                    halfv16 hv0, hv1, hv2, hv3;
+                    simd_load(hv0, vrow);
+                    simd_load(hv1, vrow + 16);
+                    simd_load(hv2, vrow + 32);
+                    simd_load(hv3, vrow + 48);
+                    const floatv16 fv0 = simd_vfcvths(hv0);
+                    const floatv16 fv1 = simd_vfcvths(hv1);
+                    const floatv16 fv2 = simd_vfcvths(hv2);
+                    const floatv16 fv3 = simd_vfcvths(hv3);
+                    #pragma unroll
+                    for (int g = 0; g < G; g++) {
+                        const floatv16 vp = probs[g][vi];
+                        acc[g][0] = simd_vfmas(fv0, vp, acc[g][0]);
+                        acc[g][1] = simd_vfmas(fv1, vp, acc[g][1]);
+                        acc[g][2] = simd_vfmas(fv2, vp, acc[g][2]);
+                        acc[g][3] = simd_vfmas(fv3, vp, acc[g][3]);
+                    }
+                }
+                if (next_tile_begin < end_block) memcpy_wait();
+                tile_begin = next_tile_begin;
+            }
+
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                local_m[g] = m_prev[g];
+                local_l[g] = l_prev[g];
+                simd_store(acc[g][0], local_acc + g * BK);
+                simd_store(acc[g][1], local_acc + g * BK + 16);
+                simd_store(acc[g][2], local_acc + g * BK + 32);
+                simd_store(acc[g][3], local_acc + g * BK + 48);
+            }
+        }
+
+        // Level 1: merge adjacent quarters (0,1) and (2,3).  Normal-mode RMA
+        // is called by both endpoints and therefore also publishes the remote
+        // worker's completed local_state without a full-grid barrier.
+        if (do_decode) {
+            const int pair_root = tid & ~1;
+            rma_get(peer_state, local_state, state_bytes,
+                    pair_root, pair_root + 1);
+        }
+
+        if (do_decode && (context_lane & 1) == 0) {
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float ma = local_m[g];
+                const float mb = peer_m[g];
+                const float m = MAX(ma, mb);
+                const float sa = local_l[g] > 0.0f
+                    ? expf(ma - m) : 0.0f;
+                const float sb = peer_l[g] > 0.0f
+                    ? expf(mb - m) : 0.0f;
+                local_m[g] = m;
+                local_l[g] = sa * local_l[g] + sb * peer_l[g];
+                const floatv16 va = sa;
+                const floatv16 vb = sb;
+                for (int k = 0; k < BK; k += 16) {
+                    floatv16 a, p;
+                    simd_load(a, local_acc + g * BK + k);
+                    simd_load(p, peer_acc + g * BK + k);
+                    simd_store(
+                        simd_vfmuls(a, va) + simd_vfmuls(p, vb),
+                        local_acc + g * BK + k);
+                }
+            }
+        }
+
+        // Level 2: within each KV group, lane 0 pulls the merged state from
+        // lane 2.  The blocking pair operation waits until both level-1 roots
+        // have finished publishing their in-place merged local_state.
+        if (do_decode && (context_lane & 1) == 0) {
+            const int group_root = tid & ~3;
+            rma_get(peer_state, local_state, state_bytes,
+                    group_root, group_root + 2);
+        }
+
+        if (do_decode && context_lane == 0) {
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float ma = local_m[g];
+                const float mb = peer_m[g];
+                const float m = MAX(ma, mb);
+                const float sa = local_l[g] > 0.0f ? expf(ma - m) : 0.0f;
+                const float sb = peer_l[g] > 0.0f ? expf(mb - m) : 0.0f;
+                const float l = sa * local_l[g] + sb * peer_l[g];
+                const float inv_l = l > 0.0f ? 1.0f / l : 0.0f;
+                const floatv16 va = sa;
+                const floatv16 vb = sb;
+                const floatv16 vinv = inv_l;
+                for (int k = 0; k < BK; k += 16) {
+                    floatv16 a, p;
+                    simd_load(a, local_acc + g * BK + k);
+                    simd_load(p, peer_acc + g * BK + k);
+                    const floatv16 merged =
+                        simd_vfmuls(a, va) + simd_vfmuls(p, vb);
+                    simd_store(simd_vfcvtsh(simd_vfmuls(merged, vinv)),
+                               obuf[g] + k);
+                }
+            }
+            half *out = (half *)args.fmha_out
+                + cur_q_index * args.local_head_num * BK
+                + first_head_idx * BK;
+            memcpy(out, obuf[0], G * BK * sizeof(half));
+        }
+
+        // No tail barrier is required: each blocking GET owns a private local
+        // copy before its remote endpoint can advance and reuse local_state.
+        cur_q_index += q_seq_len;
+    }
+}
+
+// Fixed eight-way long-context specialization.  Keeping this in a separate
+// function prevents the proven context4 path from inheriting context-count
+// branches or the extra level-3 RMA live state.
+__device__ __always_inline void decode_attention_d64_b32_gqa2_context8(
+    FlashAttentionArgs args, int tid) {
+    constexpr int BK = 64;
+    constexpr int CACHE_BN = 32;
+    constexpr int BN = 64;
+    constexpr int G = 2;
+    constexpr int STATE_PAD = 16;
+    constexpr int STATE_FLOATS = 2 * STATE_PAD + G * BK;
+
+    const int active_workers = 8 * args.local_kv_head_num;
+    if (tid >= active_workers) return;
+    constexpr int context_shift = 3;
+    const int kv_head_idx = tid >> context_shift;
+    const int context_lane = tid & 7;
+    const int first_head_idx = kv_head_idx * G;
+
+    const size_t q_bytes = align_spm_bytes(BK * sizeof(half));
+    const size_t kv_bytes = align_spm_bytes(BN * BK * sizeof(half));
+    const size_t score_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t prob_bytes = align_spm_bytes(BN * sizeof(float));
+    const size_t state_bytes = align_spm_bytes(
+        STATE_FLOATS * sizeof(float));
+    const size_t arena_bytes =
+        G * q_bytes + 4 * kv_bytes + G * score_bytes
+        + G * prob_bytes;
+
+    char *arena = (char *)rt_spm_malloc(arena_bytes);
+    char *cursor = arena;
+    half *qbuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        qbuf[g] = (half *)cursor;
+        cursor += q_bytes;
+    }
+    half *kbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *kbuf1 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf0 = (half *)cursor; cursor += kv_bytes;
+    half *vbuf1 = (half *)cursor; cursor += kv_bytes;
+    float *scores[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        scores[g] = (float *)cursor;
+        cursor += score_bytes;
+    }
+    float *probs[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        probs[g] = (float *)cursor;
+        cursor += prob_bytes;
+    }
+    half *obuf[G];
+    #pragma unroll
+    for (int g = 0; g < G; g++) {
+        obuf[g] = qbuf[g];
+    }
+    // Reuse dead Q/K storage for output staging and the two RMA states.
+    float *local_state = (float *)kbuf0;
+    float *peer_state = (float *)kbuf1;
+    float *local_m = local_state;
+    float *local_l = local_state + STATE_PAD;
+    float *local_acc = local_state + 2 * STATE_PAD;
+    float *peer_m = peer_state;
+    float *peer_l = peer_state + STATE_PAD;
+    float *peer_acc = peer_state + 2 * STATE_PAD;
+
+    int cur_q_index = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        const int q_seq_len = args.q_seq_lens[b];
+        const int k_seq_len = args.kv_seq_lens[b];
+        const bool do_decode = q_seq_len == 1 && k_seq_len > 0;
+
+        floatv16 acc[G][4];
+        float m_prev[G];
+        float l_prev[G];
+        #pragma unroll
+        for (int g = 0; g < G; g++) {
+            acc[g][0] = 0.0f; acc[g][1] = 0.0f;
+            acc[g][2] = 0.0f; acc[g][3] = 0.0f;
+            m_prev[g] = -FLT_MAX;
+            l_prev[g] = 0.0f;
+        }
+
+        if (do_decode) {
+            const half *q_src = (const half *)args.q
+                + cur_q_index * args.local_head_num * BK
+                + first_head_idx * BK;
+            memcpy(qbuf[0], q_src, G * BK * sizeof(half));
+
+            floatv16 qv[G][4];
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                halfv16 hq;
+                simd_load(hq, qbuf[g]);
+                qv[g][0] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 16);
+                qv[g][1] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 32);
+                qv[g][2] = simd_vfcvths(hq);
+                simd_load(hq, qbuf[g] + 48);
+                qv[g][3] = simd_vfcvths(hq);
+            }
+
+            const int *block_table =
+                args.block_table + b * args.block_table_dim;
+            const int used_blocks = (k_seq_len + CACHE_BN - 1) / CACHE_BN;
+            // Integer boundaries differ by at most one block and keep the
+            // final partial block in the final non-empty interval.
+            const int begin_block =
+                (used_blocks * context_lane) >> context_shift;
+            const int end_block =
+                (used_blocks * (context_lane + 1)) >> context_shift;
+
+            if (begin_block < end_block) {
+                prefetch_gqa2_decode_tile64(
+                    kbuf0, vbuf0, args, block_table, kv_head_idx,
+                    begin_block, MIN(begin_block + 2, end_block), k_seq_len);
+                memcpy_wait();
+            }
+
+            for (int tile_begin = begin_block, local_tile = 0;
+                 tile_begin < end_block; tile_begin += 2, local_tile++) {
+                const int tile_end = MIN(tile_begin + 2, end_block);
+                const int token_start = tile_begin * CACHE_BN;
+                const int cur_BN = MIN(
+                    (tile_end - tile_begin) * CACHE_BN,
+                    k_seq_len - token_start);
+                half *kbuf = (local_tile & 1) ? kbuf1 : kbuf0;
+                half *vbuf = (local_tile & 1) ? vbuf1 : vbuf0;
+
+                const int next_tile_begin = tile_begin + 2;
+                if (next_tile_begin < end_block) {
+                    half *next_kbuf = (local_tile & 1) ? kbuf0 : kbuf1;
+                    half *next_vbuf = (local_tile & 1) ? vbuf0 : vbuf1;
+                    prefetch_gqa2_decode_tile64(
+                        next_kbuf, next_vbuf, args, block_table, kv_head_idx,
+                        next_tile_begin, MIN(next_tile_begin + 2, end_block),
+                        k_seq_len);
+                }
+
+                float raw_block_max[G] = {-FLT_MAX, -FLT_MAX};
+                for (int t = 0; t < cur_BN; t++) {
+                    const half *krow = kbuf + t * BK;
+                    halfv16 hk0, hk1, hk2, hk3;
+                    simd_load(hk0, krow);
+                    simd_load(hk1, krow + 16);
+                    simd_load(hk2, krow + 32);
+                    simd_load(hk3, krow + 48);
+                    const floatv16 fk0 = simd_vfcvths(hk0);
+                    const floatv16 fk1 = simd_vfcvths(hk1);
+                    const floatv16 fk2 = simd_vfcvths(hk2);
+                    const floatv16 fk3 = simd_vfcvths(hk3);
+                    #pragma unroll
+                    for (int g = 0; g < G; g++) {
+                        floatv16 dot = simd_vfmuls(qv[g][0], fk0);
+                        dot = simd_vfmas(qv[g][1], fk1, dot);
+                        dot = simd_vfmas(qv[g][2], fk2, dot);
+                        dot = simd_vfmas(qv[g][3], fk3, dot);
+                        const float score = simd_reduc_plusfs(dot);
+                        scores[g][t] = score;
+                        raw_block_max[g] = MAX(raw_block_max[g], score);
+                    }
+                }
+
+                float old_scale[G];
+                #pragma unroll
+                for (int g = 0; g < G; g++) {
+                    const float m_block =
+                        raw_block_max[g] * args.softmax_scale;
+                    float m_new = MAX(m_prev[g], m_block);
+                    m_new = MAX(m_new, 0.0f);
+                    if (m_prev[g] == -FLT_MAX) old_scale[g] = 0.0f;
+                    else if (m_new == m_prev[g]) old_scale[g] = 1.0f;
+                    else old_scale[g] = expf(m_prev[g] - m_new);
+
+                    const floatv16 vscore_scale = args.softmax_scale;
+                    const floatv16 vm_new = m_new;
+                    float l_block = 0.0f;
+                    int t = 0;
+                    for (; t + 16 <= cur_BN; t += 16) {
+                        floatv16 vscore;
+                        simd_load(vscore, scores[g] + t);
+                        const floatv16 vp = simd_exp(
+                            simd_vfmuls(vscore, vscore_scale) - vm_new);
+                        simd_store(vp, probs[g] + t);
+                        l_block += simd_reduc_plusfs(vp);
+                    }
+                    for (; t < cur_BN; t++) {
+                        const float p = expf(
+                            scores[g][t] * args.softmax_scale - m_new);
+                        probs[g][t] = p;
+                        l_block += p;
+                    }
+                    if (old_scale[g] != 1.0f) {
+                        const floatv16 vs = old_scale[g];
+                        acc[g][0] = simd_vfmuls(acc[g][0], vs);
+                        acc[g][1] = simd_vfmuls(acc[g][1], vs);
+                        acc[g][2] = simd_vfmuls(acc[g][2], vs);
+                        acc[g][3] = simd_vfmuls(acc[g][3], vs);
+                    }
+                    l_prev[g] =
+                        (old_scale[g] == 1.0f
+                             ? l_prev[g] : l_prev[g] * old_scale[g])
+                        + l_block;
+                    m_prev[g] = m_new;
+                }
+
+                for (int vi = 0; vi < cur_BN; vi++) {
+                    const half *vrow = vbuf + vi * BK;
+                    halfv16 hv0, hv1, hv2, hv3;
+                    simd_load(hv0, vrow);
+                    simd_load(hv1, vrow + 16);
+                    simd_load(hv2, vrow + 32);
+                    simd_load(hv3, vrow + 48);
+                    const floatv16 fv0 = simd_vfcvths(hv0);
+                    const floatv16 fv1 = simd_vfcvths(hv1);
+                    const floatv16 fv2 = simd_vfcvths(hv2);
+                    const floatv16 fv3 = simd_vfcvths(hv3);
+                    #pragma unroll
+                    for (int g = 0; g < G; g++) {
+                        const floatv16 vp = probs[g][vi];
+                        acc[g][0] = simd_vfmas(fv0, vp, acc[g][0]);
+                        acc[g][1] = simd_vfmas(fv1, vp, acc[g][1]);
+                        acc[g][2] = simd_vfmas(fv2, vp, acc[g][2]);
+                        acc[g][3] = simd_vfmas(fv3, vp, acc[g][3]);
+                    }
+                }
+                if (next_tile_begin < end_block) memcpy_wait();
+            }
+
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                local_m[g] = m_prev[g];
+                local_l[g] = l_prev[g];
+                simd_store(acc[g][0], local_acc + g * BK);
+                simd_store(acc[g][1], local_acc + g * BK + 16);
+                simd_store(acc[g][2], local_acc + g * BK + 32);
+                simd_store(acc[g][3], local_acc + g * BK + 48);
+            }
+        }
+
+        // Level 1: merge adjacent quarters (0,1) and (2,3).  Normal-mode RMA
+        // is called by both endpoints and therefore also publishes the remote
+        // worker's completed local_state without a full-grid barrier.
+        if (do_decode) {
+            const int pair_root = tid & ~1;
+            rma_get(peer_state, local_state, state_bytes,
+                    pair_root, pair_root + 1);
+        }
+
+        if (do_decode && (context_lane & 1) == 0) {
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float ma = local_m[g];
+                const float mb = peer_m[g];
+                const float m = MAX(ma, mb);
+                const float sa = local_l[g] > 0.0f
+                    ? expf(ma - m) : 0.0f;
+                const float sb = peer_l[g] > 0.0f
+                    ? expf(mb - m) : 0.0f;
+                local_m[g] = m;
+                local_l[g] = sa * local_l[g] + sb * peer_l[g];
+                const floatv16 va = sa;
+                const floatv16 vb = sb;
+                for (int k = 0; k < BK; k += 16) {
+                    floatv16 a, p;
+                    simd_load(a, local_acc + g * BK + k);
+                    simd_load(p, peer_acc + g * BK + k);
+                    simd_store(
+                        simd_vfmuls(a, va) + simd_vfmuls(p, vb),
+                        local_acc + g * BK + k);
+                }
+            }
+        }
+
+        // Level 2: each four-lane subgroup root pulls its second pair root
+        // (lane 0<-2 and, for eight-way context, lane 4<-6).  The blocking
+        // operation waits until both level-1 roots publish local_state.
+        if (do_decode && (context_lane & 1) == 0) {
+            const int group_root = tid & ~3;
+            rma_get(peer_state, local_state, state_bytes,
+                    group_root, group_root + 2);
+        }
+
+        // Level 3: lanes 0 and 4 materialize their four-interval states in
+        // local_state, then lane 0 pulls lane 4's complete half into its
+        // private peer_state.
+        if (do_decode && (context_lane & 3) == 0) {
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float ma = local_m[g];
+                const float mb = peer_m[g];
+                const float m = MAX(ma, mb);
+                const float sa = local_l[g] > 0.0f
+                    ? expf(ma - m) : 0.0f;
+                const float sb = peer_l[g] > 0.0f
+                    ? expf(mb - m) : 0.0f;
+                local_m[g] = m;
+                local_l[g] = sa * local_l[g] + sb * peer_l[g];
+                const floatv16 va = sa;
+                const floatv16 vb = sb;
+                for (int k = 0; k < BK; k += 16) {
+                    floatv16 a, p;
+                    simd_load(a, local_acc + g * BK + k);
+                    simd_load(p, peer_acc + g * BK + k);
+                    simd_store(
+                        simd_vfmuls(a, va) + simd_vfmuls(p, vb),
+                        local_acc + g * BK + k);
+                }
+            }
+        }
+
+        if (do_decode && (context_lane & 3) == 0) {
+            const int octet_root = tid & ~7;
+            rma_get(peer_state, local_state, state_bytes,
+                    octet_root, octet_root + 4);
+        }
+
+        if (do_decode && context_lane == 0) {
+            #pragma unroll
+            for (int g = 0; g < G; g++) {
+                const float ma = local_m[g];
+                const float mb = peer_m[g];
+                const float m = MAX(ma, mb);
+                const float sa = local_l[g] > 0.0f ? expf(ma - m) : 0.0f;
+                const float sb = peer_l[g] > 0.0f ? expf(mb - m) : 0.0f;
+                const float l = sa * local_l[g] + sb * peer_l[g];
+                const float inv_l = l > 0.0f ? 1.0f / l : 0.0f;
+                const floatv16 va = sa;
+                const floatv16 vb = sb;
+                const floatv16 vinv = inv_l;
+                for (int k = 0; k < BK; k += 16) {
+                    floatv16 a, p;
+                    simd_load(a, local_acc + g * BK + k);
+                    simd_load(p, peer_acc + g * BK + k);
+                    const floatv16 merged =
+                        simd_vfmuls(a, va) + simd_vfmuls(p, vb);
+                    simd_store(simd_vfcvtsh(simd_vfmuls(merged, vinv)),
+                               obuf[g] + k);
+                }
+            }
+            half *out = (half *)args.fmha_out
+                + cur_q_index * args.local_head_num * BK
+                + first_head_idx * BK;
+            memcpy(out, obuf[0], G * BK * sizeof(half));
+        }
+
+        // No tail barrier is required: each blocking GET owns a private local
+        // copy before its remote endpoint can advance and reuse local_state.
+        cur_q_index += q_seq_len;
+    }
+}
+
+__device__ void online_softmax_step(
+    float *scores,           // S: [BM, BN] scaled scores
+    half *probabilities,     // exp(S - m_new), converted directly to half
+    const float *pre_max,    // m_old: [m]
+    const float *pre_sum,    // l_old: [m]
+    float *cur_max,          // m_new: [m]
+    float *cur_sum,          // l_new: [m]
+    float *scale,            // scale = exp(m_old - m_new): [m]
+    float score_scale,       // QK softmax scale
+    int m, int n,            // cur_BM, cur_BN
+    int ld_scores) {         // BN
+
+    // Step 1: per-row : cal m_new, scale
+    for (int i = 0; i < m; i++) {
+        float *src_row = scores + i * ld_scores;
+        float m_block = compute_max(src_row, n) * score_scale;
+        float m_new = MAX(pre_max[i], m_block);
+        m_new = MAX(m_new, 0.0f);
+        cur_max[i] = m_new;
+        scale[i] = pre_max[i] - m_new;
+    }
+
+    // Evaluate the per-row online-softmax rescale in SIMD batches.  Decode has
+    // one row and naturally retains the scalar tail; full prefill tiles replace
+    // 128 scalar expf calls with eight vector operations.
+    int scale_row = 0;
+    for (; scale_row + 16 <= m; scale_row += 16) {
+        floatv16 vscale;
+        simd_load(vscale, scale + scale_row);
+        vscale = simd_exp(vscale);
+        simd_store(vscale, scale + scale_row);
+    }
+    for (; scale_row < m; scale_row++) {
+        scale[scale_row] = expf(scale[scale_row]);
+    }
+
+    // Step 2: compute exp(S - m_new) directly into the half PV input and
+    // accumulate the normalization term in float.
+    floatv16 vscore_scale = score_scale;
+    for (int i = 0; i < m; i++) {
+        float *src_row = scores + i * ld_scores;
+        half *dst_row = probabilities + i * ld_scores;
+        float m_new = cur_max[i];
+        float l_old = pre_sum[i];
+        float s = scale[i];
+
+        float l_block = 0.0f;
+        int j = 0;
+        for (; j + 16 <= n; j += 16) {
+            floatv16 v;
+            halfv16 vh;
+            simd_load(v, src_row + j);
+            v = simd_mul(v, vscore_scale);
+            v = simd_exp(v - m_new);
+            vh = (halfv16)v;
+            simd_store(vh, dst_row + j);
+            l_block += reduce_sum16(v);
+        }
+        for (; j < n; j++) {
+            float probability = expf(src_row[j] * score_scale - m_new);
+            dst_row[j] = (half)probability;
+            l_block += probability;
+        }
+        cur_sum[i] = l_old * s + l_block;
+    }
+}
+
+// T1 prefill full KV tiles always contain exactly two FP32 SIMD vectors per
+// row. Keep M dynamic for the final Q tile, while removing the N/stride loop
+// control and scalar tail checks from virtually every softmax row.
+__device__ __always_inline void online_softmax_step_n32(
+    float *scores,
+    half *probabilities,
+    const float *pre_max,
+    const float *pre_sum,
+    float *cur_max,
+    float *cur_sum,
+    float *scale,
+    float score_scale,
+    int m) {
+
+    unsigned scale_changed_groups = 0;
+    for (int i = 0; i < m; i++) {
+        float *src_row = scores + i * 32;
+        floatv16 v0;
+        floatv16 v1;
+        simd_load(v0, src_row);
+        simd_load(v1, src_row + 16);
+        float m_block = reduce_max16(simd_max(v0, v1)) * score_scale;
+        float m_new = MAX(pre_max[i], m_block);
+        m_new = MAX(m_new, 0.0f);
+        if (m_new != pre_max[i]) {
+            scale_changed_groups |= 1u << (i >> 4);
+        }
+        cur_max[i] = m_new;
+        scale[i] = pre_max[i] - m_new;
+    }
+
+    int scale_row = 0;
+    for (; scale_row + 16 <= m; scale_row += 16) {
+        floatv16 vscale;
+        if (scale_changed_groups & (1u << (scale_row >> 4))) {
+            simd_load(vscale, scale + scale_row);
+            vscale = simd_exp(vscale);
+        } else {
+            vscale = 1.0f;
+        }
+        simd_store(vscale, scale + scale_row);
+    }
+    for (; scale_row < m; scale_row++) {
+        scale[scale_row] = cur_max[scale_row] == pre_max[scale_row]
+            ? 1.0f
+            : expf(scale[scale_row]);
+    }
+
+    floatv16 vscore_scale = score_scale;
+    // Four rows of the fixed BN32 tile form one contiguous 128-float slab.
+    // Normalize in place before calling simd_exp128; this keeps the exact
+    // per-row m_new state while replacing eight independent exp calls with
+    // one hardware batch. The score buffer is dead after this step, so the
+    // temporary stores do not alter the operator's layout or semantics.
+    int i = 0;
+    for (; i + 4 <= m; i += 4) {
+        float *src = scores + i * 32;
+        for (int r = 0; r < 4; r++) {
+            floatv16 v0;
+            floatv16 v1;
+            const float row_max = cur_max[i + r];
+            float *row = src + r * 32;
+            simd_load(v0, row);
+            simd_load(v1, row + 16);
+            v0 = simd_mul(v0, vscore_scale) - row_max;
+            v1 = simd_mul(v1, vscore_scale) - row_max;
+            simd_store(v0, row);
+            simd_store(v1, row + 16);
+        }
+        simd_exp128(src);
+        for (int r = 0; r < 4; r++) {
+            float *row = src + r * 32;
+            half *dst = probabilities + (i + r) * 32;
+            floatv16 v0;
+            floatv16 v1;
+            simd_load(v0, row);
+            simd_load(v1, row + 16);
+            simd_store((halfv16)v0, dst);
+            simd_store((halfv16)v1, dst + 16);
+            float l_block = simd_reduc_plusfs(v0);
+            l_block += simd_reduc_plusfs(v1);
+            cur_sum[i + r] = pre_sum[i + r] * scale[i + r] + l_block;
+        }
+    }
+    // Keep the one-to-three-row tail on the original vector path so partial
+    // Q tiles retain their established bounds and state ordering.
+    for (; i < m; i++) {
+        float *src_row = scores + i * 32;
+        half *dst_row = probabilities + i * 32;
+        float m_new = cur_max[i];
+        floatv16 v0;
+        floatv16 v1;
+        halfv16 h0;
+        halfv16 h1;
+        simd_load(v0, src_row);
+        simd_load(v1, src_row + 16);
+        v0 = simd_exp(simd_mul(v0, vscore_scale) - m_new);
+        v1 = simd_exp(simd_mul(v1, vscore_scale) - m_new);
+        h0 = (halfv16)v0;
+        h1 = (halfv16)v1;
+        simd_store(h0, dst_row);
+        simd_store(h1, dst_row + 16);
+        float l_block = reduce_sum16(v0);
+        l_block += reduce_sum16(v1);
+        cur_sum[i] = pre_sum[i] * scale[i] + l_block;
+    }
+}
+
+// Two physical BN32 score tiles share one online-softmax transition. Scores
+// remain in the native QK writeback layout while P is packed row-major for one
+// complete K64 PV contraction.
+__device__ __always_inline void online_softmax_step_n64_pair(
+    float *scores0,
+    float *scores1,
+    half *probabilities,
+    const float *pre_max,
+    const float *pre_sum,
+    float *cur_max,
+    float *cur_sum,
+    float *scale,
+    float score_scale,
+    int m) {
+
+    unsigned scale_changed_groups = 0;
+    for (int i = 0; i < m; i++) {
+        float *src0 = scores0 + i * 32;
+        float *src1 = scores1 + i * 32;
+        floatv16 v0, v1, v2, v3;
+        simd_load(v0, src0);
+        simd_load(v1, src0 + 16);
+        simd_load(v2, src1);
+        simd_load(v3, src1 + 16);
+        const floatv16 vmax01 = simd_max(v0, v1);
+        const floatv16 vmax23 = simd_max(v2, v3);
+        float m_block = reduce_max16(simd_max(vmax01, vmax23)) * score_scale;
+        float m_new = MAX(pre_max[i], m_block);
+        m_new = MAX(m_new, 0.0f);
+        if (m_new != pre_max[i]) {
+            scale_changed_groups |= 1u << (i >> 4);
+        }
+        cur_max[i] = m_new;
+        scale[i] = pre_max[i] - m_new;
+    }
+
+    int scale_row = 0;
+    for (; scale_row + 16 <= m; scale_row += 16) {
+        floatv16 vscale;
+        if (scale_changed_groups & (1u << (scale_row >> 4))) {
+            simd_load(vscale, scale + scale_row);
+            vscale = prefill_exp_quartic(vscale);
+        } else {
+            vscale = 1.0f;
+        }
+        simd_store(vscale, scale + scale_row);
+    }
+    for (; scale_row < m; scale_row++) {
+        scale[scale_row] = cur_max[scale_row] == pre_max[scale_row]
+            ? 1.0f
+            : prefill_exp_quartic_scalar(scale[scale_row]);
+    }
+
+    const floatv16 vscore_scale = score_scale;
+    // Process four rows per loop to preserve the established loop schedule,
+    // but emit probabilities directly instead of spilling normalized scores
+    // for simd_exp128 and loading them back.
+    int i = 0;
+    for (; i + 4 <= m; i += 4) {
+        float *src0 = scores0 + i * 32;
+        float *src1 = scores1 + i * 32;
+        for (int r = 0; r < 4; r++) {
+            floatv16 v0, v1, v2, v3;
+            const float row_max = cur_max[i + r];
+            half *dst = probabilities + (i + r) * 64;
+            simd_load(v0, src0 + r * 32);
+            simd_load(v1, src0 + r * 32 + 16);
+            simd_load(v2, src1 + r * 32);
+            simd_load(v3, src1 + r * 32 + 16);
+            v0 = prefill_exp_quartic(
+                simd_mul(v0, vscore_scale) - row_max);
+            v1 = prefill_exp_quartic(
+                simd_mul(v1, vscore_scale) - row_max);
+            v2 = prefill_exp_quartic(
+                simd_mul(v2, vscore_scale) - row_max);
+            v3 = prefill_exp_quartic(
+                simd_mul(v3, vscore_scale) - row_max);
+            simd_store((halfv16)v0, dst);
+            simd_store((halfv16)v1, dst + 16);
+            simd_store((halfv16)v2, dst + 32);
+            simd_store((halfv16)v3, dst + 48);
+            const floatv16 vsum01 = simd_add(v0, v1);
+            const floatv16 vsum23 = simd_add(v2, v3);
+            const float l_block = simd_reduc_plusfs(
+                simd_add(vsum01, vsum23));
+            cur_sum[i + r] = pre_sum[i + r] * scale[i + r] + l_block;
+        }
+    }
+    // The final one-to-three rows use the original vector path and retain the
+    // exact tail behavior for partial Q tiles.
+    for (; i < m; i++) {
+        float *src0 = scores0 + i * 32;
+        float *src1 = scores1 + i * 32;
+        half *dst = probabilities + i * 64;
+        const float m_new = cur_max[i];
+        floatv16 v0, v1, v2, v3;
+        halfv16 h0, h1, h2, h3;
+        simd_load(v0, src0);
+        simd_load(v1, src0 + 16);
+        simd_load(v2, src1);
+        simd_load(v3, src1 + 16);
+        v0 = prefill_exp_quartic(
+            simd_mul(v0, vscore_scale) - m_new);
+        v1 = prefill_exp_quartic(
+            simd_mul(v1, vscore_scale) - m_new);
+        v2 = prefill_exp_quartic(
+            simd_mul(v2, vscore_scale) - m_new);
+        v3 = prefill_exp_quartic(
+            simd_mul(v3, vscore_scale) - m_new);
+        h0 = (halfv16)v0;
+        h1 = (halfv16)v1;
+        h2 = (halfv16)v2;
+        h3 = (halfv16)v3;
+        simd_store(h0, dst);
+        simd_store(h1, dst + 16);
+        simd_store(h2, dst + 32);
+        simd_store(h3, dst + 48);
+
+        const floatv16 vsum01 = simd_add(v0, v1);
+        const floatv16 vsum23 = simd_add(v2, v3);
+        const float l_block = simd_reduc_plusfs(
+            simd_add(vsum01, vsum23));
+        cur_sum[i] = pre_sum[i] * scale[i] + l_block;
+    }
+}
+
+// Four M32_N128 QK writebacks partition query rows rather than KV columns.
+// Consume their native 32x128 layouts in one online-softmax transition and
+// emit a contiguous P[128,128] matrix for the two complete K128 PV products.
+__device__ __always_inline void online_softmax_step_n128_rows(
+    float *scores0,
+    float *scores1,
+    float *scores2,
+    float *scores3,
+    half *probabilities,
+    const float *pre_max,
+    const float *pre_sum,
+    float *cur_max,
+    float *cur_sum,
+    float *scale,
+    float score_scale,
+    int m) {
+
+    float *score_banks[4] = {scores0, scores1, scores2, scores3};
+    unsigned scale_changed_groups = 0;
+    for (int bank = 0; bank < 4; bank++) {
+        const int row_base = bank * 32;
+        const int rows = MIN(32, MAX(0, m - row_base));
+        for (int row = 0; row < rows; row++) {
+            const int i = row_base + row;
+            float *src = score_banks[bank] + row * 128;
+            floatv16 v0, v1, v2, v3, v4, v5, v6, v7;
+            simd_load(v0, src);
+            simd_load(v1, src + 16);
+            simd_load(v2, src + 32);
+            simd_load(v3, src + 48);
+            simd_load(v4, src + 64);
+            simd_load(v5, src + 80);
+            simd_load(v6, src + 96);
+            simd_load(v7, src + 112);
+            const floatv16 vmax01 = simd_max(v0, v1);
+            const floatv16 vmax23 = simd_max(v2, v3);
+            const floatv16 vmax45 = simd_max(v4, v5);
+            const floatv16 vmax67 = simd_max(v6, v7);
+            const floatv16 vmax_lo = simd_max(vmax01, vmax23);
+            const floatv16 vmax_hi = simd_max(vmax45, vmax67);
+            const float m_block =
+                reduce_max16(simd_max(vmax_lo, vmax_hi)) * score_scale;
+            float m_new = MAX(pre_max[i], m_block);
+            m_new = MAX(m_new, 0.0f);
+            if (m_new != pre_max[i]) {
+                scale_changed_groups |= 1u << (i >> 4);
+            }
+            cur_max[i] = m_new;
+            scale[i] = pre_max[i] - m_new;
+        }
+    }
+
+    int scale_row = 0;
+    for (; scale_row + 16 <= m; scale_row += 16) {
+        floatv16 vscale;
+        if (scale_changed_groups & (1u << (scale_row >> 4))) {
+            simd_load(vscale, scale + scale_row);
+            vscale = prefill_exp_quartic(vscale);
+        } else {
+            vscale = 1.0f;
+        }
+        simd_store(vscale, scale + scale_row);
+    }
+    for (; scale_row < m; scale_row++) {
+        scale[scale_row] = cur_max[scale_row] == pre_max[scale_row]
+            ? 1.0f
+            : prefill_exp_quartic_scalar(scale[scale_row]);
+    }
+
+    const floatv16 vscore_scale = score_scale;
+    for (int bank = 0; bank < 4; bank++) {
+        const int row_base = bank * 32;
+        const int rows = MIN(32, MAX(0, m - row_base));
+        for (int row = 0; row < rows; row++) {
+            const int i = row_base + row;
+            float *src = score_banks[bank] + row * 128;
+            half *dst = probabilities + i * 128;
+            const float row_max = cur_max[i];
+            floatv16 v0, v1, v2, v3, v4, v5, v6, v7;
+            simd_load(v0, src);
+            simd_load(v1, src + 16);
+            simd_load(v2, src + 32);
+            simd_load(v3, src + 48);
+            simd_load(v4, src + 64);
+            simd_load(v5, src + 80);
+            simd_load(v6, src + 96);
+            simd_load(v7, src + 112);
+            v0 = prefill_exp_quartic(
+                simd_mul(v0, vscore_scale) - row_max);
+            v1 = prefill_exp_quartic(
+                simd_mul(v1, vscore_scale) - row_max);
+            v2 = prefill_exp_quartic(
+                simd_mul(v2, vscore_scale) - row_max);
+            v3 = prefill_exp_quartic(
+                simd_mul(v3, vscore_scale) - row_max);
+            v4 = prefill_exp_quartic(
+                simd_mul(v4, vscore_scale) - row_max);
+            v5 = prefill_exp_quartic(
+                simd_mul(v5, vscore_scale) - row_max);
+            v6 = prefill_exp_quartic(
+                simd_mul(v6, vscore_scale) - row_max);
+            v7 = prefill_exp_quartic(
+                simd_mul(v7, vscore_scale) - row_max);
+            simd_store((halfv16)v0, dst);
+            simd_store((halfv16)v1, dst + 16);
+            simd_store((halfv16)v2, dst + 32);
+            simd_store((halfv16)v3, dst + 48);
+            simd_store((halfv16)v4, dst + 64);
+            simd_store((halfv16)v5, dst + 80);
+            simd_store((halfv16)v6, dst + 96);
+            simd_store((halfv16)v7, dst + 112);
+            const floatv16 vsum01 = simd_add(v0, v1);
+            const floatv16 vsum23 = simd_add(v2, v3);
+            const floatv16 vsum45 = simd_add(v4, v5);
+            const floatv16 vsum67 = simd_add(v6, v7);
+            const floatv16 vsum_lo = simd_add(vsum01, vsum23);
+            const floatv16 vsum_hi = simd_add(vsum45, vsum67);
+            const float l_block =
+                simd_reduc_plusfs(simd_add(vsum_lo, vsum_hi));
+            cur_sum[i] = pre_sum[i] * scale[i] + l_block;
+        }
+    }
+}
+
+// Two K128 panels form one dense N256 transition. The four left score banks
+// are laid out contiguously; after a row's left/right scores are consumed, its
+// 512-byte FP16 P row replaces the same 512-byte FP32 left-score row.
+__device__ __always_inline void online_softmax_step_n256_rows(
+    float *scores_l0,
+    float *scores_l1,
+    float *scores_l2,
+    float *scores_l3,
+    float *scores_r0,
+    float *scores_r1,
+    float *scores_r2,
+    float *scores_r3,
+    half *probabilities,
+    const float *pre_max,
+    const float *pre_sum,
+    float *cur_max,
+    float *cur_sum,
+    float *scale,
+    float score_scale,
+    int m) {
+
+    float *left_banks[4] = {
+        scores_l0, scores_l1, scores_l2, scores_l3};
+    float *right_banks[4] = {
+        scores_r0, scores_r1, scores_r2, scores_r3};
+    unsigned scale_changed_groups = 0;
+
+    for (int bank = 0; bank < 4; bank++) {
+        const int row_base = bank * 32;
+        const int rows = MIN(32, MAX(0, m - row_base));
+        for (int row = 0; row < rows; row++) {
+            const int i = row_base + row;
+            float *left = left_banks[bank] + row * 128;
+            float *right = right_banks[bank] + row * 128;
+            floatv16 v0, v1, v2, v3, v4, v5, v6, v7;
+            simd_load(v0, left);
+            simd_load(v1, left + 16);
+            simd_load(v2, left + 32);
+            simd_load(v3, left + 48);
+            simd_load(v4, left + 64);
+            simd_load(v5, left + 80);
+            simd_load(v6, left + 96);
+            simd_load(v7, left + 112);
+            const floatv16 l01 = simd_max(v0, v1);
+            const floatv16 l23 = simd_max(v2, v3);
+            const floatv16 l45 = simd_max(v4, v5);
+            const floatv16 l67 = simd_max(v6, v7);
+            const floatv16 lmax = simd_max(
+                simd_max(l01, l23), simd_max(l45, l67));
+
+            simd_load(v0, right);
+            simd_load(v1, right + 16);
+            simd_load(v2, right + 32);
+            simd_load(v3, right + 48);
+            simd_load(v4, right + 64);
+            simd_load(v5, right + 80);
+            simd_load(v6, right + 96);
+            simd_load(v7, right + 112);
+            const floatv16 r01 = simd_max(v0, v1);
+            const floatv16 r23 = simd_max(v2, v3);
+            const floatv16 r45 = simd_max(v4, v5);
+            const floatv16 r67 = simd_max(v6, v7);
+            const floatv16 rmax = simd_max(
+                simd_max(r01, r23), simd_max(r45, r67));
+
+            const float m_block =
+                reduce_max16(simd_max(lmax, rmax)) * score_scale;
+            float m_new = MAX(pre_max[i], m_block);
+            m_new = MAX(m_new, 0.0f);
+            if (m_new != pre_max[i]) {
+                scale_changed_groups |= 1u << (i >> 4);
+            }
+            cur_max[i] = m_new;
+            scale[i] = pre_max[i] - m_new;
+        }
+    }
+
+    int scale_row = 0;
+    for (; scale_row + 16 <= m; scale_row += 16) {
+        floatv16 vscale;
+        if (scale_changed_groups & (1u << (scale_row >> 4))) {
+            simd_load(vscale, scale + scale_row);
+            vscale = prefill_exp_quartic(vscale);
+        } else {
+            vscale = 1.0f;
+        }
+        simd_store(vscale, scale + scale_row);
+    }
+    for (; scale_row < m; scale_row++) {
+        scale[scale_row] = cur_max[scale_row] == pre_max[scale_row]
+            ? 1.0f
+            : prefill_exp_quartic_scalar(scale[scale_row]);
+    }
+
+    const floatv16 vscore_scale = score_scale;
+    for (int bank = 0; bank < 4; bank++) {
+        const int row_base = bank * 32;
+        const int rows = MIN(32, MAX(0, m - row_base));
+        for (int row = 0; row < rows; row++) {
+            const int i = row_base + row;
+            float *left = left_banks[bank] + row * 128;
+            float *right = right_banks[bank] + row * 128;
+            half *dst = probabilities + i * 256;
+            const float row_max = cur_max[i];
+            floatv16 v0, v1, v2, v3, v4, v5, v6, v7;
+
+            simd_load(v0, left);
+            simd_load(v1, left + 16);
+            simd_load(v2, left + 32);
+            simd_load(v3, left + 48);
+            simd_load(v4, left + 64);
+            simd_load(v5, left + 80);
+            simd_load(v6, left + 96);
+            simd_load(v7, left + 112);
+            v0 = prefill_exp_quartic(simd_mul(v0, vscore_scale) - row_max);
+            v1 = prefill_exp_quartic(simd_mul(v1, vscore_scale) - row_max);
+            v2 = prefill_exp_quartic(simd_mul(v2, vscore_scale) - row_max);
+            v3 = prefill_exp_quartic(simd_mul(v3, vscore_scale) - row_max);
+            v4 = prefill_exp_quartic(simd_mul(v4, vscore_scale) - row_max);
+            v5 = prefill_exp_quartic(simd_mul(v5, vscore_scale) - row_max);
+            v6 = prefill_exp_quartic(simd_mul(v6, vscore_scale) - row_max);
+            v7 = prefill_exp_quartic(simd_mul(v7, vscore_scale) - row_max);
+            simd_store((halfv16)v0, dst);
+            simd_store((halfv16)v1, dst + 16);
+            simd_store((halfv16)v2, dst + 32);
+            simd_store((halfv16)v3, dst + 48);
+            simd_store((halfv16)v4, dst + 64);
+            simd_store((halfv16)v5, dst + 80);
+            simd_store((halfv16)v6, dst + 96);
+            simd_store((halfv16)v7, dst + 112);
+            const floatv16 lsum = simd_add(
+                simd_add(simd_add(v0, v1), simd_add(v2, v3)),
+                simd_add(simd_add(v4, v5), simd_add(v6, v7)));
+
+            simd_load(v0, right);
+            simd_load(v1, right + 16);
+            simd_load(v2, right + 32);
+            simd_load(v3, right + 48);
+            simd_load(v4, right + 64);
+            simd_load(v5, right + 80);
+            simd_load(v6, right + 96);
+            simd_load(v7, right + 112);
+            v0 = prefill_exp_quartic(simd_mul(v0, vscore_scale) - row_max);
+            v1 = prefill_exp_quartic(simd_mul(v1, vscore_scale) - row_max);
+            v2 = prefill_exp_quartic(simd_mul(v2, vscore_scale) - row_max);
+            v3 = prefill_exp_quartic(simd_mul(v3, vscore_scale) - row_max);
+            v4 = prefill_exp_quartic(simd_mul(v4, vscore_scale) - row_max);
+            v5 = prefill_exp_quartic(simd_mul(v5, vscore_scale) - row_max);
+            v6 = prefill_exp_quartic(simd_mul(v6, vscore_scale) - row_max);
+            v7 = prefill_exp_quartic(simd_mul(v7, vscore_scale) - row_max);
+            simd_store((halfv16)v0, dst + 128);
+            simd_store((halfv16)v1, dst + 144);
+            simd_store((halfv16)v2, dst + 160);
+            simd_store((halfv16)v3, dst + 176);
+            simd_store((halfv16)v4, dst + 192);
+            simd_store((halfv16)v5, dst + 208);
+            simd_store((halfv16)v6, dst + 224);
+            simd_store((halfv16)v7, dst + 240);
+            const floatv16 rsum = simd_add(
+                simd_add(simd_add(v0, v1), simd_add(v2, v3)),
+                simd_add(simd_add(v4, v5), simd_add(v6, v7)));
+            const float l_block = simd_reduc_plusfs(simd_add(lsum, rsum));
+            cur_sum[i] = pre_sum[i] * scale[i] + l_block;
+        }
+    }
+}
+
+template <bool kT1Prefill>
+__device__ static __attribute__((noinline)) void prefill_attention_half_impl(
+    FlashAttentionArgs args, int tid, int head_num);
+
+__global__ void teco_slave_flash_attention_half(FlashAttentionArgs args) {
+    int tid = threadIdx;
+    constexpr int BM = 128;   // M block, 128 for ace
+    constexpr int BN = 32;    // N block, 32 for ace; block_size
+    constexpr int gemm_bn = 32;
+
+    const int head_num = args.local_head_num;
+    if (args.spe_num <= 0 || head_num <= 0 ||
+        args.local_kv_head_num <= 0 ||
+        head_num % args.local_kv_head_num != 0) {
+        return;
+    }
+
+    if (args.max_q_seq_len == 1 && args.size_per_head == 64 &&
+        args.block_size == 32) {
+        const int kv_group = head_num / args.local_kv_head_num;
+        // Preserve the code_best decode dispatch. T1/T2 use context4; T3/T4
+        // enter the fixed context8 function when sixteen workers are available.
+        if (kv_group == 2 && args.max_k_seq_len <= 1536) {
+            decode_attention_d64_b32_gqa2(args, tid);
+        } else if (kv_group == 2 && args.max_k_seq_len > 6144 &&
+                   8 * args.local_kv_head_num <= args.spe_num) {
+            decode_attention_d64_b32_gqa2_context8(args, tid);
+        } else if (kv_group == 2 &&
+                   4 * args.local_kv_head_num <= args.spe_num) {
+            decode_attention_d64_b32_gqa2_context4(args, tid);
+        } else {
+            decode_attention_d64_b32(args, tid);
+        }
+        return;
+    }
+
+    const bool t1_prefill =
+        args.batch_size == 1 && args.size_per_head == 64 &&
+        args.block_size == BN;
+    if (t1_prefill) {
+        prefill_attention_half_impl<true>(args, tid, head_num);
+    } else {
+        prefill_attention_half_impl<false>(args, tid, head_num);
+    }
+}
+
+template <bool kT1Prefill>
+__device__ static __attribute__((noinline)) void prefill_attention_half_impl(
+    FlashAttentionArgs args, int tid, int head_num) {
+
+    constexpr int BM = 128;
+    constexpr int BN = 32;
+    constexpr int gemm_bn = 32;
+
+    // Long prefills contain many independent Q tiles.  Spread those tiles over
+    // the otherwise idle SPEs while retaining one worker per head for decode.
+    // Each (batch, Q tile, head) writes a disjoint output region and owns all of
+    // its online-softmax state, so no cross-SPE reduction or synchronization is
+    // required.
+    const int q_blocks_hint = MAX(1, (args.max_q_seq_len + BM - 1) / BM);
+    const int available_workers_per_head = args.spe_num / head_num;
+    if (available_workers_per_head <= 0) {
+        return;
+    }
+    const int workers_per_head =
+        MIN(q_blocks_hint, available_workers_per_head);
+    const int active_workers = head_num * workers_per_head;
+    if (tid >= active_workers) {
+        return;
+    }
+
+    const int head_idx = tid % head_num;
+    const int q_lane = tid / head_num;
+    int num_kv_groups = head_num / args.local_kv_head_num;
+    const int kv_head_idx =
+        head_idx / num_kv_groups;  // GQA mapping is tile-invariant
+
+    const int BK = kT1Prefill ? 64 : args.size_per_head;   // head_dim
+    const int token_size = BK * sizeof(half);
+    const bool model_block_size =
+        kT1Prefill || args.block_size == BN;
+    // The scored T1 prefill has BK=64 and BN=32, so the 16 KiB FP32 QK/PV
+    // buffer can hold the final 16 KiB FP16 output after the last PV update.
+    // Keeping output there leaves qbuf free for the next Q tile while the
+    // output DMA is in flight.
+    constexpr bool async_t1_output = kT1Prefill;
+    bool output_pending = false;
+    // For the latency-critical single-request path, retain the exact device
+    // length so it can also be reused below without a second load or integer
+    // division. Multi-sequence calls still scan all true KV lengths.
+    int single_k_seq_len = 0;
+    int single_used_blocks = 0;
+    int max_used_blocks = 1;
+    if (kT1Prefill || args.batch_size == 1) {
+        single_k_seq_len = args.kv_seq_lens[0];
+        single_used_blocks =
+            (single_k_seq_len + args.block_size - 1) / args.block_size;
+        max_used_blocks = MAX(max_used_blocks, single_used_blocks);
+    } else {
+        // Some multi-sequence prefill call sites advertise only the current
+        // prefill length, not the full cached KV length. Scan the true device
+        // lengths here so the shared table is never undersized.
+        for (int b = 0; b < args.batch_size; b++) {
+            int used_blocks =
+                (args.kv_seq_lens[b] + args.block_size - 1) /
+                args.block_size;
+            max_used_blocks = MAX(max_used_blocks, used_blocks);
+        }
+    }
+
+    // Allocate all fixed compute buffers first in one 64-byte-aligned arena.
+    // This removes repeated allocator/canary setup and keeps matmul/DMA buffer
+    // addresses stable when max_used_blocks changes between decode steps.
+    const size_t qbuf_spm_bytes =
+        align_spm_bytes((size_t)BM * token_size);
+    const size_t kvbuf_spm_bytes =
+        align_spm_bytes((size_t)BN * token_size);
+    const size_t outc_spm_bytes =
+        align_spm_bytes((size_t)BM * BN * sizeof(float));
+    const size_t o_accum_spm_bytes =
+        align_spm_bytes((size_t)BM * BK * sizeof(float));
+    const size_t state_spm_bytes =
+        align_spm_bytes((size_t)BM * sizeof(float));
+    const size_t p_score_spm_bytes =
+        align_spm_bytes((size_t)BM * BN * sizeof(half));
+    const size_t bn128_k_spm_bytes = async_t1_output
+        ? align_spm_bytes((size_t)4 * BN * BK * sizeof(half))
+        : 0;
+    const size_t bn256_score_spm_bytes = async_t1_output
+        ? align_spm_bytes((size_t)BM * 8 * BN * sizeof(float))
+        : 0;
+    const size_t bn256_vlow_alt_spm_bytes = async_t1_output
+        ? bn128_k_spm_bytes
+        : 0;
+    const size_t fixed_spm_bytes = async_t1_output
+        ? qbuf_spm_bytes + o_accum_spm_bytes + 5 * state_spm_bytes +
+              2 * bn128_k_spm_bytes + bn256_score_spm_bytes +
+              bn256_vlow_alt_spm_bytes
+        : qbuf_spm_bytes + 2 * kvbuf_spm_bytes + outc_spm_bytes +
+              o_accum_spm_bytes + 5 * state_spm_bytes + p_score_spm_bytes;
+
+    char *spm_cursor = (char *)rt_spm_malloc(fixed_spm_bytes);
+    half *qbuf = 0;
+    half *ktmp = 0;
+    half *kbuf = 0;
+    half *obuf = 0;
+    half *p_score = 0;
+    half *next_k_raw = 0;
+    half *next_k_trans = 0;
+    half *p_score128 = 0;
+    half *k128_raw = 0;
+    half *k128_trans = 0;
+    float *outc = 0;
+    float *outc1 = 0;
+    float *o_accum = 0;
+    float *l_prev = 0;
+    float *m_prev = 0;
+    float *l_cur = 0;
+    float *m_cur = 0;
+    float *scale = 0;
+    float *next_score0 = 0;
+    float *score_q3 = 0;
+    float *score256 = 0;
+    half *v256_low_alt = 0;
+
+    if (async_t1_output) {
+        qbuf = (half *)spm_cursor;                                    // 128 * 64
+        spm_cursor += qbuf_spm_bytes;
+        o_accum = (float *)spm_cursor;                                // 128 * 64
+        spm_cursor += o_accum_spm_bytes;
+        l_prev = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        m_prev = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        l_cur = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        m_cur = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        scale = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        k128_raw = (half *)spm_cursor;                                // 128 * 64
+        spm_cursor += bn128_k_spm_bytes;
+        k128_trans = (half *)spm_cursor;                              // 64 * 128
+        spm_cursor += bn128_k_spm_bytes;
+        score256 = (float *)spm_cursor;                               // 128 * 256
+        spm_cursor += bn256_score_spm_bytes;
+        v256_low_alt = (half *)spm_cursor;                            // 256 * 32
+        spm_cursor += bn256_vlow_alt_spm_bytes;
+
+        // Banks 0-3 become contiguous P256 after N256 softmax. Banks 4-7
+        // remain independent score/PV-output storage for all smaller suffixes.
+        outc = score256 + 4 * BM * BN;
+        outc1 = score256 + 5 * BM * BN;
+        next_score0 = score256 + 6 * BM * BN;
+        score_q3 = score256 + 7 * BM * BN;
+        p_score = reinterpret_cast<half *>(score256);
+        p_score128 = reinterpret_cast<half *>(score256);
+        ktmp = k128_raw;
+        kbuf = k128_trans;
+        next_k_raw = k128_raw + BN * BK;
+        next_k_trans = k128_trans + BN * BK;
+        obuf = qbuf;
+    } else {
+        qbuf = (half *)spm_cursor;
+        spm_cursor += qbuf_spm_bytes;
+        ktmp = (half *)spm_cursor;
+        spm_cursor += kvbuf_spm_bytes;
+        kbuf = (half *)spm_cursor;
+        spm_cursor += kvbuf_spm_bytes;
+        outc = (float *)spm_cursor;
+        outc1 = outc;
+        next_score0 = outc;
+        score_q3 = outc;
+        spm_cursor += outc_spm_bytes;
+        o_accum = (float *)spm_cursor;
+        spm_cursor += o_accum_spm_bytes;
+        l_prev = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        m_prev = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        l_cur = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        m_cur = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        scale = (float *)spm_cursor;
+        spm_cursor += state_spm_bytes;
+        p_score = (half *)spm_cursor;
+        spm_cursor += p_score_spm_bytes;
+        obuf = qbuf;
+        next_k_raw = ktmp;
+        next_k_trans = kbuf;
+        p_score128 = reinterpret_cast<half *>(o_accum);
+        k128_raw = reinterpret_cast<half *>(outc);
+        k128_trans = reinterpret_cast<half *>(o_accum);
+        v256_low_alt = k128_raw;
+    }
+
+    // Keep the variable-sized table after the fixed arena so its size cannot
+    // perturb the addresses/bank mapping of the compute buffers above.
+    int *ldm_block_table =
+        (int *)rt_spm_malloc(max_used_blocks * sizeof(int));
+
+    // Matmul owns a small reply queue intended for repeated submissions.  Keep
+    // the engines and their fixed-shape tensor views alive across KV tiles
+    // instead of rebuilding them three times per tile.
+    MatmulConfig qk_matmul_cfg;
+    Matmul qk_matmul(qk_matmul_cfg);
+    MatmulConfig pv_matmul_cfg;
+    Matmul pv_matmul(pv_matmul_cfg);
+    auto tensorQ = make_tensor<2>(qbuf,
+        {static_cast<size_t>(BM), static_cast<size_t>(BK)});
+    auto tensorK = make_tensor<2>(kbuf,
+        {static_cast<size_t>(BK), static_cast<size_t>(BN)});
+    auto tensorC = make_tensor<2>(outc,
+        {static_cast<size_t>(BM), static_cast<size_t>(BN)});
+    auto tensorC1 = make_tensor<2>(outc1,
+        {static_cast<size_t>(BM), static_cast<size_t>(BN)});
+    auto tensorCNext = make_tensor<2>(next_score0,
+        {static_cast<size_t>(BM), static_cast<size_t>(BN)});
+    auto tensorP = make_tensor<2>(p_score,
+        {static_cast<size_t>(BM), static_cast<size_t>(BN)});
+    auto tensorP64 = make_tensor<2>(p_score,
+        {static_cast<size_t>(BM), static_cast<size_t>(2 * BN)});
+    auto tensorV_ktmp = make_tensor<2>(ktmp,
+        {static_cast<size_t>(BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV_kbuf = make_tensor<2>(kbuf,
+        {static_cast<size_t>(BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV64_ktmp = make_tensor<2>(ktmp,
+        {static_cast<size_t>(2 * BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV64_kbuf = make_tensor<2>(kbuf,
+        {static_cast<size_t>(2 * BN), static_cast<size_t>(gemm_bn)});
+    auto tensorO = make_tensor<2>(outc,
+        {static_cast<size_t>(BM), static_cast<size_t>(gemm_bn)});
+    auto tensorKNext = make_tensor<2>(next_k_trans,
+        {static_cast<size_t>(BK), static_cast<size_t>(BN)});
+    auto tensorQ32_0 = make_tensor<2>(qbuf,
+        {static_cast<size_t>(32), static_cast<size_t>(BK)});
+    auto tensorQ32_1 = make_tensor<2>(qbuf + 32 * BK,
+        {static_cast<size_t>(32), static_cast<size_t>(BK)});
+    auto tensorQ32_2 = make_tensor<2>(qbuf + 64 * BK,
+        {static_cast<size_t>(32), static_cast<size_t>(BK)});
+    auto tensorQ32_3 = make_tensor<2>(qbuf + 96 * BK,
+        {static_cast<size_t>(32), static_cast<size_t>(BK)});
+    auto tensorK128 = make_tensor<2>(k128_trans,
+        {static_cast<size_t>(BK), static_cast<size_t>(4 * BN)});
+    auto tensorScoreQ0 = make_tensor<2>(outc,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScoreQ1 = make_tensor<2>(outc1,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScoreQ2 = make_tensor<2>(next_score0,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScoreQ3 = make_tensor<2>(score_q3,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorP128 = make_tensor<2>(p_score128,
+        {static_cast<size_t>(BM), static_cast<size_t>(4 * BN)});
+    half *v128_low = k128_raw;
+    half *v128_high = k128_raw + 4 * BN * gemm_bn;
+    auto tensorV128Low = make_tensor<2>(v128_low,
+        {static_cast<size_t>(4 * BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV128High = make_tensor<2>(v128_high,
+        {static_cast<size_t>(4 * BN), static_cast<size_t>(gemm_bn)});
+    float *score256_l0 = async_t1_output
+        ? score256 : outc;
+    float *score256_l1 = async_t1_output
+        ? score256 + BM * BN : outc;
+    float *score256_l2 = async_t1_output
+        ? score256 + 2 * BM * BN : outc;
+    float *score256_l3 = async_t1_output
+        ? score256 + 3 * BM * BN : outc;
+    float *score256_r0 = async_t1_output
+        ? score256 + 4 * BM * BN : outc;
+    float *score256_r1 = async_t1_output
+        ? score256 + 5 * BM * BN : outc;
+    float *score256_r2 = async_t1_output
+        ? score256 + 6 * BM * BN : outc;
+    float *score256_r3 = async_t1_output
+        ? score256 + 7 * BM * BN : outc;
+    half *p_score256 = async_t1_output
+        ? reinterpret_cast<half *>(score256) : p_score;
+    auto tensorScore256L0 = make_tensor<2>(score256_l0,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256L1 = make_tensor<2>(score256_l1,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256L2 = make_tensor<2>(score256_l2,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256L3 = make_tensor<2>(score256_l3,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256R0 = make_tensor<2>(score256_r0,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256R1 = make_tensor<2>(score256_r1,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256R2 = make_tensor<2>(score256_r2,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorScore256R3 = make_tensor<2>(score256_r3,
+        {static_cast<size_t>(32), static_cast<size_t>(4 * BN)});
+    auto tensorP256 = make_tensor<2>(p_score256,
+        {static_cast<size_t>(BM), static_cast<size_t>(8 * BN)});
+    auto tensorV256Low = make_tensor<2>(k128_raw,
+        {static_cast<size_t>(8 * BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV256LowAlt = make_tensor<2>(v256_low_alt,
+        {static_cast<size_t>(8 * BN), static_cast<size_t>(gemm_bn)});
+    auto tensorV256High = make_tensor<2>(k128_trans,
+        {static_cast<size_t>(8 * BN), static_cast<size_t>(gemm_bn)});
+
+    MemcpyHandle q_prefetch_handle;
+    MemcpyHandle output_handle;
+    MemcpyHandle v256_low_handle;
+    bool q_prefetch_pending = false;
+    int q_prefetch_i = -1;
+    bool v256_low_pending = false;
+    int v256_low_j = -1;
+    int v256_low_tag = -1;
+
+    int cur_q_index = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        int q_seq_len = args.q_seq_lens[b];
+        int k_seq_len = (kT1Prefill || args.batch_size == 1)
+            ? single_k_seq_len : args.kv_seq_lens[b];
+        // Every query in this tile is causal.  KV tiles strictly above the
+        // causal diagonal would be masked to -inf and contribute exactly zero,
+        // so do not issue their two matmuls or cache loads at all.  This cuts
+        // close to half of the prefill work when q_seq_len == k_seq_len, while
+        // decode (q_seq_len == 1) still visits the full history.
+        int causal_q_start = k_seq_len - q_seq_len;
+        if (causal_q_start < 0) causal_q_start = 0;
+        int used_blocks = (kT1Prefill || args.batch_size == 1)
+            ? single_used_blocks
+            : (k_seq_len + args.block_size - 1) / args.block_size;
+        memcpy(ldm_block_table, args.block_table + b * args.block_table_dim,
+               used_blocks * sizeof(int));
+        const int q_group_span = workers_per_head * BM;
+        const int q_group_count =
+            (q_seq_len + q_group_span - 1) / q_group_span;
+        for (int q_group = 0; q_group < q_group_count; q_group++) {
+            // Reverse the lane order in alternate groups.  Causal work grows
+            // with Q position; the snake schedule pairs a light group with a
+            // heavy one on each SPE without changing any tile's math.
+            int scheduled_lane = (q_group & 1)
+                ? (workers_per_head - 1 - q_lane)
+                : q_lane;
+            int i = (q_group * workers_per_head + scheduled_lane) * BM;
+            if (i >= q_seq_len) continue;
+            int cur_BM_q = MIN(BM, q_seq_len - i);
+            int cur_BM = cur_BM_q;
+
+            // init online softmax state for this Q block
+            memset(o_accum, 0,
+                   (size_t)cur_BM * BK * sizeof(float));
+            memset(l_prev, 0, (size_t)cur_BM * sizeof(float));
+            fill_inf(m_prev, cur_BM);
+            float *l_ptr = l_prev, *l_next = l_cur;
+            float *m_ptr = m_prev, *m_next = m_cur;
+
+            // load q [cur_BM, size_per_head]
+            half * src_q_ptr = (half *)args.q +
+                               (cur_q_index + i) * (args.local_head_num * BK) +
+                               head_idx * BK;
+            size_t q_src_stride = (args.local_head_num - 1) * token_size;
+            if (q_prefetch_pending && q_prefetch_i == i) {
+                memcpy_wait(q_prefetch_handle);
+                q_prefetch_pending = false;
+            } else {
+                if (q_prefetch_pending) {
+                    memcpy_wait(q_prefetch_handle);
+                    q_prefetch_pending = false;
+                }
+                memcpy_stride(qbuf, src_q_ptr, cur_BM * token_size,
+                              token_size, {0, q_src_stride});
+            }
+
+            // Rows outside cur_BM are never consumed by softmax, accumulation,
+            // normalization, or the output DMA.  Leaving their fixed-shape
+            // matmul lanes unspecified avoids 24 KiB of dead SPM clears in the
+            // latency-critical one-row decode path.
+
+            int visible_k_end = MIN(
+                k_seq_len, causal_q_start + i + cur_BM);
+            int j = 0;
+            if (async_t1_output) {
+                constexpr int LOGICAL_BN256 = 8 * BN;
+                for (; visible_k_end - j > 7 * BN; j += LOGICAL_BN256) {
+                    const int cur_BN7 =
+                        MIN(BN, visible_k_end - (j + 7 * BN));
+                    const int cur_logical_BN256 = 7 * BN + cur_BN7;
+                    const int rows_q0 = MIN(32, cur_BM);
+                    const int rows_q1 = MIN(32, MAX(0, cur_BM - 32));
+                    const int rows_q2 = MIN(32, MAX(0, cur_BM - 64));
+                    const int rows_q3 = MIN(32, MAX(0, cur_BM - 96));
+                    const int vlow_tag = (j / LOGICAL_BN256) & 1;
+                    half *current_vlow = vlow_tag
+                        ? v256_low_alt : k128_raw;
+                    auto &current_tensorVlow = vlow_tag
+                        ? tensorV256LowAlt : tensorV256Low;
+                    bool current_vlow_prefetched =
+                        v256_low_pending && v256_low_j == j &&
+                        v256_low_tag == vlow_tag;
+                    if (v256_low_pending && !current_vlow_prefetched) {
+                        memcpy_wait(v256_low_handle);
+                        v256_low_pending = false;
+                        v256_low_j = -1;
+                        v256_low_tag = -1;
+                    }
+
+                    // The first right-score bank is untouched until right QK.
+                    // Use its 16 KiB as K raw so both V-low banks stay live.
+                    half *k128_raw_stage =
+                        reinterpret_cast<half *>(score256_r0);
+
+                    // Left N128 panel: four physical cache blocks become one
+                    // K[128,64] tile and four row-sliced QK products.
+                    for (int kb = 0; kb < 4; kb++) {
+                        const int logical_block = (j + kb * BN) >> 5;
+                        load_kv_cache(
+                            k128_raw_stage + kb * BN * BK,
+                            (const half *)args.key_cache, ldm_block_table,
+                            logical_block, kv_head_idx,
+                            args.local_kv_head_num, args.block_size,
+                            BK, BN);
+                    }
+                    transpose(k128_trans, k128_raw_stage, 4 * BN, BK,
+                              sizeof(half));
+
+                    qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                        tensorQ32_0, tensorK128, /*is_lastk=*/true);
+                    qk_matmul.storeC_spm_async(tensorScore256L0);
+                    if (rows_q1 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_1, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScore256L1);
+                        qk_matmul.wait_storeC(2);
+                    } else {
+                        qk_matmul.wait_storeC(1);
+                    }
+                    if (rows_q2 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_2, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScore256L2);
+                        if (rows_q3 > 0) {
+                            qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                                tensorQ32_3, tensorK128, /*is_lastk=*/true);
+                            qk_matmul.storeC_spm_async(tensorScore256L3);
+                            qk_matmul.wait_storeC(2);
+                        } else {
+                            qk_matmul.wait_storeC(1);
+                        }
+                    }
+
+                    // Right N128 panel. Only the eighth physical block may be
+                    // partial; zero K columns and later mask their scores.
+                    for (int kb = 4; kb < 8; kb++) {
+                        const int logical_block = (j + kb * BN) >> 5;
+                        const int valid = kb == 7 ? cur_BN7 : BN;
+                        load_kv_cache(
+                            k128_raw_stage + (kb - 4) * BN * BK,
+                            (const half *)args.key_cache, ldm_block_table,
+                            logical_block, kv_head_idx,
+                            args.local_kv_head_num, args.block_size,
+                            BK, valid);
+                    }
+                    if (cur_BN7 < BN) {
+                        memset(k128_raw_stage + (3 * BN + cur_BN7) * BK, 0,
+                               (size_t)(BN - cur_BN7) * BK * sizeof(half));
+                    }
+                    transpose(k128_trans, k128_raw_stage, 4 * BN, BK,
+                              sizeof(half));
+
+                    if (!current_vlow_prefetched) {
+                        for (int vb = 0; vb < 8; vb++) {
+                            const int logical_block = (j + vb * BN) >> 5;
+                            const int valid = vb == 7 ? cur_BN7 : BN;
+                            prefetch_v_block_half_bn256(
+                                current_vlow + vb * BN * gemm_bn,
+                                (const half *)args.value_cache,
+                                ldm_block_table, logical_block, kv_head_idx,
+                                args.local_kv_head_num, args.block_size, BK,
+                                /*column_offset=*/0, valid);
+                        }
+                    }
+
+                    qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                        tensorQ32_0, tensorK128, /*is_lastk=*/true);
+                    if (output_pending) {
+                        memcpy_wait(output_handle);
+                        output_pending = false;
+                    }
+                    qk_matmul.storeC_spm_async(tensorScore256R0);
+                    if (rows_q1 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_1, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScore256R1);
+                        qk_matmul.wait_storeC(2);
+                    } else {
+                        qk_matmul.wait_storeC(1);
+                    }
+                    if (rows_q2 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_2, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScore256R2);
+                        if (rows_q3 > 0) {
+                            qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                                tensorQ32_3, tensorK128, /*is_lastk=*/true);
+                            qk_matmul.storeC_spm_async(tensorScore256R3);
+                            qk_matmul.wait_storeC(2);
+                        } else {
+                            qk_matmul.wait_storeC(1);
+                        }
+                    }
+
+                    // qbuf is dead after the eighth QK product. Prefetch only
+                    // when this macro-tile reaches the visible-KV boundary.
+                    if (!q_prefetch_pending &&
+                        j + cur_logical_BN256 >= visible_k_end &&
+                        q_group + 1 < q_group_count) {
+                        const int next_group = q_group + 1;
+                        const int next_scheduled_lane = (next_group & 1)
+                            ? (workers_per_head - 1 - q_lane)
+                            : q_lane;
+                        const int next_i =
+                            (next_group * workers_per_head +
+                             next_scheduled_lane) * BM;
+                        if (next_i < q_seq_len) {
+                            const int next_BM = MIN(BM, q_seq_len - next_i);
+                            half *next_q_ptr = (half *)args.q +
+                                (cur_q_index + next_i) *
+                                    (args.local_head_num * BK) +
+                                head_idx * BK;
+                            memcpy_async(
+                                qbuf, next_q_ptr, next_BM * token_size,
+                                token_size, {0, q_src_stride},
+                                MemcpyGlobalToSpm, q_prefetch_handle);
+                            q_prefetch_pending = true;
+                            q_prefetch_i = next_i;
+                        }
+                    }
+
+                    mask_and_pad_score_n128(
+                        score256_l0, rows_q0, i, j, causal_q_start, 4 * BN);
+                    mask_and_pad_score_n128(
+                        score256_l1, rows_q1, i + 32, j,
+                        causal_q_start, 4 * BN);
+                    mask_and_pad_score_n128(
+                        score256_l2, rows_q2, i + 64, j,
+                        causal_q_start, 4 * BN);
+                    mask_and_pad_score_n128(
+                        score256_l3, rows_q3, i + 96, j,
+                        causal_q_start, 4 * BN);
+                    const int right_valid = 3 * BN + cur_BN7;
+                    mask_and_pad_score_n128(
+                        score256_r0, rows_q0, i, j + 4 * BN,
+                        causal_q_start, right_valid);
+                    mask_and_pad_score_n128(
+                        score256_r1, rows_q1, i + 32, j + 4 * BN,
+                        causal_q_start, right_valid);
+                    mask_and_pad_score_n128(
+                        score256_r2, rows_q2, i + 64, j + 4 * BN,
+                        causal_q_start, right_valid);
+                    mask_and_pad_score_n128(
+                        score256_r3, rows_q3, i + 96, j + 4 * BN,
+                        causal_q_start, right_valid);
+
+                    // A prefetched low half has overlapped the prior PV and
+                    // current QK. Wait only at its first consumer, then keep
+                    // the high-half batch disjoint from its eight requests.
+                    if (current_vlow_prefetched) {
+                        memcpy_wait(v256_low_handle);
+                        v256_low_pending = false;
+                        v256_low_j = -1;
+                        v256_low_tag = -1;
+                    } else {
+                        memcpy_wait();
+                    }
+                    if (cur_BN7 < BN) {
+                        memset(current_vlow +
+                                   (7 * BN + cur_BN7) * gemm_bn,
+                               0,
+                               (size_t)(BN - cur_BN7) * gemm_bn *
+                                   sizeof(half));
+                    }
+                    for (int vb = 0; vb < 8; vb++) {
+                        const int logical_block = (j + vb * BN) >> 5;
+                        const int valid = vb == 7 ? cur_BN7 : BN;
+                        prefetch_v_block_half_bn256(
+                            k128_trans + vb * BN * gemm_bn,
+                            (const half *)args.value_cache,
+                            ldm_block_table, logical_block, kv_head_idx,
+                            args.local_kv_head_num, args.block_size, BK,
+                            /*column_offset=*/gemm_bn, valid);
+                    }
+
+                    online_softmax_step_n256_rows(
+                        score256_l0, score256_l1,
+                        score256_l2, score256_l3,
+                        score256_r0, score256_r1,
+                        score256_r2, score256_r3,
+                        p_score256, m_ptr, l_ptr, m_next, l_next, scale,
+                        args.softmax_scale, cur_BM);
+
+                    memcpy_wait();
+                    if (cur_BN7 < BN) {
+                        memset(k128_trans +
+                                   (7 * BN + cur_BN7) * gemm_bn,
+                               0,
+                               (size_t)(BN - cur_BN7) * gemm_bn *
+                                   sizeof(half));
+                    }
+
+                    // The opposite low bank was consumed by the prior tile.
+                    // Prefetch only a following BN256 iteration so no suffix
+                    // path inherits an in-flight grouped request.
+                    const int next_v_j = j + LOGICAL_BN256;
+                    if (!v256_low_pending &&
+                        visible_k_end - next_v_j > 7 * BN) {
+                        const int next_v_tag = vlow_tag ^ 1;
+                        half *next_vlow = next_v_tag
+                            ? v256_low_alt : k128_raw;
+                        const int next_BN7 = MIN(
+                            BN, visible_k_end - (next_v_j + 7 * BN));
+                        for (int vb = 0; vb < 8; vb++) {
+                            const int next_logical_block =
+                                (next_v_j + vb * BN) >> 5;
+                            const int valid = vb == 7 ? next_BN7 : BN;
+                            prefetch_v_block_half_bn256_grouped(
+                                next_vlow + vb * BN * gemm_bn,
+                                (const half *)args.value_cache,
+                                ldm_block_table, next_logical_block,
+                                kv_head_idx, args.local_kv_head_num,
+                                args.block_size, BK,
+                                /*column_offset=*/0, valid,
+                                v256_low_handle);
+                        }
+                        v256_low_pending = true;
+                        v256_low_j = next_v_j;
+                        v256_low_tag = next_v_tag;
+                    }
+
+                    // K=256 is decomposed by ACE into K32 chunks. Two complete
+                    // contractions cover D64 and replace four K128 submissions.
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP256, current_tensorVlow, true);
+                    pv_matmul.storeC_spm_async(tensorO);
+
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP256, tensorV256High, true);
+                    pv_matmul.storeC_spm_async(tensorC1);
+                    pv_matmul.wait_storeC(2);
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block = o_accum + ai * BK;
+                        float *out_row = outc + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block =
+                            o_accum + ai * BK + gemm_bn;
+                        float *out_row = outc1 + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+
+                    float *tmp = l_ptr; l_ptr = l_next; l_next = tmp;
+                    tmp = m_ptr; m_ptr = m_next; m_next = tmp;
+                }
+            }
+            if (v256_low_pending) {
+                memcpy_wait(v256_low_handle);
+                v256_low_pending = false;
+                v256_low_j = -1;
+                v256_low_tag = -1;
+            }
+            if (async_t1_output) {
+                constexpr int LOGICAL_BN128 = 4 * BN;
+                for (; visible_k_end - j > 3 * BN; j += LOGICAL_BN128) {
+                    const int cur_BN3 =
+                        MIN(BN, visible_k_end - (j + 3 * BN));
+                    const int cur_logical_BN128 = 3 * BN + cur_BN3;
+                    const int rows_q0 = MIN(32, cur_BM);
+                    const int rows_q1 = MIN(32, MAX(0, cur_BM - 32));
+                    const int rows_q2 = MIN(32, MAX(0, cur_BM - 64));
+                    const int rows_q3 = MIN(32, MAX(0, cur_BM - 96));
+                    const int cur_block0 = j >> 5;
+                    const int cur_block1 = (j + BN) >> 5;
+                    const int cur_block2 = (j + 2 * BN) >> 5;
+                    const int cur_block3 = (j + 3 * BN) >> 5;
+
+                    // Build one physical K[128,64] tile, then transpose it to
+                    // the exact B[64,128] layout required by M32_N128 QK.
+                    load_kv_cache(
+                        k128_raw, (const half *)args.key_cache,
+                        ldm_block_table, cur_block0, kv_head_idx,
+                        args.local_kv_head_num, args.block_size, BK, BN);
+                    load_kv_cache(
+                        k128_raw + BN * BK, (const half *)args.key_cache,
+                        ldm_block_table, cur_block1, kv_head_idx,
+                        args.local_kv_head_num, args.block_size, BK, BN);
+                    load_kv_cache(
+                        k128_raw + 2 * BN * BK,
+                        (const half *)args.key_cache, ldm_block_table,
+                        cur_block2, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, BN);
+                    load_kv_cache(
+                        k128_raw + 3 * BN * BK,
+                        (const half *)args.key_cache, ldm_block_table,
+                        cur_block3, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, cur_BN3);
+                    if (cur_BN3 < BN) {
+                        memset(k128_raw + (3 * BN + cur_BN3) * BK, 0,
+                               (size_t)(BN - cur_BN3) * BK * sizeof(half));
+                    }
+                    transpose(k128_trans, k128_raw, LOGICAL_BN128, BK,
+                              sizeof(half));
+
+                    // The blocking transpose closes K-raw ownership. Reuse it
+                    // for two packed V[128,32] operands while QK and softmax
+                    // consume only k128_trans and the four score banks.
+                    prefetch_v_block_halves_bn128(
+                        v128_low, v128_high,
+                        (const half *)args.value_cache, ldm_block_table,
+                        cur_block0, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, BN);
+                    prefetch_v_block_halves_bn128(
+                        v128_low + BN * gemm_bn,
+                        v128_high + BN * gemm_bn,
+                        (const half *)args.value_cache, ldm_block_table,
+                        cur_block1, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, BN);
+                    prefetch_v_block_halves_bn128(
+                        v128_low + 2 * BN * gemm_bn,
+                        v128_high + 2 * BN * gemm_bn,
+                        (const half *)args.value_cache, ldm_block_table,
+                        cur_block2, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, BN);
+                    prefetch_v_block_halves_bn128(
+                        v128_low + 3 * BN * gemm_bn,
+                        v128_high + 3 * BN * gemm_bn,
+                        (const half *)args.value_cache, ldm_block_table,
+                        cur_block3, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, cur_BN3);
+
+                    qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                        tensorQ32_0, tensorK128, /*is_lastk=*/true);
+                    if (output_pending) {
+                        memcpy_wait(output_handle);
+                        output_pending = false;
+                    }
+                    qk_matmul.storeC_spm_async(tensorScoreQ0);
+                    qk_matmul.wait_storeC(1);
+
+                    if (rows_q1 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_1, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScoreQ1);
+                        qk_matmul.wait_storeC(1);
+                    }
+                    if (rows_q2 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_2, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScoreQ2);
+                        qk_matmul.wait_storeC(1);
+                    }
+                    if (rows_q3 > 0) {
+                        qk_matmul.compute_async<MatmulBlockConfig::M32_N128>(
+                            tensorQ32_3, tensorK128, /*is_lastk=*/true);
+                        qk_matmul.storeC_spm_async(tensorScoreQ3);
+                        qk_matmul.wait_storeC(1);
+                    }
+
+                    // qbuf is dead only after every valid 32-row QK slice.
+                    if (!q_prefetch_pending &&
+                        j + cur_logical_BN128 >= visible_k_end &&
+                        q_group + 1 < q_group_count) {
+                        const int next_group = q_group + 1;
+                        const int next_scheduled_lane = (next_group & 1)
+                            ? (workers_per_head - 1 - q_lane)
+                            : q_lane;
+                        const int next_i =
+                            (next_group * workers_per_head +
+                             next_scheduled_lane) * BM;
+                        if (next_i < q_seq_len) {
+                            const int next_BM = MIN(BM, q_seq_len - next_i);
+                            half *next_q_ptr = (half *)args.q +
+                                (cur_q_index + next_i) *
+                                    (args.local_head_num * BK) +
+                                head_idx * BK;
+                            memcpy_async(
+                                qbuf, next_q_ptr, next_BM * token_size,
+                                token_size, {0, q_src_stride},
+                                MemcpyGlobalToSpm, q_prefetch_handle);
+                            q_prefetch_pending = true;
+                            q_prefetch_i = next_i;
+                        }
+                    }
+
+                    mask_and_pad_score_n128(
+                        outc, rows_q0, i, j, causal_q_start,
+                        cur_logical_BN128);
+                    mask_and_pad_score_n128(
+                        outc1, rows_q1, i + 32, j, causal_q_start,
+                        cur_logical_BN128);
+                    mask_and_pad_score_n128(
+                        next_score0, rows_q2, i + 64, j, causal_q_start,
+                        cur_logical_BN128);
+                    mask_and_pad_score_n128(
+                        score_q3, rows_q3, i + 96, j, causal_q_start,
+                        cur_logical_BN128);
+
+                    online_softmax_step_n128_rows(
+                        outc, outc1, next_score0, score_q3, p_score128,
+                        m_ptr, l_ptr, m_next, l_next, scale,
+                        args.softmax_scale, cur_BM);
+
+                    memcpy_wait();
+                    if (cur_BN3 < BN) {
+                        const size_t tail_bytes =
+                            (size_t)(BN - cur_BN3) * gemm_bn * sizeof(half);
+                        memset(
+                            v128_low + (3 * BN + cur_BN3) * gemm_bn,
+                            0, tail_bytes);
+                        memset(
+                            v128_high + (3 * BN + cur_BN3) * gemm_bn,
+                            0, tail_bytes);
+                    }
+
+                    // Two complete K128 contractions cover the two D32 output
+                    // halves. The low-half SIMD update fills the high PV
+                    // writeback window without changing the recurrence.
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP128, tensorV128Low, true);
+                    pv_matmul.storeC_spm_async(tensorO);
+                    pv_matmul.wait_storeC(1);
+
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP128, tensorV128High, true);
+                    pv_matmul.storeC_spm_async(tensorC1);
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block = o_accum + ai * BK;
+                        float *out_row = outc + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+
+                    pv_matmul.wait_storeC(1);
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block =
+                            o_accum + ai * BK + gemm_bn;
+                        float *out_row = outc1 + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+
+                    float *tmp = l_ptr; l_ptr = l_next; l_next = tmp;
+                    tmp = m_ptr; m_ptr = m_next; m_next = tmp;
+                }
+            }
+            if (async_t1_output) {
+                constexpr int LOGICAL_BN = 2 * BN;
+                bool qk0_ready = false;
+                int score0_tag = 0;
+                for (; visible_k_end - j > BN; j += LOGICAL_BN) {
+                    const int cur_BN0 = BN;
+                    const int cur_BN1 = MIN(BN, visible_k_end - (j + BN));
+                    const int cur_logical_BN = BN + cur_BN1;
+                    float *score0 = score0_tag ? next_score0 : outc;
+
+                    const int cur_block0 = j >> 5;
+                    if (!qk0_ready) {
+                        load_kv_cache(
+                            ktmp, (const half *)args.key_cache,
+                            ldm_block_table, cur_block0, kv_head_idx,
+                            args.local_kv_head_num, args.block_size, BK,
+                            cur_BN0);
+                        transpose(kbuf, ktmp, BN, BK, sizeof(half));
+
+                        qk_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                            tensorQ, tensorK, /*is_lastk=*/true);
+                        if (output_pending) {
+                            memcpy_wait(output_handle);
+                            output_pending = false;
+                        }
+                        if (score0_tag) {
+                            qk_matmul.storeC_spm_async(tensorCNext);
+                        } else {
+                            qk_matmul.storeC_spm_async(tensorC);
+                        }
+                        qk_matmul.wait_storeC(1);
+                    }
+                    qk0_ready = false;
+
+                    const int cur_block1 = (j + BN) >> 5;
+                    load_kv_cache(
+                        ktmp, (const half *)args.key_cache, ldm_block_table,
+                        cur_block1, kv_head_idx, args.local_kv_head_num,
+                        args.block_size, BK, cur_BN1);
+                    transpose(kbuf, ktmp, BN, BK, sizeof(half));
+                    if (cur_BN1 < BN) {
+                        for (int h = 0; h < BK; h++) {
+                            for (int c = cur_BN1; c < BN; c++) {
+                                kbuf[h * BN + c] = 0;
+                            }
+                        }
+                    }
+
+                    const int block_id0 = ldm_block_table[cur_block0];
+                    const int block_id1 = ldm_block_table[cur_block1];
+                    const half *v_cache_base0 =
+                        (const half *)args.value_cache +
+                        block_id0 * args.local_kv_head_num *
+                            args.block_size * BK +
+                        kv_head_idx * args.block_size * BK;
+                    const half *v_cache_base1 =
+                        (const half *)args.value_cache +
+                        block_id1 * args.local_kv_head_num *
+                            args.block_size * BK +
+                        kv_head_idx * args.block_size * BK;
+                    const size_t v_copy_size0 =
+                        (size_t)cur_BN0 * gemm_bn * sizeof(half);
+                    const size_t v_copy_size1 =
+                        (size_t)cur_BN1 * gemm_bn * sizeof(half);
+                    const size_t v_src_stride =
+                        (size_t)(BK - gemm_bn) * sizeof(half);
+
+                    // K1 transpose has released ktmp. Stage the low V half
+                    // from both physical blocks while QK1 owns kbuf.
+                    memcpy_async(
+                        ktmp, v_cache_base0, v_copy_size0,
+                        gemm_bn * sizeof(half), {0, v_src_stride},
+                        MemcpyGlobalToSpm);
+                    memcpy_async(
+                        ktmp + BN * gemm_bn, v_cache_base1, v_copy_size1,
+                        gemm_bn * sizeof(half), {0, v_src_stride},
+                        MemcpyGlobalToSpm);
+
+                    qk_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorQ, tensorK, /*is_lastk=*/true);
+                    qk_matmul.storeC_spm_async(tensorC1);
+                    qk_matmul.wait_storeC(1);
+
+                    // QK1 has released kbuf. Stage the high V half while the
+                    // joint softmax consumes the two score buffers.
+                    memcpy_async(
+                        kbuf, v_cache_base0 + gemm_bn, v_copy_size0,
+                        gemm_bn * sizeof(half), {0, v_src_stride},
+                        MemcpyGlobalToSpm);
+                    memcpy_async(
+                        kbuf + BN * gemm_bn,
+                        v_cache_base1 + gemm_bn, v_copy_size1,
+                        gemm_bn * sizeof(half), {0, v_src_stride},
+                        MemcpyGlobalToSpm);
+
+                    // qbuf is dead only after the final QK for this Q tile.
+                    if (!q_prefetch_pending &&
+                        j + cur_logical_BN >= visible_k_end &&
+                        q_group + 1 < q_group_count) {
+                        int next_group = q_group + 1;
+                        int next_scheduled_lane = (next_group & 1)
+                            ? (workers_per_head - 1 - q_lane)
+                            : q_lane;
+                        int next_i =
+                            (next_group * workers_per_head +
+                             next_scheduled_lane) * BM;
+                        if (next_i < q_seq_len) {
+                            int next_BM = MIN(BM, q_seq_len - next_i);
+                            half *next_q_ptr = (half *)args.q +
+                                (cur_q_index + next_i) *
+                                    (args.local_head_num * BK) +
+                                head_idx * BK;
+                            memcpy_async(
+                                qbuf, next_q_ptr, next_BM * token_size,
+                                token_size, {0, q_src_stride},
+                                MemcpyGlobalToSpm, q_prefetch_handle);
+                            q_prefetch_pending = true;
+                            q_prefetch_i = next_i;
+                        }
+                    }
+
+                    const int first_q_visible_end =
+                        causal_q_start + i + 1;
+                    if (j + cur_BN0 > first_q_visible_end) {
+                        apply_causal_mask(score0, cur_BM, cur_BN0, i, j,
+                                          causal_q_start, BN);
+                    }
+                    if (j + BN + cur_BN1 > first_q_visible_end) {
+                        apply_causal_mask(outc1, cur_BM, cur_BN1, i,
+                                          j + BN, causal_q_start, BN);
+                    }
+                    if (cur_BN1 < BN) {
+                        for (int ri = 0; ri < cur_BM; ri++) {
+                            fill_inf(outc1 + ri * BN + cur_BN1,
+                                     BN - cur_BN1);
+                        }
+                    }
+
+                    online_softmax_step_n64_pair(
+                        score0, outc1, p_score, m_ptr, l_ptr,
+                        m_next, l_next, scale, args.softmax_scale, cur_BM);
+
+                    memcpy_wait();
+                    if (cur_BN1 < BN) {
+                        const size_t tail_bytes =
+                            (size_t)(BN - cur_BN1) * gemm_bn * sizeof(half);
+                        memset(ktmp + (BN + cur_BN1) * gemm_bn,
+                               0, tail_bytes);
+                        memset(kbuf + (BN + cur_BN1) * gemm_bn,
+                               0, tail_bytes);
+                    }
+
+                    // Complete PV0, then issue PV1 into the dead second score
+                    // buffer.  PV0's SIMD epilogue is independent of PV1 and
+                    // fills its ACE/writeback window without retaining both
+                    // results before accumulation.
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP64, tensorV64_ktmp, true);
+                    pv_matmul.storeC_spm_async(tensorO);
+
+                    pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorP64, tensorV64_kbuf, true);
+                    pv_matmul.storeC_spm_async(tensorC1);
+                    pv_matmul.wait_storeC(2);
+
+                    // Only pipeline into another complete BN64 tile. Prepare
+                    // its K0 while the current PV1 writeback owns ACE; the
+                    // private K bank cannot alias current V/PV operands.
+                    const bool prepare_next_qk0 =
+                        j + 2 * LOGICAL_BN <= visible_k_end;
+                    if (prepare_next_qk0) {
+                        const int next_block0 = (j + LOGICAL_BN) >> 5;
+                        load_kv_cache(
+                            next_k_raw, (const half *)args.key_cache,
+                            ldm_block_table, next_block0, kv_head_idx,
+                            args.local_kv_head_num, args.block_size, BK, BN);
+                        transpose(
+                            next_k_trans, next_k_raw, BN, BK, sizeof(half));
+                    }
+
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block = o_accum + ai * BK;
+                        float *out_row = outc + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+
+                    int next_score0_tag = score0_tag ^ 1;
+                    if (prepare_next_qk0) {
+                        // Current PV is fully drained before next-QK enters
+                        // ACE. Its writeback overlaps only the independent
+                        // high-half FP32 accumulation below.
+                        qk_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                            tensorQ, tensorKNext, /*is_lastk=*/true);
+                        if (next_score0_tag) {
+                            qk_matmul.storeC_spm_async(tensorCNext);
+                        } else {
+                            qk_matmul.storeC_spm_async(tensorC);
+                        }
+                    }
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block =
+                            o_accum + ai * BK + gemm_bn;
+                        float *out_row = outc1 + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+                    if (prepare_next_qk0) {
+                        qk_matmul.wait_storeC(1);
+                        score0_tag = next_score0_tag;
+                        qk0_ready = true;
+                    }
+
+                    float *tmp = l_ptr; l_ptr = l_next; l_next = tmp;
+                    tmp = m_ptr; m_ptr = m_next; m_next = tmp;
+                }
+            }
+
+            // A final <=32-token remainder retains the accepted BN32 path.
+            for (; j < visible_k_end; j += BN) {
+                int cur_BN = MIN(BN, visible_k_end - j);
+
+                // load k [cur_BN, size_per_head] -> ktmp
+                int cur_block = model_block_size
+                    ? (j >> 5)
+                    : (j / args.block_size);  // scored path: BN == block_size
+                load_kv_cache(ktmp, (const half *)args.key_cache, ldm_block_table, cur_block,
+                              kv_head_idx , args.local_kv_head_num, args.block_size,
+                              BK, cur_BN);
+
+                // Hardware transpose performs the same fixed-block bitwise
+                // permutation as the scalar loops.  The existing tail clear
+                // below still removes columns outside cur_BN.
+                transpose(kbuf, ktmp, BN, BK, sizeof(half));
+
+                // clear unused columns of kbuf (cur_BN < BN)
+                if (cur_BN < BN) {
+                    for (int h = 0; h < BK; h++) {
+                        for (int c = cur_BN; c < BN; c++) {
+                            kbuf[h * BN + c] = 0;
+                        }
+                    }
+                }
+
+                // The K transpose has released ktmp from the QK consumer.  Use
+                // it to prefetch the first V sub-tile while QK and softmax run;
+                // kbuf remains the transposed K input until QK completes.
+                int block_id = ldm_block_table[cur_block];
+                const half *v_cache_base = (const half *)args.value_cache
+                    + block_id * args.local_kv_head_num * args.block_size * BK
+                    + kv_head_idx  * args.block_size * BK;
+                const size_t v_copy_size =
+                    (size_t)cur_BN * gemm_bn * sizeof(half);
+                const size_t v_src_stride =
+                    (size_t)(BK - gemm_bn) * sizeof(half);
+                memcpy_async(ktmp, v_cache_base, v_copy_size,
+                             gemm_bn * sizeof(half), {0, v_src_stride},
+                             MemcpyGlobalToSpm);
+
+                // gemm: Q * K^T = score, using teco_hal matmul M2=128, N2=32
+                {
+                    qk_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorQ, tensorK, /*is_lastk=*/true);
+                    // The previous Q tile's output owns outc until its DMA
+                    // completes. Wait at the first overwrite after independent
+                    // state setup, Q/K staging, V prefetch, and QK compute.
+                    if (output_pending) {
+                        memcpy_wait(output_handle);
+                        output_pending = false;
+                    }
+                    qk_matmul.storeC_spm_async(tensorC);
+                    qk_matmul.wait_storeC(1);
+                }
+
+                // qbuf is dead after the final QK of this Q tile. The async
+                // output path stages O in outc, so prefetch the next scheduled
+                // Q tile into qbuf while this tile finishes softmax and PV.
+                if (async_t1_output && !q_prefetch_pending &&
+                    j + cur_BN >= visible_k_end &&
+                    q_group + 1 < q_group_count) {
+                    int next_group = q_group + 1;
+                    int next_scheduled_lane = (next_group & 1)
+                        ? (workers_per_head - 1 - q_lane)
+                        : q_lane;
+                    int next_i =
+                        (next_group * workers_per_head + next_scheduled_lane) * BM;
+                    if (next_i < q_seq_len) {
+                        int next_BM = MIN(BM, q_seq_len - next_i);
+                        half *next_q_ptr = (half *)args.q +
+                            (cur_q_index + next_i) *
+                                (args.local_head_num * BK) +
+                            head_idx * BK;
+                        memcpy_async(
+                            qbuf, next_q_ptr, next_BM * token_size,
+                            token_size, {0, q_src_stride},
+                            MemcpyGlobalToSpm, q_prefetch_handle);
+                        q_prefetch_pending = true;
+                        q_prefetch_i = next_i;
+                    }
+                }
+
+                // Historical tiles ending before the first query position are
+                // visible to every row in this Q tile.  Only tiles intersecting
+                // the local causal diagonal need the scalar mask walk.
+                int first_q_visible_end = causal_q_start + i + 1;
+                if (j + cur_BN > first_q_visible_end) {
+                    apply_causal_mask(outc, cur_BM, cur_BN, i, j,
+                                      causal_q_start, BN);
+                }
+
+                // Step A: online softmax
+                if (async_t1_output && cur_BN == BN) {
+                    online_softmax_step_n32(
+                        outc, p_score, m_ptr, l_ptr, m_next, l_next,
+                        scale, args.softmax_scale, cur_BM);
+                } else {
+                    online_softmax_step(outc, p_score,
+                                        m_ptr, l_ptr,
+                                        m_next, l_next,
+                                        scale,
+                                        args.softmax_scale,
+                                        cur_BM, cur_BN, BN);
+                }
+
+                // Clear columns not written by the final partial KV tile.
+                if (cur_BN < BN) {
+                    for (int ri = 0; ri < cur_BM; ri++) {
+                        for (int cj = cur_BN; cj < BN; cj++) {
+                            p_score[ri * BN + cj] = 0;
+                        }
+                    }
+                }
+
+                // Step D: load V, gemm p_score @ V
+                // KV cache shape: [max_block_num, kv_head_num, block_size, head_size]
+                float * outO = outc;            // reuse outc
+                for (int hb = 0; hb < BK / gemm_bn; hb++) {
+                    half *vbuf = (hb & 1) ? kbuf : ktmp;
+                    memcpy_wait();
+
+                    // The current V buffer is now consumed by PV.  Start the
+                    // next sub-tile in the other buffer before submitting the
+                    // current ACE operation, keeping at most one DMA pending.
+                    if (hb + 1 < BK / gemm_bn) {
+                        half *next_vbuf = (hb & 1) ? ktmp : kbuf;
+                        memcpy_async(
+                            next_vbuf, v_cache_base + (hb + 1) * gemm_bn,
+                            v_copy_size, gemm_bn * sizeof(half),
+                            {0, v_src_stride}, MemcpyGlobalToSpm);
+                    }
+
+                    // V[:, hb*32 : hb*32+31] -> vbuf [cur_BN, gemm_bn] packed
+                    //   src: V[i][hb*32..hb*32+31] = cache[(i)*head_size + hb*32 .. +31]
+                    //   des: vbuf packed
+
+                    // clear unused rows of vbuf (cur_BN < BN)
+                    if (cur_BN < BN) {
+                        memset(vbuf + cur_BN * gemm_bn, 0,
+                               (BN - cur_BN) * gemm_bn * sizeof(half));
+                    }
+
+                    if (hb & 1) {
+                        pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                            tensorP, tensorV_kbuf, true);
+                    } else {
+                        pv_matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                            tensorP, tensorV_ktmp, true);
+                    }
+                    pv_matmul.storeC_spm_async(tensorO);
+                    pv_matmul.wait_storeC(1);
+
+                    // Fuse the online-softmax rescale with the PV accumulation
+                    // so o_accum is traversed only once per KV tile.
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        floatv16 vs = scale[ai];
+                        float *accum_block =
+                            o_accum + ai * BK + hb * gemm_bn;
+                        float *out_row = outO + ai * gemm_bn;
+                        for (int ak = 0; ak < gemm_bn; ak += 16) {
+                            floatv16 vaccum;
+                            floatv16 vout;
+                            simd_load(vaccum, accum_block + ak);
+                            simd_load(vout, out_row + ak);
+                            vaccum = vaccum * vs + vout;
+                            simd_store(vaccum, accum_block + ak);
+                        }
+                    }
+                }
+
+                // swap pointer
+                float *tmp = l_ptr; l_ptr = l_next; l_next = tmp;
+                tmp = m_ptr; m_ptr = m_next; m_next = tmp;
+
+            }
+
+            // normalize O_accum by l and convert to half
+            half *out_staging = async_t1_output
+                ? reinterpret_cast<half *>(outc)
+                : obuf;
+            for (int row = 0; row < cur_BM_q; row++) {
+                float l_inv = l_ptr[row] > 0.0f ? 1.0f / l_ptr[row] : 0.0f;
+                floatv16 vl_inv = l_inv;
+                float *o_row = o_accum + row * BK;
+                half *obuf_row = out_staging + row * BK;
+                int k = 0;
+                for (; k + 16 <= BK; k += 16) {
+                    floatv16 vf;
+                    halfv16 vh;
+                    simd_load(vf, o_row + k);
+                    vf = vf * vl_inv;
+                    vh = (halfv16)vf;
+                    simd_store(vh, obuf_row + k);
+                }
+                for (; k < BK; k++) {
+                    obuf_row[k] = (half)(o_row[k] * l_inv);
+                }
+            }
+
+            // dma O
+            int rel_obuf_size = cur_BM_q * token_size;
+            size_t o_dst_stride = (args.local_head_num - 1) * token_size;
+            half *out_base = (half *)args.fmha_out +
+                             (cur_q_index + i) * args.local_head_num * BK +
+                             head_idx * BK;
+            if (async_t1_output) {
+                memcpy_async(out_base, out_staging, rel_obuf_size, token_size,
+                             {o_dst_stride, 0}, MemcpySpmToGlobal,
+                             output_handle);
+                output_pending = true;
+            } else {
+                memcpy_stride(out_base, out_staging, rel_obuf_size, token_size,
+                              {o_dst_stride, 0});
+            }
+        }
+        cur_q_index += q_seq_len;
+    }
+    if (output_pending) {
+        memcpy_wait(output_handle);
+    }
+    if (q_prefetch_pending) {
+        memcpy_wait(q_prefetch_handle);
+    }
+    if (v256_low_pending) {
+        memcpy_wait(v256_low_handle);
+        v256_low_pending = false;
+    }
+}

@@ -1,0 +1,235 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+// reshape_and_cache: 将 key/value 按 slot_mapping 写入 paged KV cache
+//
+// 输入: key   [num_tokens, num_kv_heads, head_size] (HBM)
+//       value [num_tokens, num_kv_heads, head_size] (HBM)
+// 输出: key_cache   [num_blocks, num_kv_heads, block_size, head_size]
+//       value_cache [num_blocks, num_kv_heads, block_size, head_size]
+//
+// 实现:
+//   - OneGenomeRice decode (T=1, H=2, D=64) 按 head 分给两个 SPE
+//   - prefill 按 token 维度并行，同一 token 的所有 head 始终由同一 SPE 写入
+//   - prefill 通过每个 SPE 的私有 SPM 中转，只使用 Global<->SPM DMA
+//   - 每批最多保留两个未完成的 store，避免压满 DMA 请求队列
+
+#include <simd.h>
+#include <slave.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+__global__ void teco_slave_reshape_and_cache_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    const int H = args.num_kv_heads;
+    const int D = args.size_per_head;
+    const int T = args.num_tokens;
+    const int block_size = args.block_size;
+
+    const int block_stride = args.block_stride;
+    const int head_stride = args.head_stride;
+    const int entry_stride = args.entry_stride;
+    const int key_stride = args.key_stride;
+    const int value_stride = args.value_stride;
+
+    const half *key = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    if (T <= 0 || H <= 0 || D <= 0 || args.num_blocks <= 0 ||
+        block_size <= 0 || block_stride <= 0 || head_stride <= 0 ||
+        entry_stride <= 0 || key_stride <= 0 || value_stride <= 0) {
+        return;
+    }
+
+    const size_t head_bytes = static_cast<size_t>(D) * sizeof(half);
+    const size_t token_bytes = static_cast<size_t>(H) * head_bytes;
+    const int64_t slot_capacity =
+        static_cast<int64_t>(args.num_blocks) * block_size;
+
+    // The scored decode path has one token and two independent 128-byte heads
+    // per TP rank.  Give each head to one SPE so its key/value copies remain
+    // ordered while the two disjoint heads can progress in parallel.
+    if (T == 1 && H == 2 && D == 64) {
+        if (tid >= 2) {
+            return;
+        }
+
+        const int64_t slot = slot_mapping[0];
+        if (slot < 0 || slot >= slot_capacity) {
+            return;
+        }
+
+        int64_t block_id;
+        int block_off;
+        if (block_size == 32) {
+            block_id = slot >> 5;
+            block_off = static_cast<int>(slot & 31);
+        } else {
+            block_id = slot / block_size;
+            block_off = static_cast<int>(slot % block_size);
+        }
+
+        constexpr size_t MODEL_HEAD_BYTES = 64 * sizeof(half);
+        const char *src_key = reinterpret_cast<const char *>(key)
+            + tid * MODEL_HEAD_BYTES;
+        const char *src_value = reinterpret_cast<const char *>(value)
+            + tid * MODEL_HEAD_BYTES;
+        char *dst_key = reinterpret_cast<char *>(key_cache)
+            + block_id * block_stride
+            + tid * head_stride
+            + static_cast<int64_t>(block_off) * entry_stride;
+        char *dst_value = reinterpret_cast<char *>(value_cache)
+            + block_id * block_stride
+            + tid * head_stride
+            + static_cast<int64_t>(block_off) * entry_stride;
+
+        // Each SPE preserves key-before-value ordering for its owned head.
+        memcpy(dst_key, src_key, MODEL_HEAD_BYTES);
+        memcpy(dst_value, src_value, MODEL_HEAD_BYTES);
+        return;
+    }
+
+    // In token-striped prefill, SPE tid has no work when tid >= T.  Return
+    // before allocating SPM so small batches do not initialize idle allocators.
+    if (tid >= T) {
+        return;
+    }
+
+    const bool block_size_is_pow2 =
+        (block_size & (block_size - 1)) == 0;
+    const int block_shift = block_size_is_pow2
+        ? __builtin_ctz(static_cast<unsigned int>(block_size))
+        : 0;
+
+    // Global-to-Global traffic from all 32 SPEs has not been established as
+    // stable under TP=4.  Stage through private SPM so every prefill transfer
+    // uses the supported Global<->SPM directions.  Normal model shapes stage a
+    // complete token; unusually wide layouts fall back to one head at a time.
+    constexpr size_t MAX_STAGED_BYTES = 225280;
+    const bool stage_whole_token = token_bytes * 2 <= MAX_STAGED_BYTES;
+    const size_t staged_tensor_bytes =
+        stage_whole_token ? token_bytes : head_bytes;
+    half *spm_base = static_cast<half *>(
+        rt_spm_malloc(staged_tensor_bytes * 2));
+    if (spm_base == nullptr) {
+        return;
+    }
+    half *key_spm = spm_base;
+    half *value_spm = reinterpret_cast<half *>(
+        reinterpret_cast<char *>(spm_base) + staged_tensor_bytes);
+
+    for (int t = tid; t < T; t += CORE_NUM) {
+        const int64_t slot = slot_mapping[t];
+        if (slot < 0 || slot >= slot_capacity) {
+            continue;
+        }
+
+        const int64_t block_id = block_size_is_pow2
+            ? (slot >> block_shift)
+            : (slot / block_size);
+        const int block_off = block_size_is_pow2
+            ? static_cast<int>(slot & (block_size - 1))
+            : static_cast<int>(slot % block_size);
+
+        const char *src_key = reinterpret_cast<const char *>(key)
+            + static_cast<int64_t>(t) * key_stride;
+        const char *src_value = reinterpret_cast<const char *>(value)
+            + static_cast<int64_t>(t) * value_stride;
+
+        char *dst_key = reinterpret_cast<char *>(key_cache)
+            + block_id * block_stride
+            + static_cast<int64_t>(block_off) * entry_stride;
+        char *dst_value = reinterpret_cast<char *>(value_cache)
+            + block_id * block_stride
+            + static_cast<int64_t>(block_off) * entry_stride;
+
+        if (stage_whole_token) {
+            memcpy_async(key_spm, src_key, token_bytes, MemcpyGlobalToSpm);
+            memcpy_async(value_spm, src_value, token_bytes,
+                         MemcpyGlobalToSpm);
+            memcpy_wait();
+
+            if (H == 2 && D == 64) {
+                // Scored OneGenomeRice prefill shape: remove the runtime head
+                // loop and keep the validated two-request queue depth.
+                memcpy_async(dst_key, key_spm, head_bytes,
+                             MemcpySpmToGlobal);
+                memcpy_async(dst_value, value_spm, head_bytes,
+                             MemcpySpmToGlobal);
+                memcpy_wait();
+                memcpy_async(dst_key + head_stride,
+                             reinterpret_cast<char *>(key_spm) + head_bytes,
+                             head_bytes, MemcpySpmToGlobal);
+                memcpy_async(dst_value + head_stride,
+                             reinterpret_cast<char *>(value_spm) + head_bytes,
+                             head_bytes, MemcpySpmToGlobal);
+                memcpy_wait();
+            } else {
+                for (int h = 0; h < H; ++h) {
+                    const size_t head_offset =
+                        static_cast<size_t>(h) * head_bytes;
+                    memcpy_async(
+                        dst_key + static_cast<int64_t>(h) * head_stride,
+                        reinterpret_cast<char *>(key_spm) + head_offset,
+                        head_bytes, MemcpySpmToGlobal);
+                    memcpy_async(
+                        dst_value + static_cast<int64_t>(h) * head_stride,
+                        reinterpret_cast<char *>(value_spm) + head_offset,
+                        head_bytes, MemcpySpmToGlobal);
+                    // Two stores are the queue depth already exercised by the
+                    // stable reference implementation.
+                    memcpy_wait();
+                }
+            }
+        } else {
+            for (int h = 0; h < H; ++h) {
+                const size_t head_offset =
+                    static_cast<size_t>(h) * head_bytes;
+                memcpy_async(key_spm, src_key + head_offset, head_bytes,
+                             MemcpyGlobalToSpm);
+                memcpy_async(value_spm, src_value + head_offset, head_bytes,
+                             MemcpyGlobalToSpm);
+                memcpy_wait();
+                memcpy_async(dst_key + static_cast<int64_t>(h) * head_stride,
+                             key_spm, head_bytes, MemcpySpmToGlobal);
+                memcpy_async(dst_value + static_cast<int64_t>(h) * head_stride,
+                             value_spm, head_bytes, MemcpySpmToGlobal);
+                memcpy_wait();
+            }
+        }
+    }
+
+    rt_spm_free(spm_base);
+}
