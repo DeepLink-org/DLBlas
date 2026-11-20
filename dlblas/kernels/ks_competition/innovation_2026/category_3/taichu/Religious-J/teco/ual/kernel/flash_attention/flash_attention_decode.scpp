@@ -1,0 +1,1125 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+#include "ual/kernel/flash_attention/flash_attention_common.h"
+
+using tecoops::ual::args::FlashAttentionDecodeGqa2Args;
+
+constexpr int FLASH_DECODE_SPLITS = 16;
+constexpr int FLASH_DECODE_HEADS = 4;
+constexpr int FLASH_DECODE_DIM = 64;
+constexpr int FLASH_DECODE_FIXED_BLOCKS_PER_SPLIT = 64;
+constexpr int FLASH_DECODE_PARTS = FLASH_DECODE_DIM / 16;
+constexpr int FLASH_DECODE_REDUCERS_PER_HEAD = 4;
+
+
+__device__ __always_inline float flash_decode_reduce_max(
+    floatv16 max_vector0, floatv16 max_vector1) {
+    floatv16 max_vector = simd_max(max_vector0, max_vector1);
+    max_vector = simd_max(
+        max_vector,
+        simd_concat(max_vector, max_vector, (void *)32L));
+    max_vector = simd_max(
+        max_vector,
+        simd_concat(max_vector, max_vector, (void *)16L));
+    max_vector = simd_max(
+        max_vector,
+        simd_concat(max_vector, max_vector, (void *)8L));
+    float *max_lanes = (float *)&max_vector;
+    return MAX(max_lanes[0], max_lanes[1]);
+}
+
+
+__device__ __always_inline void flash_decode_array_sync() {
+    asm volatile(
+        "rcsr  $1, 1\n"
+        "ldi   $2, 0x0f\n"
+        "ldi   $3, 0xf0\n"
+        "and   $1, 0x4, $1\n"
+        "seleq $1, $2, $3, $2\n"
+        "ldi   $1, 0xff\n"
+        "sync  $2\n"
+        "synr  $1\n"
+        ::: "memory", "$1", "$2", "$3");
+}
+
+
+struct FlashAttentionDecodeGqa2Buffers {
+    int *block_table;
+    int block_table_base;
+    half *key;
+    half *value;
+    float *score;
+};
+
+struct FlashAttentionDecodeGqa2CoreArgs {
+    const void *q;
+    void *key_cache;
+    void *value_cache;
+};
+
+
+__device__ __always_inline const half *flash_decode_packed_cache_ptr(
+    const void *cache, int block_id, int kv_head_idx) {
+    constexpr int HEAD_ELEMS = FLASH_ATTN_BN * FLASH_DECODE_DIM;
+    constexpr int BLOCK_ELEMS = 2 * HEAD_ELEMS;
+    return (const half *)cache +
+        block_id * BLOCK_ELEMS + kv_head_idx * HEAD_ELEMS;
+}
+
+
+__device__ __always_inline void allocate_flash_attention_decode_gqa2_buffers(
+    int block_count, FlashAttentionDecodeGqa2Buffers *buffers) {
+    constexpr int KV_STEP = 4 * FLASH_ATTN_BN;
+    constexpr int TILE_ELEMS = KV_STEP * FLASH_DECODE_DIM;
+    constexpr size_t SPM_ALIGNMENT = 64;
+    constexpr size_t KEY_BYTES =
+        2 * TILE_ELEMS * sizeof(half);
+    constexpr size_t VALUE_BYTES =
+        TILE_ELEMS * sizeof(half);
+    constexpr size_t SCORE_BYTES =
+        2 * KV_STEP * sizeof(float);
+    size_t block_table_bytes = block_count * sizeof(int);
+    size_t block_table_storage =
+        (block_table_bytes + SPM_ALIGNMENT - 1) &
+        ~(SPM_ALIGNMENT - 1);
+    size_t total_bytes =
+        block_table_storage + KEY_BYTES + VALUE_BYTES + SCORE_BYTES;
+    // The layout below is fully size-checked and 64-byte aligned. Use one raw
+    // SPM allocation so the hot Decode path does not initialize a debug
+    // red-zone on every launch; strict boundary tests cover the final byte.
+    unsigned char *spm = (unsigned char *)malloc(
+        total_bytes, AddressLowToHigh);
+    buffers->block_table = (int *)spm;
+    buffers->block_table_base = 0;
+    buffers->key = (half *)(spm + block_table_storage);
+    buffers->value = (half *)((unsigned char *)buffers->key + KEY_BYTES);
+    buffers->score =
+        (float *)((unsigned char *)buffers->value + VALUE_BYTES);
+}
+
+__device__ __always_inline void
+allocate_flash_attention_decode_gqa2_fixed_buffers(
+    FlashAttentionDecodeGqa2Buffers *buffers) {
+    constexpr int KV_STEP = 4 * FLASH_ATTN_BN;
+    constexpr int TILE_ELEMS = KV_STEP * FLASH_DECODE_DIM;
+    // The host guard caps block_table_dim at 1024, so a 16-way split needs
+    // at most 64 logical block ids per SPE.
+    constexpr size_t BLOCK_TABLE_STORAGE =
+        FLASH_DECODE_FIXED_BLOCKS_PER_SPLIT * sizeof(int);
+    constexpr size_t KEY_BYTES =
+        2 * TILE_ELEMS * sizeof(half);
+    constexpr size_t VALUE_BYTES =
+        TILE_ELEMS * sizeof(half);
+    constexpr size_t SCORE_BYTES =
+        2 * KV_STEP * sizeof(float);
+    constexpr size_t TOTAL_BYTES =
+        BLOCK_TABLE_STORAGE + KEY_BYTES + VALUE_BYTES + SCORE_BYTES;
+    unsigned char *spm = (unsigned char *)malloc(
+        TOTAL_BYTES, AddressLowToHigh);
+    buffers->block_table = (int *)spm;
+    buffers->block_table_base = 0;
+    buffers->key = (half *)(spm + BLOCK_TABLE_STORAGE);
+    buffers->value =
+        (half *)((unsigned char *)buffers->key + KEY_BYTES);
+    buffers->score =
+        (float *)((unsigned char *)buffers->value + VALUE_BYTES);
+}
+
+
+__device__ void compute_flash_attention_decode_m1(
+    const FlashAttentionArgs &args, FlashAttentionSpmBuffers *buffers,
+    int q_base, int k_seq_len, int head_idx) {
+    constexpr int BN = FLASH_ATTN_BN;
+    int BK = args.size_per_head;
+    int kv_head_idx =
+        head_idx / (args.local_head_num / args.local_kv_head_num);
+    const half *q_src = (const half *)args.q +
+        q_base * args.local_head_num * BK + head_idx * BK;
+    memcpy(buffers->q, q_src, BK * sizeof(half));
+
+    float *scores = (float *)buffers->p_score;
+    floatv16 q_vectors[4];
+    floatv16 accum_vectors[4];
+    for (int part = 0; part < 4; part++) {
+        halfv16 q_half;
+        simd_load(q_half, buffers->q + part * 16);
+        q_vectors[part] = simd_cvt_h2f(q_half);
+        accum_vectors[part] = 0.0f;
+    }
+    float running_max = -FLT_MAX;
+    float running_sum = 0.0f;
+    // Keep key and value in separate SPM buffers.  The next key DMA is
+    // overlapped with the current PV accumulation, while the current value
+    // DMA is overlapped with softmax.
+    MemcpyHandle key_load_handle;
+    MemcpyHandle value_load_handle;
+    int first_block_id = buffers->block_table[0];
+    const half *first_key_src = (const half *)args.key_cache +
+        first_block_id * args.local_kv_head_num *
+            args.block_size * BK +
+        kv_head_idx * args.block_size * BK;
+    memcpy_async(
+        buffers->k, first_key_src,
+        MIN(BN, k_seq_len) * BK * sizeof(half),
+        MemcpyGlobalToSpm, key_load_handle);
+
+    for (int j = 0; j < k_seq_len; j += BN) {
+        int cols = MIN(BN, k_seq_len - j);
+        int logical_block = j / args.block_size;
+        int block_id = buffers->block_table[logical_block];
+        memcpy_wait(key_load_handle);
+
+        float block_max = -FLT_MAX;
+        for (int col = 0; col < cols; col++) {
+            const half *key = buffers->k + col * BK;
+            floatv16 dot = 0.0f;
+            for (int part = 0; part < 4; part++) {
+                halfv16 kh;
+                simd_load(kh, key + part * 16);
+                dot = simd_fma(
+                    q_vectors[part], simd_cvt_h2f(kh), dot);
+            }
+            float score =
+                simd_redsum(dot) * args.softmax_scale;
+            scores[col] = score;
+            block_max = MAX(block_max, score);
+        }
+
+        const half *value_src = (const half *)args.value_cache +
+            block_id * args.local_kv_head_num *
+                args.block_size * BK +
+            kv_head_idx * args.block_size * BK;
+        memcpy_async(
+            buffers->k_tmp, value_src,
+            cols * BK * sizeof(half),
+            MemcpyGlobalToSpm, value_load_handle);
+
+        float new_max = MAX(running_max, block_max);
+        float old_scale = running_sum == 0.0f
+            ? 0.0f : expf(running_max - new_max);
+        float block_sum = 0.0f;
+        int col = 0;
+        floatv16 sum_vector = 0.0f;
+        for (; col + 16 <= cols; col += 16) {
+            floatv16 score_vector;
+            simd_load(score_vector, scores + col);
+            score_vector = simd_exp(
+                score_vector - (floatv16)new_max);
+            simd_store(score_vector, scores + col);
+            sum_vector = simd_add(sum_vector, score_vector);
+        }
+        block_sum = simd_redsum(sum_vector);
+        for (; col < cols; col++) {
+            float weight = expf(scores[col] - new_max);
+            scores[col] = weight;
+            block_sum += weight;
+        }
+        for (int part = 0; part < 4; part++) {
+            accum_vectors[part] = simd_mul(
+                accum_vectors[part], (floatv16)old_scale);
+        }
+
+        memcpy_wait(value_load_handle);
+        int next_j = j + BN;
+        if (next_j < k_seq_len) {
+            int next_logical_block = next_j / args.block_size;
+            int next_block_id =
+                buffers->block_table[next_logical_block];
+            const half *next_key_src =
+                (const half *)args.key_cache +
+                next_block_id * args.local_kv_head_num *
+                    args.block_size * BK +
+                kv_head_idx * args.block_size * BK;
+            memcpy_async(
+                buffers->k, next_key_src,
+                MIN(BN, k_seq_len - next_j) *
+                    BK * sizeof(half),
+                MemcpyGlobalToSpm, key_load_handle);
+        }
+        for (int col = 0; col < cols; col++) {
+            const half *value_src = buffers->k_tmp + col * BK;
+            floatv16 weight = scores[col];
+            for (int part = 0; part < 4; part++) {
+                halfv16 value_half;
+                floatv16 value;
+                simd_load(value_half, value_src + part * 16);
+                value = simd_cvt_h2f(value_half);
+                accum_vectors[part] = simd_fma(
+                    value, weight, accum_vectors[part]);
+            }
+        }
+        running_sum = running_sum * old_scale + block_sum;
+        running_max = new_max;
+    }
+
+    half *out = buffers->out;
+    floatv16 inv_sum = 1.0f / running_sum;
+    for (int part = 0; part < 4; part++) {
+        halfv16 value_half;
+        floatv16 value =
+            simd_mul(accum_vectors[part], inv_sum);
+        value_half = (halfv16)value;
+        simd_store(value_half, out + part * 16);
+    }
+    half *out_dst = (half *)args.fmha_out +
+        q_base * args.local_head_num * BK + head_idx * BK;
+    memcpy(out_dst, out, BK * sizeof(half));
+}
+
+template <bool FULL_STEPS>
+__device__ void compute_flash_attention_decode_gqa2_partial(
+    const FlashAttentionDecodeGqa2CoreArgs &args,
+    FlashAttentionDecodeGqa2Buffers *buffers,
+    int q_base, int k_seq_len, int kv_head_idx, int kv_start, int kv_end,
+    int split_idx, float *partial_out,
+    float *partial_max, float *partial_sum) {
+    constexpr int HEADS_PER_GROUP = 2;
+    constexpr int BN = FLASH_ATTN_BN;
+    constexpr int BK = FLASH_DECODE_DIM;
+    constexpr int CHUNK_BLOCKS = 4;
+    constexpr int KV_STEP = CHUNK_BLOCKS * BN;
+    constexpr int KV_BLOCK_ELEMS = BN * BK;
+    int head_base = kv_head_idx * HEADS_PER_GROUP;
+
+    float q_values[HEADS_PER_GROUP][FLASH_DECODE_DIM];
+    floatv16 accum_vectors[HEADS_PER_GROUP][4];
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        const half *q_src = (const half *)args.q +
+            q_base * FLASH_DECODE_HEADS * BK +
+            (head_base + group_head) * BK;
+        floatv16 q_scale = 0.125f;
+        for (int part = 0; part < 4; part++) {
+            halfv16 q_half;
+            simd_load(q_half, q_src + part * 16);
+            floatv16 q_float = simd_mul(
+                simd_cvt_h2f(q_half), q_scale);
+            simd_store(
+                q_float, q_values[group_head] + part * 16);
+        }
+        for (int part = 0; part < 4; part++) {
+            accum_vectors[group_head][part] = 0.0f;
+        }
+    }
+
+    float *scores[HEADS_PER_GROUP] = {
+        buffers->score, buffers->score + KV_STEP};
+    float running_max[HEADS_PER_GROUP] = {
+        -FLT_MAX, -FLT_MAX};
+    float running_sum[HEADS_PER_GROUP] = {0.0f, 0.0f};
+
+    half *key_spm[2] = {
+        buffers->key, buffers->key + KV_STEP * BK};
+    int key_buffer_idx = 0;
+    half *value_spm = buffers->value;
+    const half *value_sources[2][CHUNK_BLOCKS];
+    MemcpyHandle key_load_handle;
+    MemcpyHandle value_load_handle;
+    constexpr int CACHE_SECTION_BYTES = BK * sizeof(half);
+    int first_active_blocks = FULL_STEPS
+        ? CHUNK_BLOCKS
+        : MIN(CHUNK_BLOCKS,
+              (kv_end - kv_start + BN - 1) / BN);
+    for (int block = 0; block < first_active_blocks; block++) {
+        int block_j = kv_start + block * BN;
+        int block_id =
+            buffers->block_table[
+                block_j / FLASH_ATTN_BN -
+                buffers->block_table_base];
+        const half *key_src = flash_decode_packed_cache_ptr(
+            args.key_cache, block_id, kv_head_idx);
+        value_sources[key_buffer_idx][block] =
+            (const half *)args.value_cache +
+            (key_src - (const half *)args.key_cache);
+        half *key_dst =
+            key_spm[key_buffer_idx] +
+            block * KV_BLOCK_ELEMS;
+        if (!FULL_STEPS && block_j + BN > k_seq_len) {
+            MemoryStride partial_key_stride = {0, (BK - 32) * sizeof(half)};
+            TransposeHandle partial_key_handle;
+            for (int panel = 0; panel < 2; panel++) {
+                transpose_async(
+                    key_dst + panel * BN * 32,
+                    key_src + panel * 32,
+                    BN, 32, sizeof(half),
+                    partial_key_stride,
+                    TransposeGlobalToSpm,
+                    partial_key_handle);
+            }
+            transpose_wait(partial_key_handle);
+        } else {
+            MemoryStride packed_cache_stride = {0, 0};
+            memcpy_async(
+                key_dst, key_src,
+                KV_BLOCK_ELEMS * sizeof(half),
+                CACHE_SECTION_BYTES, packed_cache_stride,
+                MemcpyGlobalToSpm, key_load_handle);
+        }
+    }
+
+    for (int j = kv_start; j < kv_end; j += KV_STEP) {
+        int active_blocks = FULL_STEPS
+            ? CHUNK_BLOCKS
+            : MIN(CHUNK_BLOCKS, (kv_end - j + BN - 1) / BN);
+        int total_cols = FULL_STEPS
+            ? KV_STEP
+            : MIN(KV_STEP, kv_end - j);
+        memcpy_wait(key_load_handle);
+
+        half *current_key_spm = key_spm[key_buffer_idx];
+        // Prioritize data consumed by the current step. The following QK,
+        // softmax and PV work still provide a long overlap window for the
+        // next step's K prefetch.
+        for (int value_block = 0; value_block < active_blocks;
+             value_block++) {
+            const half *value_src =
+                value_sources[key_buffer_idx][value_block];
+            MemoryStride packed_cache_stride = {0, 0};
+            memcpy_async(
+                value_spm + value_block * KV_BLOCK_ELEMS,
+                value_src, KV_BLOCK_ELEMS * sizeof(half),
+                CACHE_SECTION_BYTES, packed_cache_stride,
+                MemcpyGlobalToSpm, value_load_handle);
+        }
+        int next_j = j + KV_STEP;
+        if (next_j < kv_end) {
+            half *next_key_spm =
+                key_spm[key_buffer_idx ^ 1];
+            int next_active_blocks = FULL_STEPS
+                ? CHUNK_BLOCKS
+                : MIN(CHUNK_BLOCKS,
+                      (kv_end - next_j + BN - 1) / BN);
+            for (int block = 0; block < next_active_blocks;
+                 block++) {
+                int block_j = next_j + block * BN;
+                int block_id =
+                    buffers->block_table[
+                        block_j / FLASH_ATTN_BN -
+                        buffers->block_table_base];
+                const half *next_key_src =
+                    flash_decode_packed_cache_ptr(
+                        args.key_cache, block_id, kv_head_idx);
+                value_sources[key_buffer_idx ^ 1][block] =
+                    (const half *)args.value_cache +
+                    (next_key_src - (const half *)args.key_cache);
+                half *next_key_dst =
+                    next_key_spm +
+                    block * KV_BLOCK_ELEMS;
+                if (!FULL_STEPS && block_j + BN > k_seq_len) {
+                    MemoryStride partial_key_stride = {
+                        0, (BK - 32) * sizeof(half)};
+                    TransposeHandle partial_key_handle;
+                    for (int panel = 0; panel < 2; panel++) {
+                        transpose_async(
+                            next_key_dst +
+                                panel * BN * 32,
+                            next_key_src + panel * 32,
+                            BN, 32, sizeof(half),
+                            partial_key_stride,
+                            TransposeGlobalToSpm,
+                            partial_key_handle);
+                    }
+                    transpose_wait(partial_key_handle);
+                } else {
+                    MemoryStride packed_cache_stride = {0, 0};
+                    memcpy_async(
+                        next_key_dst, next_key_src,
+                        KV_BLOCK_ELEMS * sizeof(half),
+                        CACHE_SECTION_BYTES,
+                        packed_cache_stride,
+                        MemcpyGlobalToSpm,
+                        key_load_handle);
+                }
+            }
+        }
+
+        floatv16 score_max_vectors[HEADS_PER_GROUP][2] = {
+            {-FLT_MAX, -FLT_MAX}, {-FLT_MAX, -FLT_MAX}};
+        int block = 0;
+        for (; block + 1 < active_blocks; block += 2) {
+            floatv16 score_vectors[HEADS_PER_GROUP][2][2] = {
+                {{0.0f, 0.0f}, {0.0f, 0.0f}},
+                {{0.0f, 0.0f}, {0.0f, 0.0f}}};
+            half *key_block0 =
+                current_key_spm + block * KV_BLOCK_ELEMS;
+            half *key_block1 = key_block0 + KV_BLOCK_ELEMS;
+            for (int dim = 0; dim < BK; dim += 2) {
+                const half *key_row00 = key_block0 + dim * BN;
+                const half *key_row01 = key_row00 + BN;
+                const half *key_row10 = key_block1 + dim * BN;
+                const half *key_row11 = key_row10 + BN;
+                halfv16 key_half000;
+                halfv16 key_half001;
+                halfv16 key_half010;
+                halfv16 key_half011;
+                halfv16 key_half100;
+                halfv16 key_half101;
+                halfv16 key_half110;
+                halfv16 key_half111;
+                simd_load(key_half000, key_row00);
+                simd_load(key_half001, key_row00 + 16);
+                simd_load(key_half010, key_row01);
+                simd_load(key_half011, key_row01 + 16);
+                simd_load(key_half100, key_row10);
+                simd_load(key_half101, key_row10 + 16);
+                simd_load(key_half110, key_row11);
+                simd_load(key_half111, key_row11 + 16);
+                floatv16 key_value000 = simd_cvt_h2f(key_half000);
+                floatv16 key_value001 = simd_cvt_h2f(key_half001);
+                floatv16 key_value010 = simd_cvt_h2f(key_half010);
+                floatv16 key_value011 = simd_cvt_h2f(key_half011);
+                floatv16 key_value100 = simd_cvt_h2f(key_half100);
+                floatv16 key_value101 = simd_cvt_h2f(key_half101);
+                floatv16 key_value110 = simd_cvt_h2f(key_half110);
+                floatv16 key_value111 = simd_cvt_h2f(key_half111);
+                floatv16 q_value00 = q_values[0][dim];
+                floatv16 q_value10 = q_values[1][dim];
+                floatv16 q_value01 = q_values[0][dim + 1];
+                floatv16 q_value11 = q_values[1][dim + 1];
+                score_vectors[0][0][0] = simd_fma(
+                    key_value000, q_value00,
+                    score_vectors[0][0][0]);
+                score_vectors[1][0][0] = simd_fma(
+                    key_value000, q_value10,
+                    score_vectors[1][0][0]);
+                score_vectors[0][0][1] = simd_fma(
+                    key_value001, q_value00,
+                    score_vectors[0][0][1]);
+                score_vectors[1][0][1] = simd_fma(
+                    key_value001, q_value10,
+                    score_vectors[1][0][1]);
+                score_vectors[0][1][0] = simd_fma(
+                    key_value100, q_value00,
+                    score_vectors[0][1][0]);
+                score_vectors[1][1][0] = simd_fma(
+                    key_value100, q_value10,
+                    score_vectors[1][1][0]);
+                score_vectors[0][1][1] = simd_fma(
+                    key_value101, q_value00,
+                    score_vectors[0][1][1]);
+                score_vectors[1][1][1] = simd_fma(
+                    key_value101, q_value10,
+                    score_vectors[1][1][1]);
+                score_vectors[0][0][0] = simd_fma(
+                    key_value010, q_value01,
+                    score_vectors[0][0][0]);
+                score_vectors[1][0][0] = simd_fma(
+                    key_value010, q_value11,
+                    score_vectors[1][0][0]);
+                score_vectors[0][0][1] = simd_fma(
+                    key_value011, q_value01,
+                    score_vectors[0][0][1]);
+                score_vectors[1][0][1] = simd_fma(
+                    key_value011, q_value11,
+                    score_vectors[1][0][1]);
+                score_vectors[0][1][0] = simd_fma(
+                    key_value110, q_value01,
+                    score_vectors[0][1][0]);
+                score_vectors[1][1][0] = simd_fma(
+                    key_value110, q_value11,
+                    score_vectors[1][1][0]);
+                score_vectors[0][1][1] = simd_fma(
+                    key_value111, q_value01,
+                    score_vectors[0][1][1]);
+                score_vectors[1][1][1] = simd_fma(
+                    key_value111, q_value11,
+                    score_vectors[1][1][1]);
+            }
+            for (int pair_block = 0; pair_block < 2;
+                 pair_block++) {
+                for (int group_head = 0;
+                     group_head < HEADS_PER_GROUP;
+                     group_head++) {
+                    score_max_vectors[group_head][0] = simd_max(
+                        score_max_vectors[group_head][0],
+                        score_vectors[group_head][pair_block][0]);
+                    score_max_vectors[group_head][1] = simd_max(
+                        score_max_vectors[group_head][1],
+                        score_vectors[group_head][pair_block][1]);
+                    simd_store(
+                        score_vectors[group_head][pair_block][0],
+                        scores[group_head] +
+                            (block + pair_block) * BN);
+                    simd_store(
+                        score_vectors[group_head][pair_block][1],
+                        scores[group_head] +
+                            (block + pair_block) * BN + 16);
+                }
+            }
+        }
+        for (; block < active_blocks; block++) {
+            floatv16 score_vectors[HEADS_PER_GROUP][2] = {
+                {0.0f, 0.0f}, {0.0f, 0.0f}};
+            half *key_block =
+                current_key_spm + block * KV_BLOCK_ELEMS;
+            for (int dim = 0; dim < BK; dim++) {
+                const half *key_row = key_block + dim * BN;
+                halfv16 key_half0;
+                halfv16 key_half1;
+                simd_load(key_half0, key_row);
+                simd_load(key_half1, key_row + 16);
+                floatv16 key_value0 =
+                    simd_cvt_h2f(key_half0);
+                floatv16 key_value1 =
+                    simd_cvt_h2f(key_half1);
+                for (int group_head = 0;
+                     group_head < HEADS_PER_GROUP;
+                     group_head++) {
+                    floatv16 q_value =
+                        q_values[group_head][dim];
+                    score_vectors[group_head][0] = simd_fma(
+                        key_value0, q_value,
+                        score_vectors[group_head][0]);
+                    score_vectors[group_head][1] = simd_fma(
+                        key_value1, q_value,
+                        score_vectors[group_head][1]);
+                }
+            }
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                score_max_vectors[group_head][0] = simd_max(
+                    score_max_vectors[group_head][0],
+                    score_vectors[group_head][0]);
+                score_max_vectors[group_head][1] = simd_max(
+                    score_max_vectors[group_head][1],
+                    score_vectors[group_head][1]);
+                simd_store(
+                    score_vectors[group_head][0],
+                    scores[group_head] + block * BN);
+                simd_store(
+                    score_vectors[group_head][1],
+                    scores[group_head] + block * BN + 16);
+            }
+        }
+
+        float block_max[HEADS_PER_GROUP];
+        for (int group_head = 0;
+             group_head < HEADS_PER_GROUP; group_head++) {
+            if (FULL_STEPS || total_cols == KV_STEP) {
+                block_max[group_head] = flash_decode_reduce_max(
+                    score_max_vectors[group_head][0],
+                    score_max_vectors[group_head][1]);
+            } else {
+                block_max[group_head] =
+                    compute_max(scores[group_head], total_cols);
+            }
+        }
+
+        float old_scale[HEADS_PER_GROUP];
+        if (FULL_STEPS || total_cols == KV_STEP) {
+            float new_max[HEADS_PER_GROUP];
+            floatv16 sum_vectors[HEADS_PER_GROUP] = {
+                0.0f, 0.0f};
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                new_max[group_head] = MAX(
+                    running_max[group_head],
+                    block_max[group_head]);
+                old_scale[group_head] =
+                    running_sum[group_head] == 0.0f
+                    ? 0.0f
+                    : (running_max[group_head] == new_max[group_head]
+                        ? 1.0f
+                        : expf(
+                            running_max[group_head] -
+                            new_max[group_head]));
+            }
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                floatv16 row_max = new_max[group_head];
+                for (int col = 0; col < KV_STEP; col += 16) {
+                    floatv16 score_vector;
+                    simd_load(
+                        score_vector, scores[group_head] + col);
+                    simd_store(
+                        simd_sub(score_vector, row_max),
+                        scores[group_head] + col);
+                }
+                simd_exp128(scores[group_head]);
+                for (int col = 0; col < KV_STEP; col += 16) {
+                    floatv16 score_vector;
+                    simd_load(
+                        score_vector, scores[group_head] + col);
+                    sum_vectors[group_head] = simd_add(
+                        sum_vectors[group_head], score_vector);
+                }
+            }
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                float block_sum = simd_redsum(
+                    sum_vectors[group_head]);
+                if (running_sum[group_head] != 0.0f &&
+                    old_scale[group_head] != 1.0f) {
+                    for (int part = 0; part < 4; part++) {
+                        accum_vectors[group_head][part] = simd_mul(
+                            accum_vectors[group_head][part],
+                            (floatv16)old_scale[group_head]);
+                    }
+                }
+                running_sum[group_head] =
+                    running_sum[group_head] *
+                        old_scale[group_head] +
+                    block_sum;
+                running_max[group_head] = new_max[group_head];
+            }
+        } else {
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                float new_max = MAX(
+                    running_max[group_head],
+                    block_max[group_head]);
+                old_scale[group_head] =
+                    running_sum[group_head] == 0.0f
+                    ? 0.0f
+                    : (running_max[group_head] == new_max
+                        ? 1.0f
+                        : expf(running_max[group_head] - new_max));
+                floatv16 sum_vector = 0.0f;
+                int col = 0;
+                for (; col + 16 <= total_cols; col += 16) {
+                    floatv16 score_vector;
+                    simd_load(
+                        score_vector,
+                        scores[group_head] + col);
+                    score_vector = simd_exp(
+                        score_vector - (floatv16)new_max);
+                    simd_store(
+                        score_vector,
+                        scores[group_head] + col);
+                    sum_vector = simd_add(
+                        sum_vector, score_vector);
+                }
+                float block_sum = simd_redsum(sum_vector);
+                for (; col < total_cols; col++) {
+                    float weight = expf(
+                        scores[group_head][col] - new_max);
+                    scores[group_head][col] = weight;
+                    block_sum += weight;
+                }
+                if (running_sum[group_head] != 0.0f &&
+                    old_scale[group_head] != 1.0f) {
+                    for (int part = 0; part < 4; part++) {
+                        accum_vectors[group_head][part] = simd_mul(
+                            accum_vectors[group_head][part],
+                            (floatv16)old_scale[group_head]);
+                    }
+                }
+                running_sum[group_head] =
+                    running_sum[group_head] *
+                        old_scale[group_head] +
+                    block_sum;
+                running_max[group_head] = new_max;
+            }
+        }
+
+        memcpy_wait(value_load_handle);
+
+        for (int block = 0; block < active_blocks; block++) {
+            int block_cols = FULL_STEPS
+                ? BN
+                : MIN(BN, total_cols - block * BN);
+            const half *value_block =
+                value_spm + block * KV_BLOCK_ELEMS;
+            for (int col = 0; col < block_cols; col++) {
+                const half *value_src_spm =
+                    value_block + col * BK;
+                floatv16 value_vectors[4];
+                for (int part = 0; part < 4; part++) {
+                    halfv16 value_half;
+                    simd_load(
+                        value_half,
+                        value_src_spm + part * 16);
+                    value_vectors[part] =
+                        simd_cvt_h2f(value_half);
+                }
+                floatv16 weight0 = scores[0][block * BN + col];
+                floatv16 weight1 = scores[1][block * BN + col];
+                for (int part = 0; part < 4; part++) {
+                    accum_vectors[0][part] = simd_fma(
+                        value_vectors[part], weight0,
+                        accum_vectors[0][part]);
+                    accum_vectors[1][part] = simd_fma(
+                        value_vectors[part], weight1,
+                        accum_vectors[1][part]);
+                }
+            }
+        }
+        key_buffer_idx ^= 1;
+    }
+
+    for (int group_head = 0;
+         group_head < HEADS_PER_GROUP; group_head++) {
+        int head_idx = head_base + group_head;
+        int partial_idx =
+            head_idx * FLASH_DECODE_SPLITS + split_idx;
+        for (int part = 0; part < 4; part++) {
+            simd_store(
+                accum_vectors[group_head][part],
+                partial_out +
+                    partial_idx * FLASH_DECODE_DIM +
+                    part * 16);
+        }
+        partial_max[partial_idx] =
+            running_max[group_head];
+        partial_sum[partial_idx] =
+            running_sum[group_head];
+    }
+}
+
+__global__ void teco_slave_flash_attention_half_decode_gqa2(
+    FlashAttentionDecodeGqa2Args compact_args) {
+    __shared__ float flash_decode_partial_out[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS *
+        FLASH_DECODE_DIM] __attribute__((aligned(64)));
+    __shared__ float flash_decode_partial_max[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS]
+        __attribute__((aligned(64)));
+    __shared__ float flash_decode_partial_sum[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS]
+        __attribute__((aligned(64)));
+
+    FlashAttentionDecodeGqa2CoreArgs core_args;
+    core_args.q = compact_args.q;
+    core_args.key_cache = compact_args.key_cache;
+    core_args.value_cache = compact_args.value_cache;
+
+    int tid = threadIdx;
+    int kv_head_idx = tid / FLASH_DECODE_SPLITS;
+    int split_idx = tid % FLASH_DECODE_SPLITS;
+    FlashAttentionDecodeGqa2Buffers buffers;
+    allocate_flash_attention_decode_gqa2_fixed_buffers(&buffers);
+
+    int k_seq_len = compact_args.kv_seq_lens[0];
+    int total_blocks =
+        (k_seq_len + FLASH_ATTN_BN - 1) / FLASH_ATTN_BN;
+    int base_blocks = total_blocks / FLASH_DECODE_SPLITS;
+    int remaining_blocks = total_blocks % FLASH_DECODE_SPLITS;
+    int split_blocks =
+        base_blocks + (split_idx < remaining_blocks);
+    int start_block =
+        split_idx * base_blocks + MIN(split_idx, remaining_blocks);
+    int end_block = start_block + split_blocks;
+    int kv_start = start_block * FLASH_ATTN_BN;
+    int kv_end = MIN(k_seq_len, end_block * FLASH_ATTN_BN);
+
+    buffers.block_table_base = start_block;
+    if (split_blocks > 0) {
+        memcpy(
+            buffers.block_table,
+            compact_args.block_table + start_block,
+            split_blocks * sizeof(int));
+    }
+    bool use_full_steps =
+        k_seq_len > 0 &&
+        k_seq_len %
+            (FLASH_ATTN_BN * FLASH_DECODE_SPLITS * 4) == 0;
+    if (use_full_steps) {
+        compute_flash_attention_decode_gqa2_partial<true>(
+            core_args, &buffers, 0, k_seq_len, kv_head_idx,
+            kv_start, kv_end, split_idx,
+            flash_decode_partial_out,
+            flash_decode_partial_max,
+            flash_decode_partial_sum);
+    } else {
+        compute_flash_attention_decode_gqa2_partial<false>(
+            core_args, &buffers, 0, k_seq_len, kv_head_idx,
+            kv_start, kv_end, split_idx,
+            flash_decode_partial_out,
+            flash_decode_partial_max,
+            flash_decode_partial_sum);
+    }
+
+    flash_decode_array_sync();
+
+    if (tid <
+        FLASH_DECODE_HEADS * FLASH_DECODE_REDUCERS_PER_HEAD) {
+        int head_idx = tid / FLASH_DECODE_REDUCERS_PER_HEAD;
+        int reducer_idx = tid % FLASH_DECODE_REDUCERS_PER_HEAD;
+        int reduce_base = head_idx * FLASH_DECODE_SPLITS;
+        floatv16 local_max_values;
+        simd_load(
+            local_max_values,
+            flash_decode_partial_max + reduce_base);
+        float global_max = flash_decode_reduce_max(
+            local_max_values, local_max_values);
+
+        float split_scales[FLASH_DECODE_SPLITS];
+        floatv16 scale_vector = simd_exp(
+            local_max_values - (floatv16)global_max);
+        simd_store(scale_vector, split_scales);
+        floatv16 local_sum_values;
+        simd_load(
+            local_sum_values,
+            flash_decode_partial_sum + reduce_base);
+        float global_sum = simd_redsum(
+            simd_mul(local_sum_values, scale_vector));
+
+        half *out_dst = (half *)compact_args.fmha_out +
+            head_idx * FLASH_DECODE_DIM;
+        floatv16 inv_sum = 1.0f / global_sum;
+        constexpr int PARTS_PER_REDUCER =
+            FLASH_DECODE_PARTS /
+            FLASH_DECODE_REDUCERS_PER_HEAD;
+        int first_part = reducer_idx * PARTS_PER_REDUCER;
+        for (int reducer_part = 0;
+             reducer_part < PARTS_PER_REDUCER; reducer_part++) {
+            int part = first_part + reducer_part;
+            floatv16 result0 = 0.0f;
+            floatv16 result1 = 0.0f;
+            for (int split = 0;
+                 split < FLASH_DECODE_SPLITS; split += 2) {
+                floatv16 partial0;
+                floatv16 partial1;
+                int offset0 =
+                    (reduce_base + split) * FLASH_DECODE_DIM +
+                    part * 16;
+                int offset1 = offset0 + FLASH_DECODE_DIM;
+                simd_load(
+                    partial0, flash_decode_partial_out + offset0);
+                simd_load(
+                    partial1, flash_decode_partial_out + offset1);
+                result0 = simd_fma(
+                    partial0, (floatv16)split_scales[split],
+                    result0);
+                result1 = simd_fma(
+                    partial1,
+                    (floatv16)split_scales[split + 1], result1);
+            }
+            floatv16 result = simd_add(result0, result1);
+            result = simd_mul(result, inv_sum);
+            halfv16 result_half = (halfv16)result;
+            simd_store(result_half, out_dst + part * 16);
+        }
+    }
+}
+
+__global__ void teco_slave_flash_attention_half_decode(FlashAttentionArgs args) {
+    __shared__ float flash_decode_partial_out[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS *
+        FLASH_DECODE_DIM] __attribute__((aligned(64)));
+    __shared__ float flash_decode_partial_max[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS]
+        __attribute__((aligned(64)));
+    __shared__ float flash_decode_partial_sum[
+        FLASH_DECODE_HEADS * FLASH_DECODE_SPLITS]
+        __attribute__((aligned(64)));
+    int tid = threadIdx;
+    if (tid >= args.spe_num) {
+        return;
+    }
+
+    if (args.spe_num == 32 &&
+        args.local_head_num == FLASH_DECODE_HEADS &&
+        args.local_kv_head_num == 2 &&
+        args.size_per_head == FLASH_DECODE_DIM &&
+        args.block_size == FLASH_ATTN_BN &&
+        args.max_q_seq_len <= 1) {
+        int kv_head_idx = tid / FLASH_DECODE_SPLITS;
+        int split_idx = tid % FLASH_DECODE_SPLITS;
+        FlashAttentionDecodeGqa2CoreArgs core_args;
+        core_args.q = args.q;
+        core_args.key_cache = args.key_cache;
+        core_args.value_cache = args.value_cache;
+        FlashAttentionDecodeGqa2Buffers buffers;
+        int max_split_blocks =
+            (args.block_table_dim + FLASH_DECODE_SPLITS - 1) /
+            FLASH_DECODE_SPLITS;
+        allocate_flash_attention_decode_gqa2_buffers(
+            MAX(max_split_blocks, 1), &buffers);
+
+        int q_base = 0;
+        for (int batch = 0; batch < args.batch_size; batch++) {
+            int q_seq_len = args.q_seq_lens[batch];
+            if (q_seq_len <= 0) {
+                continue;
+            }
+            int k_seq_len = args.kv_seq_lens[batch];
+            int total_blocks =
+                (k_seq_len + FLASH_ATTN_BN - 1) /
+                FLASH_ATTN_BN;
+            int base_blocks =
+                total_blocks / FLASH_DECODE_SPLITS;
+            int remaining_blocks =
+                total_blocks % FLASH_DECODE_SPLITS;
+            int split_blocks =
+                base_blocks + (split_idx < remaining_blocks);
+            int start_block =
+                split_idx * base_blocks +
+                MIN(split_idx, remaining_blocks);
+            int end_block = start_block + split_blocks;
+            int kv_start = start_block * FLASH_ATTN_BN;
+            int kv_end =
+                MIN(k_seq_len, end_block * FLASH_ATTN_BN);
+
+            buffers.block_table_base = start_block;
+            if (split_blocks > 0) {
+                memcpy(
+                    buffers.block_table,
+                    args.block_table +
+                        batch * args.block_table_dim +
+                        start_block,
+                    split_blocks * sizeof(int));
+            }
+            bool use_full_steps =
+                k_seq_len > 0 &&
+                k_seq_len %
+                    (FLASH_ATTN_BN * FLASH_DECODE_SPLITS * 4) == 0;
+            if (use_full_steps) {
+                compute_flash_attention_decode_gqa2_partial<true>(
+                    core_args, &buffers, q_base, k_seq_len, kv_head_idx,
+                    kv_start, kv_end, split_idx,
+                    flash_decode_partial_out,
+                    flash_decode_partial_max,
+                    flash_decode_partial_sum);
+            } else {
+                compute_flash_attention_decode_gqa2_partial<false>(
+                    core_args, &buffers, q_base, k_seq_len, kv_head_idx,
+                    kv_start, kv_end, split_idx,
+                    flash_decode_partial_out,
+                    flash_decode_partial_max,
+                    flash_decode_partial_sum);
+            }
+
+            flash_decode_array_sync();
+
+            if (tid <
+                FLASH_DECODE_HEADS *
+                    FLASH_DECODE_REDUCERS_PER_HEAD) {
+                int head_idx =
+                    tid / FLASH_DECODE_REDUCERS_PER_HEAD;
+                int reducer_idx =
+                    tid % FLASH_DECODE_REDUCERS_PER_HEAD;
+                int reduce_base =
+                    head_idx * FLASH_DECODE_SPLITS;
+                floatv16 local_max_values;
+                simd_load(
+                    local_max_values,
+                    flash_decode_partial_max + reduce_base);
+                float global_max = flash_decode_reduce_max(
+                    local_max_values, local_max_values);
+
+                float split_scales[FLASH_DECODE_SPLITS];
+                floatv16 scale_vector = simd_exp(
+                    local_max_values - (floatv16)global_max);
+                simd_store(scale_vector, split_scales);
+                floatv16 local_sum_values;
+                simd_load(
+                    local_sum_values,
+                    flash_decode_partial_sum + reduce_base);
+                float global_sum = simd_redsum(
+                    simd_mul(local_sum_values, scale_vector));
+
+                half *out_dst = (half *)args.fmha_out +
+                    q_base * args.local_head_num *
+                        FLASH_DECODE_DIM +
+                    head_idx * FLASH_DECODE_DIM;
+                floatv16 inv_sum = 1.0f / global_sum;
+                constexpr int PARTS_PER_REDUCER =
+                    FLASH_DECODE_PARTS /
+                    FLASH_DECODE_REDUCERS_PER_HEAD;
+                int first_part =
+                    reducer_idx * PARTS_PER_REDUCER;
+                for (int reducer_part = 0;
+                     reducer_part < PARTS_PER_REDUCER;
+                     reducer_part++) {
+                    int part = first_part + reducer_part;
+                    floatv16 result0 = 0.0f;
+                    floatv16 result1 = 0.0f;
+                    for (int split = 0;
+                         split < FLASH_DECODE_SPLITS; split += 2) {
+                        floatv16 partial0;
+                        floatv16 partial1;
+                        int offset0 =
+                            (reduce_base + split) *
+                                FLASH_DECODE_DIM +
+                            part * 16;
+                        int offset1 = offset0 + FLASH_DECODE_DIM;
+                        simd_load(
+                            partial0,
+                            flash_decode_partial_out + offset0);
+                        simd_load(
+                            partial1,
+                            flash_decode_partial_out + offset1);
+                        result0 = simd_fma(
+                            partial0,
+                            (floatv16)split_scales[split],
+                            result0);
+                        result1 = simd_fma(
+                            partial1,
+                            (floatv16)split_scales[split + 1],
+                            result1);
+                    }
+                    floatv16 result = simd_add(result0, result1);
+                    result = simd_mul(result, inv_sum);
+                    halfv16 result_half = (halfv16)result;
+                    simd_store(
+                        result_half, out_dst + part * 16);
+                }
+            }
+            if (batch + 1 < args.batch_size) {
+                flash_decode_array_sync();
+            }
+            q_base += q_seq_len;
+        }
+        return;
+    }
+
+    FlashAttentionSpmBuffers buffers;
+    allocate_flash_attention_buffers(args, &buffers);
+    int task_id = 0;
+    int q_base = 0;
+    int cached_batch = -1;
+    for (int b = 0; b < args.batch_size; b++) {
+        int q_seq_len = args.q_seq_lens[b];
+        int k_seq_len = args.kv_seq_lens[b];
+        for (int head_idx = 0; head_idx < args.local_head_num; head_idx++) {
+            if (task_id % args.spe_num == tid) {
+                if (cached_batch != b) {
+                    memcpy(buffers.block_table,
+                           args.block_table + b * args.block_table_dim,
+                           args.block_table_dim * sizeof(int));
+                    cached_batch = b;
+                }
+                if (q_seq_len == 1 && args.size_per_head == 64 &&
+                    args.block_size == 32) {
+                    compute_flash_attention_decode_m1(
+                        args, &buffers, q_base, k_seq_len, head_idx);
+                    task_id++;
+                    continue;
+                }
+                for (int q_offset = 0; q_offset < q_seq_len;
+                     q_offset += FLASH_ATTN_BM) {
+                    compute_flash_attention_tile(
+                        args, &buffers, q_base, q_seq_len, k_seq_len,
+                        q_offset, head_idx);
+                }
+            }
+            task_id++;
+        }
+        q_base += q_seq_len;
+    }
+}

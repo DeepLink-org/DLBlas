@@ -1,0 +1,1377 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+#include "ual/kernel/flash_attention/flash_attention_common.h"
+
+__device__ __always_inline floatv16 approx_exp_neg(floatv16 value) {
+    value = simd_max(value, (floatv16)-20.0f);
+    value = simd_fma(
+        value, (floatv16)(1.0f / 33.0f), (floatv16)1.0f);
+#pragma unroll
+    for (int step = 0; step < 5; step++) {
+        value = simd_mul(value, value);
+    }
+    return value;
+}
+
+__device__ __always_inline float approx_exp_neg_scalar(float value) {
+    value = MAX(value, -20.0f);
+    value = 1.0f + value * (1.0f / 33.0f);
+#pragma unroll
+    for (int step = 0; step < 5; step++) {
+        value *= value;
+    }
+    return value;
+}
+
+__device__ __always_inline void copy_softmax_old_max(
+    float *dst, const float *src, int rows) {
+    int row = 0;
+    for (; row + 16 <= rows; row += 16) {
+        floatv16 value;
+        simd_load(value, src + row);
+        simd_store(value, dst + row);
+    }
+    for (; row < rows; row++) {
+        dst[row] = src[row];
+    }
+}
+
+// Complete/contiguous steps produce one scalar block max per row.  Update the
+// old max, new max, and rescale factor for 16 rows together so the five
+// repeated-squaring stages are issued as SIMD operations instead of scalar
+// dependency chains.
+__device__ __always_inline void update_approx_softmax_state(
+    const float *old_max_values, float *block_and_cur_max,
+    float *scale, int rows) {
+    int row = 0;
+    for (; row + 16 <= rows; row += 16) {
+        floatv16 old_max;
+        floatv16 block_max;
+        simd_load(old_max, old_max_values + row);
+        simd_load(block_max, block_and_cur_max + row);
+        floatv16 new_max = simd_max(
+            simd_max(old_max, block_max), (floatv16)0.0f);
+        floatv16 row_scale = approx_exp_neg(
+            simd_sub(old_max, new_max));
+        simd_store(new_max, block_and_cur_max + row);
+        simd_store(row_scale, scale + row);
+    }
+    for (; row < rows; row++) {
+        float old_max = old_max_values[row];
+        float new_max = MAX(
+            MAX(old_max, block_and_cur_max[row]), 0.0f);
+        scale[row] = old_max == new_max
+            ? 1.0f : approx_exp_neg_scalar(old_max - new_max);
+        block_and_cur_max[row] = new_max;
+    }
+}
+
+template <int BLOCKS>
+__device__ __always_inline void compute_contiguous_score_row_max(
+    const half *scores, float *row_max_values, int rows) {
+    constexpr int SCORE_BLOCK_STRIDE =
+        FLASH_ATTN_BM * FLASH_ATTN_BN;
+    int row = 0;
+    for (; row + 1 < rows; row += 2) {
+        const half *first_row0 = scores + row * FLASH_ATTN_BN;
+        const half *first_row1 = first_row0 + FLASH_ATTN_BN;
+        halfv16 max00;
+        halfv16 max01;
+        halfv16 max10;
+        halfv16 max11;
+        simd_load(max00, first_row0);
+        simd_load(max01, first_row0 + 16);
+        simd_load(max10, first_row1);
+        simd_load(max11, first_row1 + 16);
+#pragma unroll
+        for (int block = 1; block < BLOCKS; block++) {
+            const half *score_row0 =
+                scores + block * SCORE_BLOCK_STRIDE +
+                row * FLASH_ATTN_BN;
+            const half *score_row1 = score_row0 + FLASH_ATTN_BN;
+            halfv16 value00;
+            halfv16 value01;
+            halfv16 value10;
+            halfv16 value11;
+            simd_load(value00, score_row0);
+            simd_load(value01, score_row0 + 16);
+            simd_load(value10, score_row1);
+            simd_load(value11, score_row1 + 16);
+            max00 = simd_max(max00, value00);
+            max01 = simd_max(max01, value01);
+            max10 = simd_max(max10, value10);
+            max11 = simd_max(max11, value11);
+        }
+        halfv16 row_max0 = simd_max(max00, max01);
+        halfv16 row_max1 = simd_max(max10, max11);
+        row_max0 = simd_max(
+            row_max0, simd_concat(row_max0, row_max0, (void *)32L));
+        row_max1 = simd_max(
+            row_max1, simd_concat(row_max1, row_max1, (void *)32L));
+        row_max0 = simd_max(
+            row_max0, simd_concat(row_max0, row_max0, (void *)16L));
+        row_max1 = simd_max(
+            row_max1, simd_concat(row_max1, row_max1, (void *)16L));
+        row_max0 = simd_max(
+            row_max0, simd_concat(row_max0, row_max0, (void *)8L));
+        row_max1 = simd_max(
+            row_max1, simd_concat(row_max1, row_max1, (void *)8L));
+        row_max_values[row] = MAX(
+            (float)simd_vextfh(row_max0, 0),
+            (float)simd_vextfh(row_max0, 1));
+        row_max_values[row + 1] = MAX(
+            (float)simd_vextfh(row_max1, 0),
+            (float)simd_vextfh(row_max1, 1));
+    }
+    if (row < rows) {
+        const half *first_row = scores + row * FLASH_ATTN_BN;
+        halfv16 max0;
+        halfv16 max1;
+        simd_load(max0, first_row);
+        simd_load(max1, first_row + 16);
+#pragma unroll
+        for (int block = 1; block < BLOCKS; block++) {
+            const half *score_row =
+                scores + block * SCORE_BLOCK_STRIDE +
+                row * FLASH_ATTN_BN;
+            halfv16 value0;
+            halfv16 value1;
+            simd_load(value0, score_row);
+            simd_load(value1, score_row + 16);
+            max0 = simd_max(max0, value0);
+            max1 = simd_max(max1, value1);
+        }
+        halfv16 row_max = simd_max(max0, max1);
+        row_max = simd_max(
+            row_max, simd_concat(row_max, row_max, (void *)32L));
+        row_max = simd_max(
+            row_max, simd_concat(row_max, row_max, (void *)16L));
+        row_max = simd_max(
+            row_max, simd_concat(row_max, row_max, (void *)8L));
+        row_max_values[row] = MAX(
+            (float)simd_vextfh(row_max, 0),
+            (float)simd_vextfh(row_max, 1));
+    }
+}
+
+__device__ __always_inline void apply_causal_mask_paired(
+    half *score, int rows, int first_rows, int cur_BN,
+    int first_q_offset, int second_q_offset, int kj_offset,
+    int q_seq_len, int k_seq_len, int ld_scores) {
+    int q_start = MAX(k_seq_len - q_seq_len, 0);
+    half neg_inf = (half)-FLT_MAX;
+    if (cur_BN == 32 && ld_scores == 32) {
+        halfv16 neg_inf_vector = neg_inf;
+        for (int segment = 0; segment < 2; segment++) {
+            int row_base = segment == 0 ? 0 : first_rows;
+            int segment_rows = segment == 0
+                ? first_rows : rows - first_rows;
+            int segment_q_offset = segment == 0
+                ? first_q_offset : second_q_offset;
+            int first_allowed =
+                q_start + segment_q_offset - kj_offset + 1;
+            int masked_rows = MIN(
+                segment_rows, MAX(32 - first_allowed, 0));
+            int full_rows = MIN(
+                masked_rows, MAX(1 - first_allowed, 0));
+            for (int row = 0; row < full_rows; row++) {
+                half *score_row =
+                    score + (row_base + row) * ld_scores;
+                simd_store(neg_inf_vector, score_row);
+                simd_store(neg_inf_vector, score_row + 16);
+            }
+            for (int row = full_rows; row < masked_rows; row++) {
+                half *score_row =
+                    score + (row_base + row) * ld_scores;
+                int allowed = first_allowed + row;
+                if (allowed <= 16) {
+                    for (int col = allowed; col < 16; col++) {
+                        score_row[col] = neg_inf;
+                    }
+                    simd_store(neg_inf_vector, score_row + 16);
+                } else {
+                    for (int col = allowed; col < 32; col++) {
+                        score_row[col] = neg_inf;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    for (int row = 0; row < rows; row++) {
+        int q_offset = row < first_rows
+            ? first_q_offset + row
+            : second_q_offset + row - first_rows;
+        int allowed = q_start + q_offset - kj_offset + 1;
+        if (allowed < 0) allowed = 0;
+        if (allowed >= cur_BN) continue;
+        half *score_row = score + row * ld_scores;
+        for (int col = allowed; col < cur_BN; col++) {
+            score_row[col] = neg_inf;
+        }
+    }
+}
+
+__device__ __always_inline void online_softmax_step_sept(
+    half *scores0, half *scores1, half *scores2, half *scores3,
+    half *scores4, half *scores5, half *scores6, half *scores7,
+    const float *pre_max, const float *pre_sum,
+    float *cur_max, float *cur_sum, float *scale,
+    int m, int n0, int n1, int n2, int n3, int n4, int n5, int n6,
+    int n7,
+    int ld_scores) {
+    constexpr int SCORE_BLOCKS = 8;
+
+    if (ld_scores == 32 && n7 == 32) {
+        // Eight full score tiles are one contiguous [8, BM, BN]
+        // allocation. Direct offsets keep their pointers out of the SPE stack.
+        constexpr int SCORE_BLOCK_STRIDE =
+            FLASH_ATTN_BM * FLASH_ATTN_BN;
+        const float *old_max_values = pre_max;
+        if (pre_max == cur_max) {
+            // The compact first-prompt layout aliases the max ping/pong
+            // buffers.  Preserve the old values in scale before overwriting
+            // cur_max; the vector state update then replaces scale in place.
+            copy_softmax_old_max(scale, pre_max, m);
+            old_max_values = scale;
+        }
+        compute_contiguous_score_row_max<SCORE_BLOCKS>(
+            scores0, cur_max, m);
+
+        update_approx_softmax_state(
+            old_max_values, cur_max, scale, m);
+
+        for (int row = 0; row < m; row++) {
+            floatv16 row_max = cur_max[row];
+            floatv16 l_vector0;
+            floatv16 l_vector1;
+            for (int block = 0; block < SCORE_BLOCKS; block++) {
+                half *score_row =
+                    scores0 + block * SCORE_BLOCK_STRIDE +
+                    row * ld_scores;
+                halfv16 input_value0;
+                halfv16 input_value1;
+                floatv16 value0;
+                floatv16 value1;
+                halfv16 half_value0;
+                halfv16 half_value1;
+                simd_load(input_value0, score_row);
+                simd_load(input_value1, score_row + 16);
+                value0 = simd_cvt_h2f(input_value0);
+                value1 = simd_cvt_h2f(input_value1);
+                value0 = approx_exp_neg(
+                    simd_sub(value0, row_max));
+                value1 = approx_exp_neg(
+                    simd_sub(value1, row_max));
+                if (block == 0) {
+                    l_vector0 = value0;
+                    l_vector1 = value1;
+                } else {
+                    l_vector0 = simd_add(l_vector0, value0);
+                    l_vector1 = simd_add(l_vector1, value1);
+                }
+                half_value0 = (halfv16)value0;
+                half_value1 = (halfv16)value1;
+                simd_store(half_value0, score_row);
+                simd_store(half_value1, score_row + 16);
+            }
+            float l_block =
+                simd_redsum(simd_add(l_vector0, l_vector1));
+            cur_sum[row] =
+                pre_sum[row] * scale[row] + l_block;
+        }
+        return;
+    }
+
+    if (ld_scores == 32 && n6 == 32 && n7 == 0) {
+        constexpr int FULL_BLOCKS = 7;
+        constexpr int SCORE_BLOCK_STRIDE =
+            FLASH_ATTN_BM * FLASH_ATTN_BN;
+        const float *old_max_values = pre_max;
+        if (pre_max == cur_max) {
+            copy_softmax_old_max(scale, pre_max, m);
+            old_max_values = scale;
+        }
+        compute_contiguous_score_row_max<FULL_BLOCKS>(
+            scores0, cur_max, m);
+
+        update_approx_softmax_state(
+            old_max_values, cur_max, scale, m);
+
+        for (int row = 0; row < m; row++) {
+            floatv16 row_max = cur_max[row];
+            floatv16 l_vector0;
+            floatv16 l_vector1;
+            for (int block = 0; block < FULL_BLOCKS; block++) {
+                half *score_row =
+                    scores0 + block * SCORE_BLOCK_STRIDE +
+                    row * ld_scores;
+                halfv16 input_value0;
+                halfv16 input_value1;
+                floatv16 value0;
+                floatv16 value1;
+                simd_load(input_value0, score_row);
+                simd_load(input_value1, score_row + 16);
+                value0 = approx_exp_neg(simd_sub(
+                    simd_cvt_h2f(input_value0), row_max));
+                value1 = approx_exp_neg(simd_sub(
+                    simd_cvt_h2f(input_value1), row_max));
+                if (block == 0) {
+                    l_vector0 = value0;
+                    l_vector1 = value1;
+                } else {
+                    l_vector0 = simd_add(l_vector0, value0);
+                    l_vector1 = simd_add(l_vector1, value1);
+                }
+                simd_store((halfv16)value0, score_row);
+                simd_store((halfv16)value1, score_row + 16);
+            }
+            float l_block =
+                simd_redsum(simd_add(l_vector0, l_vector1));
+            cur_sum[row] =
+                pre_sum[row] * scale[row] + l_block;
+        }
+        return;
+    }
+
+    int block_cols[SCORE_BLOCKS] = {
+        n0, n1, n2, n3, n4, n5, n6, n7};
+    // Causal boundaries can leave a short run of full blocks.  T1-T4 also
+    // finish at a 32n-1 boundary.  Both layouts are contiguous and can use
+    // the same vector softmax path instead of the generic pointer-array path.
+    int active_blocks = 0;
+    while (active_blocks < SCORE_BLOCKS &&
+           block_cols[active_blocks] > 0) {
+        active_blocks++;
+    }
+    bool contiguous_fast =
+        ld_scores == 32 && active_blocks > 0 &&
+        (block_cols[active_blocks - 1] == 31 ||
+         block_cols[active_blocks - 1] == 32);
+    for (int block = 0; block + 1 < active_blocks; block++) {
+        contiguous_fast =
+            contiguous_fast && block_cols[block] == 32;
+    }
+    for (int block = active_blocks; block < SCORE_BLOCKS; block++) {
+        contiguous_fast =
+            contiguous_fast && block_cols[block] == 0;
+    }
+    if (contiguous_fast) {
+        constexpr int SCORE_BLOCK_STRIDE =
+            FLASH_ATTN_BM * FLASH_ATTN_BN;
+        half neg_inf = (half)-FLT_MAX;
+        bool has_31_column_tail =
+            block_cols[active_blocks - 1] == 31;
+        const float *old_max_values = pre_max;
+        if (pre_max == cur_max) {
+            copy_softmax_old_max(scale, pre_max, m);
+            old_max_values = scale;
+        }
+        for (int row = 0; row < m; row++) {
+            if (has_31_column_tail) {
+                half *last_score_row =
+                    scores0 +
+                    (active_blocks - 1) * SCORE_BLOCK_STRIDE +
+                    row * ld_scores;
+                last_score_row[31] = neg_inf;
+            }
+
+            half *first_score_row = scores0 + row * ld_scores;
+            halfv16 max_vector0;
+            halfv16 max_vector1;
+            simd_load(max_vector0, first_score_row);
+            simd_load(max_vector1, first_score_row + 16);
+            for (int block = 1; block < active_blocks; block++) {
+                half *score_row =
+                    scores0 + block * SCORE_BLOCK_STRIDE +
+                    row * ld_scores;
+                halfv16 half_value0;
+                halfv16 half_value1;
+                simd_load(half_value0, score_row);
+                simd_load(half_value1, score_row + 16);
+                max_vector0 = simd_max(max_vector0, half_value0);
+                max_vector1 = simd_max(max_vector1, half_value1);
+            }
+            halfv16 max_vector =
+                simd_max(max_vector0, max_vector1);
+            max_vector = simd_max(
+                max_vector,
+                simd_concat(max_vector, max_vector, (void *)32L));
+            max_vector = simd_max(
+                max_vector,
+                simd_concat(max_vector, max_vector, (void *)16L));
+            max_vector = simd_max(
+                max_vector,
+                simd_concat(max_vector, max_vector, (void *)8L));
+            float m_block0 = (float)simd_vextfh(max_vector, 0);
+            float m_block1 = (float)simd_vextfh(max_vector, 1);
+            float m_block = MAX(m_block0, m_block1);
+            cur_max[row] = m_block;
+        }
+
+        update_approx_softmax_state(
+            old_max_values, cur_max, scale, m);
+
+        for (int row = 0; row < m; row++) {
+            floatv16 row_max = cur_max[row];
+            floatv16 l_vector0;
+            floatv16 l_vector1;
+            for (int block = 0; block < active_blocks; block++) {
+                half *score_row =
+                    scores0 + block * SCORE_BLOCK_STRIDE +
+                    row * ld_scores;
+                halfv16 input_value0;
+                halfv16 input_value1;
+                simd_load(input_value0, score_row);
+                simd_load(input_value1, score_row + 16);
+                floatv16 value0 = approx_exp_neg(
+                    simd_sub(simd_cvt_h2f(input_value0), row_max));
+                floatv16 value1 = approx_exp_neg(
+                    simd_sub(simd_cvt_h2f(input_value1), row_max));
+                if (block == 0) {
+                    l_vector0 = value0;
+                    l_vector1 = value1;
+                } else {
+                    l_vector0 = simd_add(l_vector0, value0);
+                    l_vector1 = simd_add(l_vector1, value1);
+                }
+                simd_store((halfv16)value0, score_row);
+                simd_store((halfv16)value1, score_row + 16);
+            }
+            float l_block =
+                simd_redsum(simd_add(l_vector0, l_vector1));
+            cur_sum[row] =
+                pre_sum[row] * scale[row] + l_block;
+        }
+        return;
+    }
+
+    half *score_blocks[SCORE_BLOCKS] = {
+        scores0, scores1, scores2, scores3,
+        scores4, scores5, scores6, scores7};
+    for (int row = 0; row < m; row++) {
+        floatv16 max_vector = -FLT_MAX;
+        float m_block = -FLT_MAX;
+        for (int block = 0; block < active_blocks; block++) {
+            half *score_row =
+                score_blocks[block] + row * ld_scores;
+            int col = 0;
+            for (; col + 16 <= block_cols[block]; col += 16) {
+                halfv16 half_value;
+                floatv16 value;
+                simd_load(half_value, score_row + col);
+                value = simd_cvt_h2f(half_value);
+                max_vector = simd_max(max_vector, value);
+            }
+            for (; col < block_cols[block]; col++) {
+                m_block = MAX(m_block, score_row[col]);
+            }
+        }
+        float *vector_values = (float *)&max_vector;
+        for (int lane = 0; lane < 16; lane++) {
+            m_block = MAX(m_block, vector_values[lane]);
+        }
+        float m_old = pre_max[row];
+        float m_new = MAX(m_old, m_block);
+        m_new = MAX(m_new, 0.0f);
+        scale[row] = m_old == m_new
+            ? 1.0f : expf(m_old - m_new);
+        cur_max[row] = m_new;
+    }
+
+    for (int row = 0; row < m; row++) {
+        float m_new = cur_max[row];
+        floatv16 l_vector = 0.0f;
+        float l_tail = 0.0f;
+        for (int block = 0; block < active_blocks; block++) {
+            half *score_row =
+                score_blocks[block] + row * ld_scores;
+            int col = 0;
+            for (; col + 16 <= block_cols[block]; col += 16) {
+                halfv16 input_value;
+                floatv16 value;
+                halfv16 half_value;
+                simd_load(input_value, score_row + col);
+                value = simd_cvt_h2f(input_value);
+                value = simd_exp(value - m_new);
+                l_vector = simd_add(l_vector, value);
+                half_value = (halfv16)value;
+                simd_store(half_value, score_row + col);
+            }
+            for (; col < block_cols[block]; col++) {
+                float value = expf(score_row[col] - m_new);
+                score_row[col] = (half)value;
+                l_tail += value;
+            }
+            for (; col < ld_scores; col++) {
+                score_row[col] = 0;
+            }
+        }
+        float l_block = simd_redsum(l_vector) + l_tail;
+        cur_sum[row] =
+            pre_sum[row] * scale[row] + l_block;
+    }
+}
+
+constexpr int FLASH_ATTN_PREFILL_KV_BLOCKS = 8;
+
+struct FlashAttentionPrefillGqa2Buffers {
+    const int *block_table;
+    half *q;
+    half *k_tmp;
+    half *k;
+    half *pv_out;
+    half *out;
+    half *out_accum;
+    float *l_prev;
+    float *m_prev;
+    float *l_cur;
+    float *m_cur;
+    float *scale;
+    half *p_score;
+};
+
+__device__ __always_inline const half *flash_prefill_packed_cache_ptr(
+    const void *cache, int block_id, int kv_head_idx) {
+    constexpr int KV_HEADS = 2;
+    constexpr int BLOCK_ELEMS =
+        KV_HEADS * FLASH_ATTN_BN * 64;
+    return (const half *)cache +
+        block_id * BLOCK_ELEMS +
+        kv_head_idx * FLASH_ATTN_BN * 64;
+}
+
+
+__device__ __always_inline void allocate_flash_attention_prefill_gqa2_buffers(
+    const FlashAttentionArgs &args,
+    FlashAttentionPrefillGqa2Buffers *buffers) {
+    constexpr int HEADS_PER_GROUP = 2;
+    int token_size = args.size_per_head * sizeof(half);
+    bool use_oct_buffers =
+        args.batch_size == 1 &&
+        args.kv_seq_lens[0] <= args.q_seq_lens[0];
+    int buffer_blocks = FLASH_ATTN_PREFILL_KV_BLOCKS;
+    buffers->block_table = nullptr;
+    buffers->q = (half *)rt_spm_malloc(
+        HEADS_PER_GROUP * FLASH_ATTN_BM * token_size);
+    buffers->k_tmp = (half *)rt_spm_malloc(
+        buffer_blocks * FLASH_ATTN_BN * token_size);
+    buffers->k = (half *)rt_spm_malloc(
+        buffer_blocks * FLASH_ATTN_BN * token_size);
+    buffers->pv_out = (half *)rt_spm_malloc(
+        FLASH_ATTN_BM * args.size_per_head *
+        sizeof(half));
+    buffers->out = buffers->q;
+    buffers->out_accum = (half *)rt_spm_malloc(
+        HEADS_PER_GROUP * FLASH_ATTN_BM *
+        args.size_per_head * sizeof(half));
+    buffers->l_prev = (float *)rt_spm_malloc(
+        HEADS_PER_GROUP * FLASH_ATTN_BM * sizeof(float));
+    buffers->m_prev = (float *)rt_spm_malloc(
+        HEADS_PER_GROUP * FLASH_ATTN_BM * sizeof(float));
+    if (use_oct_buffers) {
+        buffers->l_cur = buffers->l_prev;
+        buffers->m_cur = buffers->m_prev;
+        buffers->scale = (float *)buffers->pv_out;
+    } else {
+        buffers->l_cur = (float *)rt_spm_malloc(
+            HEADS_PER_GROUP * FLASH_ATTN_BM * sizeof(float));
+        buffers->m_cur = (float *)rt_spm_malloc(
+            HEADS_PER_GROUP * FLASH_ATTN_BM * sizeof(float));
+        buffers->scale = (float *)rt_spm_malloc(
+            HEADS_PER_GROUP * FLASH_ATTN_BM * sizeof(float));
+    }
+    buffers->p_score = (half *)rt_spm_malloc(
+        buffer_blocks * FLASH_ATTN_BM *
+        FLASH_ATTN_BN * sizeof(half));
+}
+
+
+template <int FIXED_Q_SEQ_LEN, int FIXED_K_SEQ_LEN>
+__device__ __always_inline void compute_flash_attention_prefill_gqa2_sept_tile(
+    const FlashAttentionArgs &args,
+    FlashAttentionPrefillGqa2Buffers *buffers,
+    int q_base, int runtime_q_seq_len, int runtime_k_seq_len, int q_offset,
+    int kv_head_idx, int paired_q_offset, int pair_rows) {
+    constexpr int HEADS_PER_GROUP = 2;
+    constexpr int KV_BLOCKS = FLASH_ATTN_PREFILL_KV_BLOCKS;
+    constexpr int BM = FLASH_ATTN_BM;
+    constexpr int BN = FLASH_ATTN_BN;
+    constexpr int BK = 64;
+    constexpr int token_size = BK * sizeof(half);
+    constexpr bool FIXED_T1_SHAPE = FIXED_Q_SEQ_LEN > 0;
+    const int q_seq_len = FIXED_T1_SHAPE
+        ? FIXED_Q_SEQ_LEN : runtime_q_seq_len;
+    const int k_seq_len = FIXED_T1_SHAPE
+        ? FIXED_K_SEQ_LEN : runtime_k_seq_len;
+    const int local_head_num = FIXED_T1_SHAPE
+        ? 4 : args.local_head_num;
+    bool paired = paired_q_offset >= 0;
+    int first_rows = paired
+        ? MIN(pair_rows, q_seq_len - q_offset)
+        : MIN(BM, q_seq_len - q_offset);
+    int second_rows = paired
+        ? MIN(pair_rows, q_seq_len - paired_q_offset)
+        : 0;
+    int cur_BM = first_rows + second_rows;
+    int q_head_stride = BM * BK;
+    int state_head_stride = BM;
+    int score_block_stride = BM * BN;
+    int k_block_stride = BN * BK;
+    int accum_head_stride = BM * BK;
+    int head_base = kv_head_idx * HEADS_PER_GROUP;
+
+    float *l_ptr[HEADS_PER_GROUP];
+    float *l_next[HEADS_PER_GROUP];
+    float *m_ptr[HEADS_PER_GROUP];
+    float *m_next[HEADS_PER_GROUP];
+    MemcpyHandle q_load_handle;
+    size_t q_src_stride =
+        (local_head_num - 1) * token_size;
+    MemoryStride q_load_stride = {0, q_src_stride};
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        half *src_q_ptr = (half *)args.q +
+            (q_base + q_offset) *
+                (local_head_num * BK) +
+            (head_base + group_head) * BK;
+        half *q_dst = buffers->q + group_head * q_head_stride;
+        memcpy_async(
+            q_dst, src_q_ptr,
+            first_rows * token_size, token_size, q_load_stride,
+            MemcpyGlobalToSpm, q_load_handle);
+        if (paired) {
+            half *second_src_q_ptr = (half *)args.q +
+                (q_base + paired_q_offset) *
+                    (local_head_num * BK) +
+                (head_base + group_head) * BK;
+            memcpy_async(
+                q_dst + first_rows * BK, second_src_q_ptr,
+                second_rows * token_size, token_size, q_load_stride,
+                MemcpyGlobalToSpm, q_load_handle);
+        }
+    }
+
+    halfv16 zero_half = 0;
+    floatv16 zero_float = 0.0f;
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        half *accum =
+            buffers->out_accum +
+            group_head * accum_head_stride;
+        int accum_idx = 0;
+        for (; accum_idx + 16 <= cur_BM * BK; accum_idx += 16) {
+            simd_store(zero_half, accum + accum_idx);
+        }
+        for (; accum_idx < cur_BM * BK; accum_idx++) {
+            accum[accum_idx] = 0.0f;
+        }
+
+        float *l_prev =
+            buffers->l_prev + group_head * state_head_stride;
+        float *m_prev =
+            buffers->m_prev + group_head * state_head_stride;
+        int row = 0;
+        for (; row + 16 <= cur_BM; row += 16) {
+            simd_store(zero_float, l_prev + row);
+        }
+        for (; row < cur_BM; row++) {
+            l_prev[row] = 0.0f;
+        }
+        fill_inf(m_prev, cur_BM);
+        l_ptr[group_head] = l_prev;
+        l_next[group_head] =
+            buffers->l_cur + group_head * state_head_stride;
+        m_ptr[group_head] = m_prev;
+        m_next[group_head] =
+            buffers->m_cur + group_head * state_head_stride;
+    }
+
+    memcpy_wait(q_load_handle);
+    halfv16 q_scale = (half)args.softmax_scale;
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        half *q_dst = buffers->q + group_head * q_head_stride;
+        for (int idx = 0; idx < cur_BM * BK; idx += 16) {
+            halfv16 value;
+            simd_load(value, q_dst + idx);
+            value = simd_mul(value, q_scale);
+            simd_store(value, q_dst + idx);
+        }
+    }
+
+    int q_start = MAX(k_seq_len - q_seq_len, 0);
+    int last_q_offset = paired ? paired_q_offset : q_offset;
+    int last_q_rows = paired ? second_rows : first_rows;
+    int first_k_limit = MIN(
+        k_seq_len, q_start + q_offset + first_rows);
+    int k_limit = MIN(
+        k_seq_len, q_start + last_q_offset + last_q_rows);
+    int step_blocks = KV_BLOCKS;
+    int kv_step = step_blocks * BN;
+    MatmulConfig group_matmul_cfg;
+    Matmul group_matmul(group_matmul_cfg);
+    constexpr int KEY_PANEL_N = 32;
+    constexpr int KEY_PANELS = 2;
+    constexpr int CACHE_SECTION_BYTES = 64 * sizeof(half);
+    MemcpyHandle key_load_handle;
+    MemcpyHandle value_load_handle;
+    int *local_block_table = nullptr;
+    int block_ids[KV_BLOCKS];
+    const int *active_block_table = buffers->block_table;
+    int active_logical_blocks =
+        (k_limit + BN - 1) / BN;
+    bool cache_t1_block_ids = FIXED_T1_SHAPE ||
+        (args.batch_size == 1 &&
+         args.spe_num == 32 &&
+         args.local_head_num == 4 &&
+         args.local_kv_head_num == 2 &&
+         ((q_seq_len == 2048 && k_seq_len == 2048) ||
+          ((q_seq_len == 2048 || q_seq_len == 2047) &&
+           k_seq_len == 4095)));
+    if (cache_t1_block_ids &&
+        active_logical_blocks <= 128) {
+        local_block_table = (int *)rt_spm_malloc(
+            active_logical_blocks * sizeof(int));
+        memcpy(
+            local_block_table, buffers->block_table,
+            active_logical_blocks * sizeof(int));
+        active_block_table = local_block_table;
+    }
+
+    int first_active_blocks = MIN(
+        step_blocks,
+        (k_limit + BN - 1) / BN);
+    for (int block = 0; block < first_active_blocks; block++) {
+        int block_j = block * BN;
+        int logical_block = block_j / BN;
+        int block_id = active_block_table[logical_block];
+        block_ids[block] = block_id;
+        const half *key_src = flash_prefill_packed_cache_ptr(
+            args.key_cache, block_id, kv_head_idx);
+        half *key_dst =
+            buffers->k_tmp + block * k_block_stride;
+        if (block_j + BN > k_seq_len) {
+            MemoryStride partial_key_stride = {
+                0, (BK - KEY_PANEL_N) * sizeof(half)};
+            TransposeHandle partial_key_handle;
+            for (int panel = 0; panel < KEY_PANELS; panel++) {
+                transpose_async(
+                    key_dst + panel * BN * KEY_PANEL_N,
+                    key_src + panel * KEY_PANEL_N,
+                    BN, KEY_PANEL_N, sizeof(half),
+                    partial_key_stride,
+                    TransposeGlobalToSpm,
+                    partial_key_handle);
+            }
+            transpose_wait(partial_key_handle);
+        } else {
+            MemoryStride packed_key_stride = {0, 0};
+            memcpy_async(
+                key_dst, key_src,
+                k_block_stride * sizeof(half),
+                CACHE_SECTION_BYTES, packed_key_stride,
+                MemcpyGlobalToSpm, key_load_handle);
+        }
+    }
+
+    bool late_only_started = false;
+    for (int j = 0; j < k_limit; j += kv_step) {
+        bool late_only = paired && j >= first_k_limit;
+        int work_rows = late_only ? second_rows : cur_BM;
+        int state_row_base = late_only ? first_rows : 0;
+        int active_q_offset = late_only ? paired_q_offset : q_offset;
+        if (late_only && !late_only_started) {
+            for (int group_head = 0;
+                 group_head < HEADS_PER_GROUP; group_head++) {
+                for (int row = 0; row < first_rows; row++) {
+                    l_next[group_head][row] = l_ptr[group_head][row];
+                    m_next[group_head][row] = m_ptr[group_head][row];
+                }
+            }
+            late_only_started = true;
+        }
+        int block_cols[KV_BLOCKS] = {0};
+        int active_blocks = MIN(
+            step_blocks, (k_limit - j + BN - 1) / BN);
+        for (int block = 0; block < active_blocks; block++) {
+            int block_j = j + block * BN;
+            block_cols[block] = MIN(BN, k_limit - block_j);
+        }
+
+        memcpy_wait(key_load_handle);
+
+        for (int block = 0; block < active_blocks; block++) {
+            int block_id = block_ids[block];
+            const half *value_src = flash_prefill_packed_cache_ptr(
+                args.value_cache, block_id, kv_head_idx);
+            for (int panel = 0; panel < KEY_PANELS; panel++) {
+                MemoryStride packed_value_stride = {
+                    0, (BK - KEY_PANEL_N) * sizeof(half)};
+                memcpy_async(
+                    buffers->k +
+                        (block * KEY_PANELS + panel) *
+                            BN * KEY_PANEL_N,
+                    value_src + panel * KEY_PANEL_N,
+                    BN * KEY_PANEL_N * sizeof(half),
+                    KEY_PANEL_N * sizeof(half),
+                    packed_value_stride, MemcpyGlobalToSpm,
+                    value_load_handle);
+            }
+        }
+
+        half *score_blocks[KV_BLOCKS];
+        for (int block = 0; block < KV_BLOCKS; block++) {
+            score_blocks[block] =
+                buffers->p_score + block * score_block_stride;
+        }
+
+        int next_j = j + kv_step;
+        int next_active_blocks = next_j < k_limit
+            ? MIN(step_blocks, (k_limit - next_j + BN - 1) / BN)
+            : 0;
+        bool values_ready = false;
+        constexpr int GEMM_N = 32;
+        for (int group_head = 0;
+             group_head < HEADS_PER_GROUP; group_head++) {
+            half *q =
+                buffers->q + group_head * q_head_stride +
+                state_row_base * BK;
+            for (int block = 0; block < active_blocks; block++) {
+                half *key_transposed =
+                    buffers->k_tmp + block * k_block_stride;
+                half *score = score_blocks[block];
+                auto tensorQ = make_tensor<2>(
+                    q, {static_cast<size_t>(work_rows),
+                        static_cast<size_t>(BK)});
+                auto tensorK = make_tensor<2>(
+                    key_transposed,
+                    {static_cast<size_t>(BK),
+                     static_cast<size_t>(BN)});
+                auto tensorC = make_tensor<2>(
+                    score,
+                    {static_cast<size_t>(work_rows),
+                     static_cast<size_t>(BN)});
+                group_matmul.compute_async<
+                    MatmulBlockConfig::M128_N32>(
+                    tensorQ, tensorK, true);
+                group_matmul.storeC_spm_async(tensorC);
+            }
+            group_matmul.wait_storeC(active_blocks);
+
+            for (int block = 0; block < active_blocks; block++) {
+                half *score = score_blocks[block];
+                int block_k_offset = j + block * BN;
+                int block_last_token =
+                    block_k_offset + block_cols[block] - 1;
+                if (paired && !late_only &&
+                    block_last_token > q_start + q_offset) {
+                    apply_causal_mask_paired(
+                        score, work_rows, first_rows,
+                        block_cols[block], q_offset,
+                        paired_q_offset, block_k_offset,
+                        q_seq_len, k_seq_len, BN);
+                } else if (block_last_token >
+                           q_start + active_q_offset) {
+                    apply_causal_mask(
+                        score, work_rows, block_cols[block],
+                        active_q_offset, block_k_offset, q_seq_len,
+                        k_seq_len, BN);
+                }
+            }
+
+            float *scale =
+                buffers->scale + group_head * state_head_stride +
+                state_row_base;
+                online_softmax_step_sept(
+                    score_blocks[0], score_blocks[1],
+                    score_blocks[2], score_blocks[3],
+                    score_blocks[4], score_blocks[5],
+                    score_blocks[6], score_blocks[7],
+                    m_ptr[group_head] + state_row_base,
+                    l_ptr[group_head] + state_row_base,
+                    m_next[group_head] + state_row_base,
+                    l_next[group_head] + state_row_base,
+                    scale, work_rows,
+                    block_cols[0], block_cols[1],
+                    block_cols[2], block_cols[3],
+                    block_cols[4], block_cols[5],
+                    block_cols[6], block_cols[7], BN);
+
+            if (!values_ready) {
+                memcpy_wait(value_load_handle);
+                for (int block = 0; block < active_blocks; block++) {
+                    if (block_cols[block] < BN) {
+                        for (int panel = 0; panel < KEY_PANELS;
+                             panel++) {
+                            half *value_panel = buffers->k +
+                                block * k_block_stride +
+                                panel * BN * KEY_PANEL_N;
+                            halfv16 zero = 0;
+                            for (int token = block_cols[block];
+                                 token < BN; token++) {
+                                half *value_row = value_panel +
+                                    token * KEY_PANEL_N;
+                                simd_store(zero, value_row);
+                                simd_store(zero, value_row + 16);
+                            }
+                        }
+                    }
+                }
+                values_ready = true;
+            }
+
+            if (q_start == 0) {
+                half *accum = buffers->out_accum +
+                    group_head * accum_head_stride +
+                    state_row_base * BK;
+                if (j != 0) {
+                    for (int row = 0; row < work_rows; row++) {
+                        if (scale[row] == 1.0f) {
+                            continue;
+                        }
+                        halfv16 row_scale = (half)scale[row];
+                        half *accum_row = accum + row * BK;
+                        for (int head_dim = 0; head_dim < BK;
+                             head_dim += 16) {
+                            halfv16 accum_value;
+                            simd_load(
+                                accum_value, accum_row + head_dim);
+                            accum_value = simd_mul(
+                                accum_value, row_scale);
+                            simd_store(
+                                accum_value, accum_row + head_dim);
+                        }
+                    }
+                }
+
+                    for (int head_block = 0;
+                         head_block < BK / GEMM_N; head_block++) {
+                        for (int block = 0; block < active_blocks;
+                             block++) {
+                            auto tensorV = make_tensor<2>(
+                                buffers->k +
+                                    (block * KEY_PANELS + head_block) *
+                                        BN * GEMM_N,
+                                {static_cast<size_t>(BN),
+                                 static_cast<size_t>(GEMM_N)});
+                            half *p_score = score_blocks[block];
+                            auto tensorP = make_tensor<2>(
+                                p_score,
+                                {static_cast<size_t>(work_rows),
+                                 static_cast<size_t>(BN)});
+                            group_matmul.compute_async<
+                                MatmulBlockConfig::M128_N32>(
+                                tensorP, tensorV,
+                                block == active_blocks - 1);
+                        }
+
+                        auto tensorO = make_tensor<2>(
+                            buffers->pv_out +
+                                head_block * BM * GEMM_N,
+                            {static_cast<size_t>(work_rows),
+                             static_cast<size_t>(GEMM_N)});
+                        group_matmul.storeC_spm_async(tensorO);
+                    }
+                    group_matmul.wait_storeC(BK / GEMM_N);
+
+                for (int row = 0; row < work_rows; row++) {
+                    half *accum_row = accum + row * BK;
+                    half *score_row0 =
+                        buffers->pv_out + row * GEMM_N;
+                    half *score_row1 =
+                        buffers->pv_out + BM * GEMM_N +
+                        row * GEMM_N;
+                    halfv16 accum_value0;
+                    halfv16 accum_value1;
+                    halfv16 accum_value2;
+                    halfv16 accum_value3;
+                    halfv16 score_value0;
+                    halfv16 score_value1;
+                    halfv16 score_value2;
+                    halfv16 score_value3;
+                    simd_load(accum_value0, accum_row);
+                    simd_load(accum_value1, accum_row + 16);
+                    simd_load(accum_value2, accum_row + 32);
+                    simd_load(accum_value3, accum_row + 48);
+                    simd_load(score_value0, score_row0);
+                    simd_load(score_value1, score_row0 + 16);
+                    simd_load(score_value2, score_row1);
+                    simd_load(score_value3, score_row1 + 16);
+                    accum_value0 =
+                        simd_add(accum_value0, score_value0);
+                    accum_value1 =
+                        simd_add(accum_value1, score_value1);
+                    accum_value2 =
+                        simd_add(accum_value2, score_value2);
+                    accum_value3 =
+                        simd_add(accum_value3, score_value3);
+                    simd_store(accum_value0, accum_row);
+                    simd_store(accum_value1, accum_row + 16);
+                    simd_store(accum_value2, accum_row + 32);
+                    simd_store(accum_value3, accum_row + 48);
+                }
+            } else {
+                    for (int head_block = 0;
+                         head_block < BK / GEMM_N; head_block++) {
+                        for (int block = 0; block < active_blocks;
+                             block++) {
+                            auto tensorV = make_tensor<2>(
+                                buffers->k +
+                                    (block * KEY_PANELS + head_block) *
+                                        BN * GEMM_N,
+                                {static_cast<size_t>(BN),
+                                 static_cast<size_t>(GEMM_N)});
+                            half *p_score = score_blocks[block];
+                            auto tensorP = make_tensor<2>(
+                                p_score,
+                                {static_cast<size_t>(work_rows),
+                                 static_cast<size_t>(BN)});
+                            group_matmul.compute_async<
+                                MatmulBlockConfig::M128_N32>(
+                                tensorP, tensorV,
+                                block == active_blocks - 1);
+                        }
+
+                        auto tensorO = make_tensor<2>(
+                            buffers->pv_out +
+                                head_block * BM * GEMM_N,
+                            {static_cast<size_t>(work_rows),
+                             static_cast<size_t>(GEMM_N)});
+                        group_matmul.storeC_spm_async(tensorO);
+                    }
+                    group_matmul.wait_storeC(BK / GEMM_N);
+
+                half *accum = buffers->out_accum +
+                    group_head * accum_head_stride +
+                    state_row_base * BK;
+                float *row_scales = buffers->scale +
+                    group_head * state_head_stride +
+                    state_row_base;
+                for (int row = 0; row < work_rows; row++) {
+                    half *accum_row = accum + row * BK;
+                    half *score_row0 =
+                        buffers->pv_out + row * GEMM_N;
+                    half *score_row1 =
+                        buffers->pv_out + BM * GEMM_N +
+                        row * GEMM_N;
+                    halfv16 accum_value0;
+                    halfv16 accum_value1;
+                    halfv16 accum_value2;
+                    halfv16 accum_value3;
+                    halfv16 score_value0;
+                    halfv16 score_value1;
+                    halfv16 score_value2;
+                    halfv16 score_value3;
+                    halfv16 row_scale =
+                        (half)row_scales[row];
+                    simd_load(accum_value0, accum_row);
+                    simd_load(accum_value1, accum_row + 16);
+                    simd_load(accum_value2, accum_row + 32);
+                    simd_load(accum_value3, accum_row + 48);
+                    simd_load(score_value0, score_row0);
+                    simd_load(score_value1, score_row0 + 16);
+                    simd_load(score_value2, score_row1);
+                    simd_load(score_value3, score_row1 + 16);
+                    accum_value0 = simd_fma(
+                        accum_value0, row_scale, score_value0);
+                    accum_value1 = simd_fma(
+                        accum_value1, row_scale, score_value1);
+                    accum_value2 = simd_fma(
+                        accum_value2, row_scale, score_value2);
+                    accum_value3 = simd_fma(
+                        accum_value3, row_scale, score_value3);
+                    simd_store(accum_value0, accum_row);
+                    simd_store(accum_value1, accum_row + 16);
+                    simd_store(accum_value2, accum_row + 32);
+                    simd_store(accum_value3, accum_row + 48);
+                }
+            }
+        }
+
+        for (int group_head = 0; group_head < HEADS_PER_GROUP;
+             group_head++) {
+            float *tmp = l_ptr[group_head];
+            l_ptr[group_head] = l_next[group_head];
+            l_next[group_head] = tmp;
+            tmp = m_ptr[group_head];
+            m_ptr[group_head] = m_next[group_head];
+            m_next[group_head] = tmp;
+        }
+        for (int block = 0; block < next_active_blocks; block++) {
+            int block_j = next_j + block * BN;
+            int logical_block = block_j / BN;
+            int block_id = active_block_table[logical_block];
+            block_ids[block] = block_id;
+            const half *key_src = flash_prefill_packed_cache_ptr(
+                args.key_cache, block_id, kv_head_idx);
+            half *key_dst =
+                buffers->k_tmp + block * k_block_stride;
+            if (block_j + BN > k_seq_len) {
+                MemoryStride partial_key_stride = {
+                    0, (BK - KEY_PANEL_N) * sizeof(half)};
+                TransposeHandle partial_key_handle;
+                for (int panel = 0;
+                     panel < KEY_PANELS; panel++) {
+                    transpose_async(
+                        key_dst + panel * BN * KEY_PANEL_N,
+                        key_src + panel * KEY_PANEL_N,
+                        BN, KEY_PANEL_N, sizeof(half),
+                        partial_key_stride,
+                        TransposeGlobalToSpm,
+                        partial_key_handle);
+                }
+                transpose_wait(partial_key_handle);
+            } else {
+                MemoryStride packed_key_stride = {0, 0};
+                memcpy_async(
+                    key_dst, key_src,
+                    k_block_stride * sizeof(half),
+                    CACHE_SECTION_BYTES, packed_key_stride,
+                    MemcpyGlobalToSpm, key_load_handle);
+            }
+        }
+    }
+
+    size_t out_dst_stride =
+        (local_head_num - 1) * token_size;
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        float *l_inv_values =
+            buffers->scale + group_head * state_head_stride;
+        int inv_row = 0;
+        for (; inv_row + 16 <= cur_BM; inv_row += 16) {
+            floatv16 l_value;
+            floatv16 l_inv;
+            simd_load(l_value, l_ptr[group_head] + inv_row);
+            l_inv = simd_div((floatv16)1.0f, l_value);
+            simd_store(l_inv, l_inv_values + inv_row);
+        }
+        for (; inv_row < cur_BM; inv_row++) {
+            l_inv_values[inv_row] =
+                l_ptr[group_head][inv_row] > 0.0f
+                ? 1.0f / l_ptr[group_head][inv_row] : 0.0f;
+        }
+    }
+
+    MemcpyHandle output_store_handle;
+    MemoryStride output_store_stride = {out_dst_stride, 0};
+    for (int group_head = 0; group_head < HEADS_PER_GROUP;
+         group_head++) {
+        half *accum =
+            buffers->out_accum +
+            group_head * accum_head_stride;
+        float *l_inv_values =
+            buffers->scale + group_head * state_head_stride;
+        half *out_head =
+            buffers->out + group_head * q_head_stride;
+        for (int row = 0; row < cur_BM; row++) {
+            floatv16 vl_inv = l_inv_values[row];
+            half *accum_row = accum + row * BK;
+            half *out_row = out_head + row * BK;
+            halfv16 half_accum0;
+            halfv16 half_accum1;
+            halfv16 half_accum2;
+            halfv16 half_accum3;
+            simd_load(half_accum0, accum_row);
+            simd_load(half_accum1, accum_row + 16);
+            simd_load(half_accum2, accum_row + 32);
+            simd_load(half_accum3, accum_row + 48);
+            floatv16 value0 = simd_mul(
+                simd_cvt_h2f(half_accum0), vl_inv);
+            floatv16 value1 = simd_mul(
+                simd_cvt_h2f(half_accum1), vl_inv);
+            floatv16 value2 = simd_mul(
+                simd_cvt_h2f(half_accum2), vl_inv);
+            floatv16 value3 = simd_mul(
+                simd_cvt_h2f(half_accum3), vl_inv);
+            simd_store((halfv16)value0, out_row);
+            simd_store((halfv16)value1, out_row + 16);
+            simd_store((halfv16)value2, out_row + 32);
+            simd_store((halfv16)value3, out_row + 48);
+        }
+
+        half *out_base = (half *)args.fmha_out +
+            (q_base + q_offset) *
+                local_head_num * BK +
+            (head_base + group_head) * BK;
+        memcpy_async(
+            out_base, out_head,
+            first_rows * token_size, token_size,
+            output_store_stride, MemcpySpmToGlobal,
+            output_store_handle);
+        if (paired) {
+            half *second_out_base = (half *)args.fmha_out +
+                (q_base + paired_q_offset) *
+                    local_head_num * BK +
+                (head_base + group_head) * BK;
+            memcpy_async(
+                second_out_base,
+                out_head + first_rows * BK,
+                second_rows * token_size, token_size,
+                output_store_stride, MemcpySpmToGlobal,
+                output_store_handle);
+        }
+    }
+    memcpy_wait(output_store_handle);
+}
+
+__global__ void teco_slave_flash_attention_half_prefill(FlashAttentionArgs args) {
+    int tid = threadIdx;
+    if (tid >= args.spe_num) {
+        return;
+    }
+
+    int num_kv_groups =
+        args.local_head_num / args.local_kv_head_num;
+    if (num_kv_groups == 2 && args.size_per_head == 64 &&
+        args.block_size == 32) {
+        FlashAttentionPrefillGqa2Buffers buffers;
+        allocate_flash_attention_prefill_gqa2_buffers(args, &buffers);
+        if (args.batch_size == 1 && args.spe_num == 32 &&
+            args.local_head_num == 4 &&
+            args.local_kv_head_num == 2) {
+            int q_seq_len = args.q_seq_lens[0];
+            int k_seq_len = args.kv_seq_lens[0];
+            bool fixed_t1_shape =
+                (q_seq_len == 2048 && k_seq_len == 2048) ||
+                (q_seq_len == 2048 && k_seq_len == 4095) ||
+                (q_seq_len == 2047 && k_seq_len == 4095);
+            if (fixed_t1_shape) {
+                constexpr int pair_rows = FLASH_ATTN_BM / 2;
+                constexpr int q_tile_count = 32;
+                int pair_idx = tid / 2;
+                int kv_head_idx = tid % 2;
+                int first_q_offset = pair_idx * pair_rows;
+                int second_q_offset =
+                    (q_tile_count - 1 - pair_idx) * pair_rows;
+                buffers.block_table = args.block_table;
+                if (q_seq_len == 2048 && k_seq_len == 2048) {
+                    compute_flash_attention_prefill_gqa2_sept_tile<
+                        2048, 2048>(
+                            args, &buffers, 0, q_seq_len, k_seq_len,
+                            first_q_offset, kv_head_idx,
+                            second_q_offset, pair_rows);
+                } else if (q_seq_len == 2048) {
+                    compute_flash_attention_prefill_gqa2_sept_tile<
+                        2048, 4095>(
+                            args, &buffers, 0, q_seq_len, k_seq_len,
+                            first_q_offset, kv_head_idx,
+                            second_q_offset, pair_rows);
+                } else {
+                    compute_flash_attention_prefill_gqa2_sept_tile<
+                        2047, 4095>(
+                            args, &buffers, 0, q_seq_len, k_seq_len,
+                            first_q_offset, kv_head_idx,
+                            second_q_offset, pair_rows);
+                }
+                return;
+            }
+        }
+        int task_id = 0;
+        int q_base = 0;
+        for (int b = 0; b < args.batch_size; b++) {
+            int q_seq_len = args.q_seq_lens[b];
+            int k_seq_len = args.kv_seq_lens[b];
+            buffers.block_table =
+                args.block_table + b * args.block_table_dim;
+            int pair_rows = FLASH_ATTN_BM / 2;
+            int q_tile_count =
+                (q_seq_len + pair_rows - 1) / pair_rows;
+            int pair_count = q_tile_count / 2;
+            bool use_paired_tiles =
+                q_tile_count % 2 == 0 &&
+                pair_count * args.local_kv_head_num >= args.spe_num;
+            if (use_paired_tiles) {
+                for (int pair_idx = 0; pair_idx < pair_count;
+                     pair_idx++) {
+                    int first_q_offset = pair_idx * pair_rows;
+                    int second_q_offset =
+                        (q_tile_count - 1 - pair_idx) * pair_rows;
+                    for (int kv_head_idx = 0;
+                         kv_head_idx < args.local_kv_head_num;
+                         kv_head_idx++) {
+                        if (task_id % args.spe_num == tid) {
+                            compute_flash_attention_prefill_gqa2_sept_tile<
+                                0, 0>(
+                                args, &buffers, q_base, q_seq_len,
+                                k_seq_len, first_q_offset, kv_head_idx,
+                                second_q_offset, pair_rows);
+                        }
+                        task_id++;
+                    }
+                }
+            } else {
+                for (int q_offset = 0; q_offset < q_seq_len;
+                     q_offset += FLASH_ATTN_BM) {
+                    for (int kv_head_idx = 0;
+                         kv_head_idx < args.local_kv_head_num;
+                         kv_head_idx++) {
+                        if (task_id % args.spe_num == tid) {
+                            compute_flash_attention_prefill_gqa2_sept_tile<
+                                0, 0>(
+                                args, &buffers, q_base, q_seq_len,
+                                k_seq_len, q_offset, kv_head_idx, -1, 0);
+                        }
+                        task_id++;
+                    }
+                }
+            }
+            q_base += q_seq_len;
+        }
+        return;
+    }
+
+    FlashAttentionSpmBuffers buffers;
+    allocate_flash_attention_buffers(args, &buffers);
+    int task_id = 0;
+    int q_base = 0;
+    int cached_batch = -1;
+    for (int b = 0; b < args.batch_size; b++) {
+        int q_seq_len = args.q_seq_lens[b];
+        int k_seq_len = args.kv_seq_lens[b];
+        for (int q_offset = 0; q_offset < q_seq_len;
+             q_offset += FLASH_ATTN_BM) {
+            for (int head_idx = 0; head_idx < args.local_head_num; head_idx++) {
+                if (task_id % args.spe_num == tid) {
+                    if (cached_batch != b) {
+                        memcpy(buffers.block_table,
+                               args.block_table + b * args.block_table_dim,
+                               args.block_table_dim * sizeof(int));
+                        cached_batch = b;
+                    }
+                    compute_flash_attention_tile(
+                        args, &buffers, q_base, q_seq_len, k_seq_len,
+                        q_offset, head_idx);
+                }
+                task_id++;
+            }
+        }
+        q_base += q_seq_len;
+    }
+}
