@@ -20,5 +20,5 @@ def get_init_inputs():
 
 
 torch.manual_seed(42)
-out = Model(*get_init_inputs()).forward(*get_inputs())
+out = Model(*get_init_inputs()).forward(*get_inputs()).to("npu")
 print(out)
