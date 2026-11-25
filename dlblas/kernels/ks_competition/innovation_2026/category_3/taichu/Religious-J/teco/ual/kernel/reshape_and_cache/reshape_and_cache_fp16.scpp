@@ -1,0 +1,405 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+// reshape_and_cache: 将 key/value 按 slot_mapping 写入 paged KV cache
+//
+// 输入: key   [num_tokens, num_kv_heads, head_size] (HBM)
+//       value [num_tokens, num_kv_heads, head_size] (HBM)
+// 输出: key_cache   [num_blocks, num_kv_heads, block_size, head_size]
+//       value_cache [num_blocks, num_kv_heads, block_size, head_size]
+//
+// 通用路径: 32 SPE 按 token 维度并行，逐 head 做 HBM→HBM 阻塞式 memcpy
+//   - 不经过 SPM，直接用 memcpy 的 Global→Global 方向
+//   - reshape 通过每个 head 写入时的 stride offset 实现
+
+#include <simd.h>
+#include <slave.h>
+#include <sdaa_transpose.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+constexpr int PACKED_KV_HEADS = 2;
+constexpr int PACKED_BLOCK_SIZE = 32;
+constexpr int PACKED_HEAD_SIZE = 64;
+constexpr int PACKED_HEAD_ELEMS = PACKED_BLOCK_SIZE * PACKED_HEAD_SIZE;
+constexpr int PACKED_BLOCK_ELEMS = PACKED_KV_HEADS * PACKED_HEAD_ELEMS;
+
+__device__ __always_inline int packed_cache_head_offset(
+    int block_id, int head) {
+    return block_id * PACKED_BLOCK_ELEMS + head * PACKED_HEAD_ELEMS;
+}
+
+__device__ __always_inline void reshape_cache_array_sync() {
+    asm volatile(
+        "rcsr  $1, 1\n"
+        "ldi   $2, 0x0f\n"
+        "ldi   $3, 0xf0\n"
+        "and   $1, 0x4, $1\n"
+        "seleq $1, $2, $3, $2\n"
+        "ldi   $1, 0xff\n"
+        "sync  $2\n"
+        "synr  $1\n"
+        ::: "memory", "$1", "$2", "$3");
+}
+
+__device__ __always_inline void write_packed_kv_token(
+    const ReshapeAndCacheArgs &args, int token) {
+    const half *key = (const half *)args.key;
+    const half *value = (const half *)args.value;
+    half *key_cache = (half *)args.key_cache;
+    half *value_cache = (half *)args.value_cache;
+    int64_t slot = args.slot_mapping[token];
+    if (slot < 0) return;
+
+    int block_id = slot / PACKED_BLOCK_SIZE;
+    int block_off = slot % PACKED_BLOCK_SIZE;
+    const half *src_key =
+        key + token * args.key_stride / sizeof(half);
+    const half *src_value =
+        value + token * args.value_stride / sizeof(half);
+
+    for (int head = 0; head < PACKED_KV_HEADS; head++) {
+        int cache_offset = packed_cache_head_offset(block_id, head) +
+            block_off * PACKED_HEAD_SIZE;
+        memcpy(
+            key_cache + cache_offset,
+            src_key + head * PACKED_HEAD_SIZE,
+            PACKED_HEAD_SIZE * sizeof(half));
+        memcpy(
+            value_cache + cache_offset,
+            src_value + head * PACKED_HEAD_SIZE,
+            PACKED_HEAD_SIZE * sizeof(half));
+    }
+}
+
+__device__ __always_inline void write_packed_cache_token_head(
+    const ReshapeAndCacheArgs &args, int token, int head,
+    bool write_value) {
+    int64_t slot = args.slot_mapping[token];
+    if (slot < 0) return;
+
+    int block_id = slot / PACKED_BLOCK_SIZE;
+    int block_off = slot % PACKED_BLOCK_SIZE;
+    const half *src = write_value
+        ? (const half *)args.value +
+            token * args.value_stride / sizeof(half) +
+            head * PACKED_HEAD_SIZE
+        : (const half *)args.key +
+            token * args.key_stride / sizeof(half) +
+            head * PACKED_HEAD_SIZE;
+    half *dst = (write_value
+        ? (half *)args.value_cache
+        : (half *)args.key_cache) +
+        packed_cache_head_offset(block_id, head) +
+        block_off * PACKED_HEAD_SIZE;
+    shortv32 value0;
+    shortv32 value1;
+    simd_load(value0, (const short *)src);
+    simd_load(value1, (const short *)src + 32);
+    simd_store(value0, (short *)dst);
+    simd_store(value1, (short *)dst + 32);
+}
+
+__device__ __always_inline void finalize_packed_k_block_head(
+    half *key_block_base, half *tile) {
+    MemoryStride partial_key_stride = {
+        0,
+        (PACKED_HEAD_SIZE - 32) * sizeof(half)};
+    MemoryStride packed_output_stride = {0, 0};
+    TransposeHandle transpose_handle;
+    for (int panel = 0; panel < 2; panel++) {
+        transpose_async(
+            tile + panel * PACKED_BLOCK_SIZE * 32,
+            key_block_base + panel * 32,
+            PACKED_BLOCK_SIZE, 32, sizeof(half),
+            partial_key_stride,
+            TransposeGlobalToSpm, transpose_handle);
+    }
+    transpose_wait(transpose_handle);
+    MemcpyHandle key_store_handle;
+    memcpy_async(
+        key_block_base, tile,
+        PACKED_HEAD_ELEMS * sizeof(half),
+        PACKED_HEAD_SIZE * sizeof(half),
+        packed_output_stride,
+        MemcpySpmToGlobal, key_store_handle);
+    memcpy_wait(key_store_handle);
+}
+
+__device__ __always_inline void finalize_packed_k_block(
+    half *key_cache, int block_id, half *tile) {
+    for (int head = 0; head < PACKED_KV_HEADS; head++) {
+        finalize_packed_k_block_head(
+            key_cache + packed_cache_head_offset(block_id, head), tile);
+    }
+}
+
+__global__ void teco_slave_reshape_and_cache_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int value_stride  = args.value_stride;
+
+    const half *key   = (const half *)(args.key);
+    const half *value = (const half *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+
+    int head_bytes = D * sizeof(half);
+
+    // OneGenomeRice TP4 specialization. Each physical cache block is stored
+    // independently and continuously. K is transposed to [dim][token] when
+    // a block becomes complete, removing the normal decode-side transpose;
+    // V stays [token][dim]. Partial K blocks remain token-major and are
+    // transposed by the Decode load path until their final token is written.
+    if (H == PACKED_KV_HEADS && D == PACKED_HEAD_SIZE &&
+        block_size == PACKED_BLOCK_SIZE) {
+        if (T == 1) {
+            constexpr int PACKED_CACHE_WRITERS =
+                2 * PACKED_KV_HEADS;
+            if (tid >= PACKED_CACHE_WRITERS) {
+                return;
+            }
+            bool write_value = tid >= PACKED_KV_HEADS;
+            int head = tid % PACKED_KV_HEADS;
+            int64_t slot = slot_mapping[0];
+            write_packed_cache_token_head(
+                args, 0, head, write_value);
+            if (!write_value && slot >= 0 &&
+                slot % PACKED_BLOCK_SIZE ==
+                    PACKED_BLOCK_SIZE - 1) {
+                half *tile = (half *)rt_spm_malloc(
+                    PACKED_HEAD_ELEMS * sizeof(half));
+                int block_id = slot / PACKED_BLOCK_SIZE;
+                finalize_packed_k_block_head(
+                    key_cache + packed_cache_head_offset(block_id, head), tile);
+            }
+            return;
+        }
+
+        int full_chunks = T / PACKED_BLOCK_SIZE;
+        bool local_requires_finalize = false;
+        half *tile = (half *)rt_spm_malloc(
+            PACKED_HEAD_ELEMS * sizeof(half));
+        for (int chunk = tid; chunk < full_chunks;
+             chunk += CORE_NUM) {
+            int token_start = chunk * PACKED_BLOCK_SIZE;
+            int64_t first_slot = slot_mapping[token_start];
+            bool complete_block =
+                first_slot >= 0 &&
+                first_slot % PACKED_BLOCK_SIZE == 0;
+            for (int token = 1;
+                 token < PACKED_BLOCK_SIZE && complete_block;
+                 token++) {
+                complete_block =
+                    slot_mapping[token_start + token] ==
+                    first_slot + token;
+            }
+            if (!complete_block) {
+                for (int token = 0;
+                     token < PACKED_BLOCK_SIZE; token++) {
+                    int token_idx = token_start + token;
+                    write_packed_kv_token(args, token_idx);
+                    int64_t slot = slot_mapping[token_idx];
+                    if (slot >= 0 &&
+                        slot % PACKED_BLOCK_SIZE ==
+                            PACKED_BLOCK_SIZE - 1) {
+                        local_requires_finalize = true;
+                    }
+                }
+                continue;
+            }
+
+            int block_id = first_slot / PACKED_BLOCK_SIZE;
+            MemoryStride input_panel_stride = {
+                0,
+                (PACKED_KV_HEADS * PACKED_HEAD_SIZE - 32) *
+                    sizeof(half)};
+            MemoryStride input_token_stride = {
+                0,
+                (PACKED_KV_HEADS - 1) *
+                    PACKED_HEAD_SIZE * sizeof(half)};
+            MemoryStride packed_output_stride = {0, 0};
+
+            for (int head = 0;
+                 head < PACKED_KV_HEADS; head++) {
+                int head_offset = packed_cache_head_offset(block_id, head);
+                const half *key_src =
+                    key +
+                    token_start *
+                        (key_stride / sizeof(half)) +
+                    head * PACKED_HEAD_SIZE;
+                TransposeHandle transpose_handle;
+                for (int panel = 0; panel < 2; panel++) {
+                    transpose_async(
+                        tile +
+                            panel * PACKED_BLOCK_SIZE * 32,
+                        key_src + panel * 32,
+                        PACKED_BLOCK_SIZE, 32, sizeof(half),
+                        input_panel_stride,
+                        TransposeGlobalToSpm,
+                        transpose_handle);
+                }
+                transpose_wait(transpose_handle);
+
+                half *key_dst = key_cache + head_offset;
+                MemcpyHandle key_store_handle;
+                memcpy_async(
+                    key_dst, tile,
+                    PACKED_HEAD_ELEMS * sizeof(half),
+                    PACKED_HEAD_SIZE * sizeof(half),
+                    packed_output_stride,
+                    MemcpySpmToGlobal, key_store_handle);
+                memcpy_wait(key_store_handle);
+
+                const half *value_src =
+                    value +
+                    token_start *
+                        (value_stride / sizeof(half)) +
+                    head * PACKED_HEAD_SIZE;
+                MemcpyHandle value_load_handle;
+                memcpy_async(
+                    tile, value_src,
+                    PACKED_HEAD_ELEMS * sizeof(half),
+                    PACKED_HEAD_SIZE * sizeof(half),
+                    input_token_stride,
+                    MemcpyGlobalToSpm, value_load_handle);
+                memcpy_wait(value_load_handle);
+
+                half *value_dst = value_cache + head_offset;
+                MemcpyHandle value_store_handle;
+                memcpy_async(
+                    value_dst, tile,
+                    PACKED_HEAD_ELEMS * sizeof(half),
+                    PACKED_HEAD_SIZE * sizeof(half),
+                    packed_output_stride,
+                    MemcpySpmToGlobal, value_store_handle);
+                memcpy_wait(value_store_handle);
+            }
+        }
+
+        int tail_start = full_chunks * PACKED_BLOCK_SIZE;
+        for (int token = tail_start + tid; token < T;
+             token += CORE_NUM) {
+            write_packed_kv_token(args, token);
+            int64_t slot = slot_mapping[token];
+            if (slot >= 0 &&
+                slot % PACKED_BLOCK_SIZE ==
+                    PACKED_BLOCK_SIZE - 1) {
+                local_requires_finalize = true;
+            }
+        }
+
+        // Flattened multi-sequence prefill can split one physical cache block
+        // across two global 32-token chunks.  Complete all fallback writes
+        // before the unique offset-31 owner converts that block to dim-major.
+        reshape_cache_array_sync();
+        if (!local_requires_finalize) {
+            return;
+        }
+        for (int chunk = tid; chunk < full_chunks;
+             chunk += CORE_NUM) {
+            int token_start = chunk * PACKED_BLOCK_SIZE;
+            int64_t first_slot = slot_mapping[token_start];
+            bool complete_block =
+                first_slot >= 0 &&
+                first_slot % PACKED_BLOCK_SIZE == 0;
+            for (int token = 1;
+                 token < PACKED_BLOCK_SIZE && complete_block;
+                 token++) {
+                complete_block =
+                    slot_mapping[token_start + token] ==
+                    first_slot + token;
+            }
+            if (complete_block) {
+                continue;
+            }
+            for (int token = 0; token < PACKED_BLOCK_SIZE;
+                 token++) {
+                int token_idx = token_start + token;
+                int64_t slot = slot_mapping[token_idx];
+                if (slot >= 0 &&
+                    slot % PACKED_BLOCK_SIZE ==
+                        PACKED_BLOCK_SIZE - 1) {
+                    finalize_packed_k_block(
+                        key_cache, slot / PACKED_BLOCK_SIZE, tile);
+                }
+            }
+        }
+        for (int token = tail_start + tid; token < T;
+             token += CORE_NUM) {
+            int64_t slot = slot_mapping[token];
+            if (slot >= 0 &&
+                slot % PACKED_BLOCK_SIZE ==
+                    PACKED_BLOCK_SIZE - 1) {
+                finalize_packed_k_block(
+                    key_cache, slot / PACKED_BLOCK_SIZE, tile);
+            }
+        }
+        return;
+    }
+
+    for (int t = tid; t < T; t += CORE_NUM) {
+        int64_t slot = slot_mapping[t];
+        if (slot < 0) continue;
+
+        int block_id  = slot / block_size;
+        int block_off = slot % block_size;
+
+        const half *src_key   = key   + t * key_stride / sizeof(half);
+        const half *src_value = value + t * value_stride / sizeof(half);
+
+        char *cache_key_base = (char *)key_cache
+            + block_id * block_stride + block_off * entry_stride;
+        char *cache_value_base = (char *)value_cache
+            + block_id * block_stride + block_off * entry_stride;
+
+        for (int h = 0; h < H; h++) {
+            // HBM → HBM 直传，阻塞式 memcpy
+            memcpy(cache_key_base + h * head_stride,
+                   (char *)src_key + h * head_bytes,
+                   head_bytes);
+
+            memcpy(cache_value_base + h * head_stride,
+                   (char *)src_value + h * head_bytes,
+                   head_bytes);
+        }
+    }
+}
