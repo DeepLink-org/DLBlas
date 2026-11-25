@@ -1,0 +1,10 @@
+syntax = "proto2";
+package testpt;
+
+message FlashAttentionParam{
+    optional int32 max_seqlen_q             = 1;
+    optional int32 max_seqlen_k             = 2;
+    optional int32 max_block_num            = 3;
+    repeated int32 q_seq_lens               = 4;
+    repeated int32 kv_seq_lens              = 5;
+}

@@ -1,0 +1,686 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+#include <simd.h>
+#include <slave.h>
+#include <sdaa_memcpy.h>
+#include <sdaa_rma.h>
+#include <sdaa_transpose.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/flash_attention/flash_attention.h"
+#include "teco_hal.h"
+
+using namespace sdaa;  //NOLINT
+using namespace teco::hal;  //NOLINT
+
+// macro definition of MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+// macro definition of MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+// FLT_MAX if not already defined
+#ifndef FLT_MAX
+#define FLT_MAX 3.402823466e+38F
+#endif
+
+// load a tile from KV cache (key or value) into dst
+// src = cache[block_id][kv_head_idx ][0..num_tokens-1][0..head_size-1]
+// dst = [num_tokens, head_size]
+__device__ __always_inline void load_kv_cache(
+    half *dst, const half *cache, const int *block_table, int logical_block,
+    int kv_head_idx , int kv_head_num, int block_size, int head_size, int num_tokens) {
+    int block_id = block_table[logical_block];
+    const half *src = cache
+        + block_id * kv_head_num * block_size * head_size
+        + kv_head_idx  * block_size * head_size;
+    memcpy(dst, src, num_tokens * head_size * sizeof(half));
+}
+
+__device__ __always_inline void fill_inf(float *buf, int len) {
+    // if use simd should assert aligned
+    int neg_inf_bit = 0xFF800000;
+    float neg_inf;
+    memcpy(&neg_inf, &neg_inf_bit, sizeof(float));
+    for (int i = 0; i < len; i++) {
+        buf[i] = neg_inf;
+    }
+}
+
+// Softmax only evaluates exp(x) for x <= 0. Restricting the domain avoids the
+// high fixed latency of the general-purpose vector exponential. Eleven
+// squarings approximate exp(x) as (1 + x / 2048)^2048; values below -16 have
+// negligible softmax weight and are clamped to keep the base positive.
+__device__ __always_inline floatv16 fast_exp_nonpositive(floatv16 x) {
+    floatv16 lower = -16.0f;
+    floatv16 y = 1.0f + simd_max(x, lower) * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y = simd_mul(y, y);
+    }
+    return y;
+}
+
+__device__ __always_inline float fast_exp_nonpositive(float x) {
+    x = MAX(x, -16.0f);
+    float y = 1.0f + x * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y *= y;
+    }
+    return y;
+}
+
+__device__ __always_inline void fast_exp_nonpositive2(
+    floatv16 &x0, floatv16 &x1) {
+    floatv16 lower = -16.0f;
+    floatv16 y0 = 1.0f + simd_max(x0, lower) * (1.0f / 2048.0f);
+    floatv16 y1 = 1.0f + simd_max(x1, lower) * (1.0f / 2048.0f);
+#pragma unroll
+    for (int i = 0; i < 11; i++) {
+        y0 = simd_mul(y0, y0);
+        y1 = simd_mul(y1, y1);
+    }
+    x0 = y0;
+    x1 = y1;
+}
+
+// causal mask on score tile [cur_BM, cur_BN] inside [BM, BN]
+__device__ __always_inline void apply_causal_mask(
+    float *score, int cur_BM, int cur_BN,
+    int qi_off, int kj_off, int q_seq_len, int k_seq_len,
+    int BM, int BN) {
+
+    int q_start = k_seq_len - q_seq_len;
+    if (q_start < 0) q_start = 0;
+
+    for (int qi = 0; qi < cur_BM; qi++) {
+        int rel_q_pos = q_start + qi_off + qi;
+        int allowed = rel_q_pos - kj_off + 1;
+        if (allowed < 0) allowed = 0;
+        if (allowed >= cur_BN) continue;
+        fill_inf(score + qi * BN + allowed, cur_BN - allowed);
+    }
+}
+
+__device__ float scale_and_compute_max(float *input, float scale, int size) {
+    floatv16 vf = -FLT_MAX;
+    floatv16 vres = -FLT_MAX;
+    floatv16 vscale = scale;
+    float result = -FLT_MAX;
+    int i = 0;
+
+    int vector_end = size / 16 * 16;
+    for (i = 0; i < vector_end; i += 16) {
+        simd_load(vf, input + i);
+        vf = simd_mul(vf, vscale);
+        simd_store(vf, input + i);
+        vres = simd_max(vf, vres);
+    }
+
+    for (; i < size; i++) {
+        input[i] *= scale;
+        result = MAX(result, input[i]);
+    }
+
+    float *tmp = (float *)&vres;
+    for (int j = 0; j < 16; j++) {
+        result = MAX(result, tmp[j]);
+    }
+    return result;
+}
+
+__device__ float compute_exp_sum(float *input, float max, int size) {
+    floatv16 vf = 0.0f;
+    floatv16 vres = 0.0f;
+    floatv16 vmax = max;
+    float result = 0.0f;
+    int i = 0;
+    int vector_end = size / 16 * 16;
+
+    for (i = 0; i < vector_end; i += 16) {
+        simd_load(vf, input + i);
+        vf = fast_exp_nonpositive(vf - vmax);
+        vres = simd_add(vres, vf);
+    }
+
+    for (; i < size; i++) {
+        result += fast_exp_nonpositive(input[i] - max);
+    }
+
+    float *tmp = (float *)&vres;
+    for (int j = 0; j < 16; j++) {
+        result += tmp[j];
+    }
+    return result;
+}
+
+__device__ void online_softmax_step(
+    float *scores,           // S: [BM, BN] scores -> exp(S - m_new)
+    const float *pre_max,    // m_old: [m]
+    const float *pre_sum,    // l_old: [m]
+    float *cur_max,          // m_new: [m]
+    float *cur_sum,          // l_new: [m]
+    float *scale,            // scale = exp(m_old - m_new): [m]
+    int m, int n,            // cur_BM, cur_BN
+    int ld_scores,           // BN
+    float softmax_scale) {
+
+    // Step 1: per-row max and the unexponentiated recurrence scale.
+    for (int i = 0; i < m; i++) {
+        float *src_row = scores + i * ld_scores;
+        float m_block = scale_and_compute_max(src_row, softmax_scale, n);
+        float m_new = MAX(pre_max[i], m_block);
+        cur_max[i] = m_new;
+        scale[i] = pre_max[i] - m_new;
+    }
+    if (m == 128) {
+        for (int row = 0; row < 128; row += 16) {
+            floatv16 v;
+            simd_load(v, scale + row);
+            v = fast_exp_nonpositive(v);
+            simd_store(v, scale + row);
+        }
+    } else {
+        int row = 0;
+        for (; row + 16 <= m; row += 16) {
+            floatv16 v;
+            simd_load(v, scale + row);
+            v = fast_exp_nonpositive(v);
+            simd_store(v, scale + row);
+        }
+        for (; row < m; row++) {
+            scale[row] = fast_exp_nonpositive(scale[row]);
+        }
+    }
+
+    // Step 2: inplace scores: S -> exp(S - m_new), cal l_new.
+    // Four 32-wide rows are contiguous and exactly match simd_exp128.
+    int i = 0;
+    if (n == 32 && ld_scores == 32) {
+        for (; i + 4 <= m; i += 4) {
+            for (int r = 0; r < 4; r++) {
+                float *row = scores + (i + r) * ld_scores;
+                floatv16 vmax = cur_max[i + r];
+                floatv16 v0;
+                floatv16 v1;
+                simd_load(v0, row);
+                simd_load(v1, row + 16);
+                simd_store(v0 - vmax, row);
+                simd_store(v1 - vmax, row + 16);
+            }
+            for (int v = 0; v < 128; v += 16) {
+                floatv16 exp_values;
+                simd_load(exp_values, scores + i * ld_scores + v);
+                exp_values = fast_exp_nonpositive(exp_values);
+                simd_store(exp_values, scores + i * ld_scores + v);
+            }
+
+            for (int r = 0; r < 4; r++) {
+                float *row = scores + (i + r) * ld_scores;
+                floatv16 v0;
+                floatv16 v1;
+                simd_load(v0, row);
+                simd_load(v1, row + 16);
+                v0 = simd_add(v0, v1);
+                float l_block = simd_redsum(v0);
+                cur_sum[i + r] = pre_sum[i + r] * scale[i + r] + l_block;
+            }
+        }
+    }
+
+    if (m == 1 && n == 32 && ld_scores == 32) {
+        floatv16 v0;
+        floatv16 v1;
+        floatv16 vmax = cur_max[0];
+        simd_load(v0, scores);
+        simd_load(v1, scores + 16);
+        v0 -= vmax;
+        v1 -= vmax;
+        fast_exp_nonpositive2(v0, v1);
+        simd_store(v0, scores);
+        simd_store(v1, scores + 16);
+        cur_sum[0] = pre_sum[0] * scale[0] +
+                     simd_redsum(v0) + simd_redsum(v1);
+        return;
+    }
+
+    for (; i < m; i++) {
+        float *src_row = scores + i * ld_scores;
+        float m_new = cur_max[i];
+        float l_old = pre_sum[i];
+        float s = scale[i];
+
+        float l_block = 0.0f;
+        int j = 0;
+        for (; j + 16 <= n; j += 16) {
+            floatv16 v;
+            simd_load(v, src_row + j);
+            v = fast_exp_nonpositive(v - m_new);
+            simd_store(v, src_row + j);
+            l_block += simd_redsum(v);
+        }
+        for (; j < n; j++) {
+            src_row[j] = fast_exp_nonpositive(src_row[j] - m_new);
+            l_block += src_row[j];
+        }
+        cur_sum[i] = l_old * s + l_block;
+    }
+}
+
+__global__ void teco_slave_flash_attention_half(FlashAttentionArgs args) {
+    int tid = threadIdx;
+    if (tid >= args.spe_num) {
+        return;
+    }
+    int num_kv_groups = args.local_head_num / args.local_kv_head_num;
+
+    int BM = 128;   // M block, 128 for ace
+    int BN = 32;    // N block, 32 for ace; block_size
+    int BK = args.size_per_head;   // head_dim
+    int token_size = args.size_per_head * sizeof(half);
+    int * ldm_block_table = (int*)rt_spm_malloc(args.block_table_dim * sizeof(int));
+    half * qbuf = (half*)rt_spm_malloc(BM * token_size);            // BM * BK
+    half * ktmp = (half*)rt_spm_malloc(BN * token_size);            // BN * BK
+    half * kbuf = (half*)rt_spm_malloc(BN * token_size);            // BK * BN
+    float * outc = (float*)rt_spm_malloc(BM * BN * sizeof(float));  // BM * BN
+    half * obuf = (half*)rt_spm_malloc(BM * token_size);            // BM * BK
+    float *o_accum = (float*)rt_spm_malloc(BM * BK * sizeof(float)); // BM * BK
+    float *l_prev = (float*)rt_spm_malloc(BM * sizeof(float));       // l  (old)
+    float *m_prev = (float*)rt_spm_malloc(BM * sizeof(float));       // m  (old)
+    float *l_cur  = (float*)rt_spm_malloc(BM * sizeof(float));       // l  (new)
+    float *m_cur  = (float*)rt_spm_malloc(BM * sizeof(float));       // m  (new)
+    float *scale  = (float*)rt_spm_malloc(BM * sizeof(float));       // exp(m_old - m_new)
+    half *p_score = (half*)rt_spm_malloc(BM * BN * sizeof(half));    // BM * BN
+    constexpr int DECODE_SHARDS = 8;
+    constexpr int DECODE_PARTIAL_OUTPUT = 16;
+    constexpr int DECODE_PARTIAL_STRIDE = DECODE_PARTIAL_OUTPUT + 64;
+    float *decode_partials = (float*)rt_spm_malloc(
+        DECODE_SHARDS * DECODE_PARTIAL_STRIDE * sizeof(float));
+    half *v_prefetch = obuf;  // obuf is idle until final normalization
+    int cur_q_index = 0;
+    int task_base = 0;
+    for (int b = 0; b < args.batch_size; b++) {
+        int q_seq_len = args.q_seq_lens[b], k_seq_len = args.kv_seq_lens[b];
+        int q_block_num = (q_seq_len + BM - 1) / BM;
+        bool sharded_decode = args.batch_size == 1 && q_seq_len == 1 &&
+                              args.local_head_num == 4 &&
+                              args.local_kv_head_num == 2 && BK == 64 &&
+                              args.block_size == BN && args.spe_num == 32;
+        int decode_shards = sharded_decode ? DECODE_SHARDS : 1;
+        int task_count = q_block_num * args.local_head_num * decode_shards;
+        int first_task = tid - task_base;
+        if (first_task < 0) first_task += args.spe_num;
+
+        if (first_task < task_count) {
+            memcpy(ldm_block_table, args.block_table + b * args.block_table_dim,
+                   args.block_table_dim * sizeof(int));
+        }
+        for (int task = first_task; task < task_count; task += args.spe_num) {
+            int logical_task = task / decode_shards;
+            int decode_lane = task % decode_shards;
+            int head_idx = logical_task % args.local_head_num;
+            int i = (logical_task / args.local_head_num) * BM;
+            int cur_BM_q = MIN(BM, q_seq_len - i);
+
+            // init online softmax state for this Q block
+            int accum_size = cur_BM_q * BK;
+            int accum_idx = 0;
+            floatv16 zero_vec = 0.0f;
+            for (; accum_idx + 16 <= accum_size; accum_idx += 16) {
+                simd_store(zero_vec, o_accum + accum_idx);
+            }
+            for (; accum_idx < accum_size; accum_idx++) {
+                o_accum[accum_idx] = 0.0f;
+            }
+            for (int row = 0; row < cur_BM_q; row++) {
+                l_prev[row] = 0.0f;
+            }
+            fill_inf(m_prev, cur_BM_q);
+            float *l_ptr = l_prev, *l_next = l_cur;
+            float *m_ptr = m_prev, *m_next = m_cur;
+
+            // load q [cur_BM, size_per_head]
+            int cur_BM = MIN(BM, q_seq_len - i);
+            half * src_q_ptr = (half *)args.q +
+                               (cur_q_index + i) * args.q_token_stride +
+                               head_idx * args.q_head_stride;
+            size_t q_src_stride =
+                (args.q_token_stride - args.size_per_head) * sizeof(half);
+            memcpy_stride(qbuf, src_q_ptr, cur_BM * token_size, token_size, {0, q_src_stride});
+
+            // clear unused rows of qbuf (cur_BM < BM)
+            if (cur_BM < BM) {
+                int q_index = cur_BM * args.size_per_head;
+                int q_end = BM * args.size_per_head;
+                halfv16 zero_half = (half)0.0f;
+                for (; q_index + 16 <= q_end; q_index += 16) {
+                    simd_store(zero_half, qbuf + q_index);
+                }
+                for (; q_index < q_end; q_index++) {
+                    qbuf[q_index] = 0;
+                }
+
+                // P@V still uses a fixed M=128 ACE tile. Clear its inactive
+                // rows once, then convert only active score rows per KV tile.
+                int p_index = cur_BM * BN;
+                int p_end = BM * BN;
+                for (; p_index + 16 <= p_end; p_index += 16) {
+                    simd_store(zero_half, p_score + p_index);
+                }
+                for (; p_index < p_end; p_index++) {
+                    p_score[p_index] = 0;
+                }
+            }
+    
+            // A causal Q block can only see keys up to its last query row.
+            // Skip fully masked future KV blocks instead of computing QK/PV
+            // and discarding them in apply_causal_mask.
+            int causal_k_limit = k_seq_len - q_seq_len + i + cur_BM;
+            causal_k_limit = MIN(causal_k_limit, k_seq_len);
+            for (int j = decode_lane * BN; j < causal_k_limit;
+                 j += decode_shards * BN) {
+                int cur_BN = MIN(BN, k_seq_len - j);
+
+                // load k [cur_BN, size_per_head] -> ktmp
+                int kv_head_idx = head_idx / num_kv_groups;             // GQA
+                int cur_block = j / args.block_size;                    // BN == block_size
+                int block_id = ldm_block_table[cur_block];
+                const half *k_cache_base = (const half *)args.key_cache
+                    + block_id * args.local_kv_head_num * args.block_size * args.size_per_head
+                    + kv_head_idx * args.block_size * args.size_per_head;
+                const half *v_cache_base = (const half *)args.value_cache
+                    + block_id * args.local_kv_head_num * args.block_size * args.size_per_head
+                    + kv_head_idx * args.block_size * args.size_per_head;
+                bool prefetched_v = !sharded_decode && cur_BN == BN && BK == 64;
+
+                if (cur_BN == BN && BK == 64) {
+                    // The OneGenome shape is two aligned 32x32 half tiles.
+                    // Transpose directly Global->SPM and overlap both halves.
+                    TransposeHandle transpose_handle_0;
+                    TransposeHandle transpose_handle_1;
+                    MemoryStride transpose_stride = {0, 32 * sizeof(half)};
+                    transpose_async(kbuf, k_cache_base, 32, 32, sizeof(half),
+                                    transpose_stride, TransposeGlobalToSpm,
+                                    transpose_handle_0);
+                    transpose_async(kbuf + 32 * BN, k_cache_base + 32,
+                                    32, 32, sizeof(half), transpose_stride,
+                                    TransposeGlobalToSpm, transpose_handle_1);
+                    if (prefetched_v) {
+                        MemoryStride value_stride = {0, 32 * sizeof(half)};
+                        memcpy_async(v_prefetch, v_cache_base,
+                                     BN * 32 * sizeof(half), 32 * sizeof(half),
+                                     value_stride, MemcpyGlobalToSpm);
+                        memcpy_async(v_prefetch + BN * 32, v_cache_base + 32,
+                                     BN * 32 * sizeof(half), 32 * sizeof(half),
+                                     value_stride, MemcpyGlobalToSpm);
+                    }
+                    transpose_wait(transpose_handle_0);
+                    transpose_wait(transpose_handle_1);
+                } else {
+                    memcpy(ktmp, k_cache_base,
+                           cur_BN * args.size_per_head * sizeof(half));
+                    // transpose ktmp[cur_BN, head_size] -> kbuf[head_size, cur_BN]
+                    for (int t = 0; t < cur_BN; t++) {
+                        for (int h = 0; h < args.size_per_head; h++) {
+                            kbuf[h * BN + t] = ktmp[t * args.size_per_head + h];
+                        }
+                    }
+                }
+
+                // clear unused columns of kbuf (cur_BN < BN)
+                if (cur_BN < BN) {
+                    for (int h = 0; h < args.size_per_head; h++) {
+                        for (int c = cur_BN; c < BN; c++) {
+                            kbuf[h * BN + c] = 0;
+                        }
+                    }
+                }
+
+                // gemm: Q * K^T = score, using teco_hal matmul M2=128, N2=32
+                {
+                    MatmulConfig matmul_cfg;
+                    Matmul matmul(matmul_cfg);
+                    auto tensorQ = make_tensor<2>((half *)qbuf,
+                        {static_cast<size_t>(BM), static_cast<size_t>(args.size_per_head)});
+                    auto tensorK = make_tensor<2>((half *)kbuf,
+                        {static_cast<size_t>(args.size_per_head), static_cast<size_t>(BN)});
+                    auto tensorC = make_tensor<2>((float *)outc,
+                        {static_cast<size_t>(BM), static_cast<size_t>(BN)});
+
+                    matmul.compute_async<MatmulBlockConfig::M128_N32>(
+                        tensorQ, tensorK, /*is_lastk=*/true);
+                    matmul.storeC_spm_async(tensorC);
+                    matmul.wait_storeC(1);
+                }
+
+                // Most past KV tiles are visible to every row in this Q block.
+                // Only tiles crossing the first row's causal boundary need
+                // per-row mask work.
+                int q_start = MAX(k_seq_len - q_seq_len, 0);
+                int first_query_position = q_start + i;
+                if (j + cur_BN > first_query_position + 1) {
+                    apply_causal_mask(outc, cur_BM, cur_BN, i, j,
+                                      q_seq_len, k_seq_len, BM, BN);
+                }
+
+                // Step A: online softmax
+                online_softmax_step(outc,
+                                    m_ptr, l_ptr,
+                                    m_next, l_next,
+                                    scale,
+                                    cur_BM, cur_BN, BN,
+                                    args.softmax_scale);
+
+                // Step C: float->half: outc -> p_score (独立buffer, 非ktmp, 避免head_size=64越界)
+                {
+                    int total = cur_BM * BN;
+                    int si = 0;
+                    for (; si + 16 <= total; si += 16) {
+                        floatv16 vf;
+                        halfv16 vh;
+                        simd_load(vf, outc + si);
+                        vh = (halfv16)vf;
+                        simd_store(vh, p_score + si);
+                    }
+                    for (; si < total; si++) {
+                        p_score[si] = (half)outc[si];
+                    }
+                }
+
+                // last turn clean p_score
+                for (int ri = 0; ri < cur_BM; ri++) {
+                    for (int cj = cur_BN; cj < BN; cj++) {
+                        p_score[ri * BN + cj] = 0;
+                    }
+                }
+
+                // Step D: load V, gemm p_score @ V
+                // KV cache shape: [max_block_num, kv_head_num, block_size, head_size]
+                float * outO = outc;            // reuse outc
+                int gemm_bn = 32;
+                if (prefetched_v) {
+                    memcpy_wait();
+                }
+                for (int hb = 0; hb < BK / gemm_bn; hb++) {
+                    half *vbuf = prefetched_v
+                        ? v_prefetch + hb * BN * gemm_bn
+                        : kbuf;
+                    // V[:, hb*32 : hb*32+31] -> vbuf [cur_BN, gemm_bn] packed
+                    //   src: V[i][hb*32..hb*32+31] = cache[(i)*head_size + hb*32 .. +31]
+                    //   des: vbuf packed
+                    if (!prefetched_v) {
+                        memcpy_stride(vbuf, v_cache_base + hb * gemm_bn,
+                                      cur_BN * gemm_bn * sizeof(half),
+                                      gemm_bn * sizeof(half),
+                                      {0, (args.size_per_head - gemm_bn) * sizeof(half)});
+                    }
+
+                    // clear unused rows of vbuf (cur_BN < BN)
+                    if (cur_BN < BN) {
+                        for (int r = cur_BN * gemm_bn; r < BN * gemm_bn; r++) {
+                            vbuf[r] = 0;
+                        }
+                    }
+
+                    MatmulConfig cfg;
+                    Matmul matmul(cfg);
+                    auto tP = make_tensor<2>(p_score, {(size_t)BM, (size_t)BN});
+                    auto tV = make_tensor<2>(vbuf, {(size_t)BN, (size_t)gemm_bn});
+                    auto tO = make_tensor<2>((float *)outO, {(size_t)BM, (size_t)gemm_bn});
+                    matmul.compute_async<MatmulBlockConfig::M128_N32>(tP, tV, true);
+                    matmul.storeC_spm_async(tO);
+                    matmul.wait_storeC(1);
+
+                    // Step E: o_accum[i][hb*32 + k] += outO[i][k]
+                    for (int ai = 0; ai < cur_BM; ai++) {
+                        float s = scale[ai];
+                        floatv16 vs = s;
+                        int ak = 0;
+                        for (; ak + 16 <= gemm_bn; ak += 16) {
+                            floatv16 accum_vec;
+                            floatv16 out_vec;
+                            simd_load(accum_vec,
+                                      o_accum + ai * BK + hb * gemm_bn + ak);
+                            simd_load(out_vec, outO + ai * gemm_bn + ak);
+                            accum_vec = simd_vfmas(accum_vec, vs, out_vec);
+                            simd_store(accum_vec,
+                                       o_accum + ai * BK + hb * gemm_bn + ak);
+                        }
+                        for (; ak < gemm_bn; ak++) {
+                            int accum_offset = ai * BK + hb * gemm_bn + ak;
+                            o_accum[accum_offset] =
+                                o_accum[accum_offset] * s + outO[ai * gemm_bn + ak];
+                        }
+                    }
+                }
+
+                // swap pointer
+                float *tmp = l_ptr; l_ptr = l_next; l_next = tmp;
+                tmp = m_ptr; m_ptr = m_next; m_next = tmp;
+
+            }
+
+            if (sharded_decode) {
+                // Each lane holds an independently stable online-softmax
+                // partial: (max, denominator, unnormalized output). RMA puts
+                // the seven remote records into the head leader's SPM.
+                float *partial = decode_partials +
+                                 decode_lane * DECODE_PARTIAL_STRIDE;
+                partial[0] = m_ptr[0];
+                partial[1] = l_ptr[0];
+                for (int k = 0; k < BK; k++) {
+                    partial[DECODE_PARTIAL_OUTPUT + k] = o_accum[k];
+                }
+
+                sync_threads();
+                RmaHandle rma_handle;
+                int leader = head_idx * DECODE_SHARDS;
+                if (decode_lane != 0) {
+                    rma_set_thread_id(rma_handle, leader);
+                    rma_async_put(partial, partial,
+                                  DECODE_PARTIAL_STRIDE * sizeof(float),
+                                  rma_handle);
+                    rma_complete(rma_handle);
+                } else {
+                    unsigned long remote_mask =
+                        static_cast<unsigned long>(0xFE) << leader;
+                    ThreadGroup remote_group(remote_mask);
+                    rma_set_thread_group(rma_handle, &remote_group);
+                    rma_wait(rma_handle);
+
+                    float merged_max = decode_partials[0];
+                    for (int lane = 1; lane < DECODE_SHARDS; lane++) {
+                        merged_max = MAX(
+                            merged_max,
+                            decode_partials[lane * DECODE_PARTIAL_STRIDE]);
+                    }
+
+                    float merged_sum = 0.0f;
+                    floatv16 zero_output = 0.0f;
+                    for (int k = 0; k < BK; k += 16) {
+                        simd_store(zero_output, o_accum + k);
+                    }
+                    for (int lane = 0; lane < DECODE_SHARDS; lane++) {
+                        float *lane_partial = decode_partials +
+                                              lane * DECODE_PARTIAL_STRIDE;
+                        float lane_scale = fast_exp_nonpositive(
+                            lane_partial[0] - merged_max);
+                        merged_sum += lane_partial[1] * lane_scale;
+                        floatv16 vscale = lane_scale;
+                        for (int k = 0; k < BK; k += 16) {
+                            floatv16 accum_vec;
+                            floatv16 partial_vec;
+                            simd_load(accum_vec, o_accum + k);
+                            simd_load(partial_vec,
+                                      lane_partial + DECODE_PARTIAL_OUTPUT + k);
+                            accum_vec = simd_vfmas(
+                                partial_vec, vscale, accum_vec);
+                            simd_store(accum_vec, o_accum + k);
+                        }
+                    }
+                    m_ptr[0] = merged_max;
+                    l_ptr[0] = merged_sum;
+                }
+                sync_threads();
+                if (decode_lane != 0) {
+                    continue;
+                }
+            }
+
+            // normalize O_accum by l and convert to half
+            for (int row = 0; row < cur_BM_q; row++) {
+                float l_inv = l_ptr[row] > 0.0f ? 1.0f / l_ptr[row] : 0.0f;
+                floatv16 vl_inv = l_inv;
+                float *o_row = o_accum + row * args.size_per_head;
+                half *obuf_row = obuf + row * args.size_per_head;
+                int k = 0;
+                for (; k + 16 <= args.size_per_head; k += 16) {
+                    floatv16 vf;
+                    halfv16 vh;
+                    simd_load(vf, o_row + k);
+                    vf = vf * vl_inv;
+                    vh = (halfv16)vf;
+                    simd_store(vh, obuf_row + k);
+                }
+                for (; k < args.size_per_head; k++) {
+                    obuf_row[k] = (half)(o_row[k] * l_inv);
+                }
+            }
+
+            // dma O
+            int rel_obuf_size = cur_BM_q * token_size;
+            half *out_base = (half *)args.fmha_out +
+                             (cur_q_index + i) * args.out_token_stride +
+                             head_idx * args.out_head_stride;
+            size_t o_dst_stride =
+                (args.out_token_stride - args.size_per_head) * sizeof(half);
+            memcpy_stride(out_base, obuf, rel_obuf_size, token_size,
+                          {o_dst_stride, 0});
+        }
+        task_base = (task_base + task_count) % args.spe_num;
+        cur_q_index += q_seq_len;
+    }
+}

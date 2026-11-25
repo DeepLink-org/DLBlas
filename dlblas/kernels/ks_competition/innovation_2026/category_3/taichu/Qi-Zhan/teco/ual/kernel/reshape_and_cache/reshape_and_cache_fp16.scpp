@@ -1,0 +1,268 @@
+// BSD 3- Clause License Copyright (c) 2024, Tecorigin Co., Ltd. All rights
+// reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+// Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
+// Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software
+// without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION)
+// HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+// STRICT LIABILITY,OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)  ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+// OF SUCH DAMAGE.
+
+// reshape_and_cache: 将 key/value 按 slot_mapping 写入 paged KV cache
+//
+// 输入: key   [num_tokens, num_kv_heads, head_size] (HBM)
+//       value [num_tokens, num_kv_heads, head_size] (HBM)
+// 输出: key_cache   [num_blocks, num_kv_heads, block_size, head_size]
+//       value_cache [num_blocks, num_kv_heads, block_size, head_size]
+//
+// 实现: 直接使用 Global-to-Global DMA，不经过 SPM
+//   - H=2/D=64/block=32 的连续块按 block × K/V × head 并行
+//   - 单次跨步 DMA 搬完一个物理块内最多 32 个 token
+//   - cache 高半区同时保存 decode 直接读取的 K 转置和 V panel shadow
+//   - 非连续 slot mapping 和其他 shape 保留逐 token 精确回退
+
+#include <simd.h>
+#include <slave.h>
+#include <sdaa_transpose.h>
+
+#include "ual/com/rt.h"
+#include "ual/kernel/reshape_and_cache/reshape_and_cache.h"
+
+using namespace tecoops::ual::args;  // NOLINT
+using namespace sdaa;  // NOLINT
+
+namespace {
+
+__device__ __always_inline void write_transposed_key_head(
+    half *transposed, int num_heads, int head_size, int block_size,
+    int shadow_block_limit, int64_t slot, int head, const char *src,
+    half *scratch) {
+    int block_id = slot / block_size;
+    if (block_id >= shadow_block_limit) {
+        return;
+    }
+    memcpy(scratch, src, head_size * sizeof(half));
+    int block_offset = slot % block_size;
+    half *dst = transposed +
+        (block_id * num_heads + head) * head_size * block_size +
+        block_offset;
+    for (int d = 0; d < head_size; d++) {
+        dst[d * block_size] = scratch[d];
+    }
+}
+
+__device__ __always_inline void write_panelized_value_head(
+    half *panelized, int num_heads, int head_size, int block_size,
+    int shadow_block_limit, int64_t slot, int head, const char *src) {
+    int block_id = slot / block_size;
+    if (block_id >= shadow_block_limit) {
+        return;
+    }
+    int block_offset = slot % block_size;
+    int panel_size = head_size / 2;
+    half *dst = panelized +
+        (block_id * num_heads + head) * head_size * block_size;
+    const half *values = (const half *)src;
+    memcpy(dst + block_offset * panel_size,
+           values, panel_size * sizeof(half));
+    memcpy(dst + block_size * panel_size + block_offset * panel_size,
+           values + panel_size, panel_size * sizeof(half));
+}
+
+}  // namespace
+
+__global__ void teco_slave_reshape_and_cache_fp16(ReshapeAndCacheArgs args) {
+    const int tid = threadIdx;
+    constexpr int CORE_NUM = 32;
+
+    int H = args.num_kv_heads;
+    int D = args.size_per_head;
+    int T = args.num_tokens;
+    int block_size = args.block_size;
+
+    int block_stride  = args.block_stride;
+    int head_stride   = args.head_stride;
+    int entry_stride  = args.entry_stride;
+    int key_stride    = args.key_stride;
+    int key_head_stride = args.key_head_stride;
+    int value_stride  = args.value_stride;
+    int value_head_stride = args.value_head_stride;
+
+    const char *key   = (const char *)(args.key);
+    const char *value = (const char *)(args.value);
+    const int64_t *slot_mapping = args.slot_mapping;
+    half *key_cache   = (half *)(args.key_cache);
+    half *value_cache = (half *)(args.value_cache);
+    half *key_cache_transposed = (half *)(args.key_cache_transposed);
+
+    int head_bytes = D * sizeof(half);
+    int shadow_block_limit = args.num_blocks / 2;
+    int shadow_block_start = args.num_blocks - shadow_block_limit;
+    half *key_scratch = nullptr;
+    half *value_cache_panelized = nullptr;
+    if (key_cache_transposed != nullptr) {
+        key_scratch = (half *)rt_spm_malloc(D * sizeof(half));
+        value_cache_panelized = value_cache +
+            shadow_block_start * H * block_size * D;
+    }
+
+    // OneGenome's long prefill mapping is contiguous inside each 32-token
+    // physical cache block. Collapse 32 tiny token DMAs into one strided 4 KiB
+    // transfer per K/V head, with an exact fallback for arbitrary mappings.
+    if (H == 2 && D == 64 && block_size == 32 && T >= block_size) {
+        int chunk_count = (T + block_size - 1) / block_size;
+        int chunk_tasks = chunk_count * 2 * H;
+        for (int task = tid; task < chunk_tasks; task += CORE_NUM) {
+            int head = task % H;
+            int chunk_value = task / H;
+            bool copy_value = chunk_value & 1;
+            int chunk = chunk_value / 2;
+            int t0 = chunk * block_size;
+            int count = T - t0 < block_size ? T - t0 : block_size;
+            int64_t slot0 = slot_mapping[t0];
+            bool contiguous = slot0 >= 0 &&
+                slot0 % block_size + count <= block_size;
+            for (int i = 1; i < count && contiguous; i++) {
+                contiguous = slot_mapping[t0 + i] == slot0 + i;
+            }
+
+            const char *src_base = copy_value ? value : key;
+            int src_token_stride = copy_value ? value_stride : key_stride;
+            int src_head_stride =
+                copy_value ? value_head_stride : key_head_stride;
+            char *cache = copy_value ? (char *)value_cache : (char *)key_cache;
+
+            if (contiguous) {
+                int block_id = slot0 / block_size;
+                int block_off = slot0 % block_size;
+                const char *src = src_base + t0 * src_token_stride +
+                                  head * src_head_stride;
+                char *dst = cache + block_id * block_stride +
+                            head * head_stride + block_off * entry_stride;
+                memcpy_stride(
+                    dst, src, count * head_bytes, head_bytes,
+                    {static_cast<size_t>(entry_stride - head_bytes),
+                     static_cast<size_t>(src_token_stride - head_bytes)});
+                if (copy_value && value_cache_panelized != nullptr &&
+                    block_id < shadow_block_limit) {
+                    if (block_off == 0 && count == block_size) {
+                        constexpr int kPanel = 32;
+                        half *shadow_dst = value_cache_panelized +
+                            (block_id * H + head) * D * block_size;
+                        for (int panel = 0; panel < 2; panel++) {
+                            memcpy_stride(
+                                shadow_dst + panel * block_size * kPanel,
+                                src + panel * kPanel * sizeof(half),
+                                count * kPanel * sizeof(half),
+                                kPanel * sizeof(half),
+                                {0, static_cast<size_t>(
+                                    src_token_stride -
+                                    kPanel * sizeof(half))});
+                        }
+                    } else {
+                        for (int i = 0; i < count; i++) {
+                            write_panelized_value_head(
+                                value_cache_panelized, H, D, block_size,
+                                shadow_block_limit, slot0 + i, head,
+                                src + i * src_token_stride);
+                        }
+                    }
+                } else if (!copy_value && key_cache_transposed != nullptr &&
+                    block_id < shadow_block_limit) {
+                    if (block_off == 0 && count == block_size) {
+                        half *shadow_dst = key_cache_transposed +
+                            (block_id * H + head) * D * block_size;
+                        transpose(shadow_dst, dst, block_size, D,
+                                  sizeof(half));
+                    } else {
+                        for (int i = 0; i < count; i++) {
+                            write_transposed_key_head(
+                                key_cache_transposed, H, D, block_size,
+                                shadow_block_limit, slot0 + i, head,
+                                src + i * src_token_stride, key_scratch);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            for (int i = 0; i < count; i++) {
+                int t = t0 + i;
+                int64_t slot = slot_mapping[t];
+                if (slot < 0) continue;
+                int block_id = slot / block_size;
+                int block_off = slot % block_size;
+                const char *src = src_base + t * src_token_stride +
+                                  head * src_head_stride;
+                char *dst = cache + block_id * block_stride +
+                            head * head_stride + block_off * entry_stride;
+                memcpy(dst, src, head_bytes);
+                if (copy_value && value_cache_panelized != nullptr) {
+                    write_panelized_value_head(
+                        value_cache_panelized, H, D, block_size,
+                        shadow_block_limit, slot, head, src);
+                } else if (!copy_value && key_cache_transposed != nullptr) {
+                    write_transposed_key_head(
+                        key_cache_transposed, H, D, block_size,
+                        shadow_block_limit, slot, head, src, key_scratch);
+                }
+            }
+        }
+        return;
+    }
+
+    int total_tasks = T * 2;
+    for (int task = tid; task < total_tasks; task += CORE_NUM) {
+        int t = task / 2;
+        bool copy_value = task & 1;
+        int64_t slot = slot_mapping[t];
+        if (slot < 0) continue;
+
+        int block_id  = slot / block_size;
+        int block_off = slot % block_size;
+
+        const char *src = copy_value
+            ? value + t * value_stride
+            : key + t * key_stride;
+        int src_head_stride = copy_value ? value_head_stride : key_head_stride;
+        char *cache_base = (copy_value ? (char *)value_cache : (char *)key_cache)
+            + block_id * block_stride + block_off * entry_stride;
+
+        // HBM -> HBM direct transfer. Heads are contiguous in the packed
+        // QKV view and strided by a cache block in the paged destination.
+        memcpy_stride(cache_base, src, H * head_bytes, head_bytes,
+                      {static_cast<size_t>(head_stride - head_bytes),
+                       static_cast<size_t>(src_head_stride - head_bytes)});
+        if (copy_value && value_cache_panelized != nullptr) {
+            for (int head = 0; head < H; head++) {
+                write_panelized_value_head(
+                    value_cache_panelized, H, D, block_size,
+                    shadow_block_limit, slot, head,
+                    src + head * src_head_stride);
+            }
+        } else if (!copy_value && key_cache_transposed != nullptr) {
+            for (int head = 0; head < H; head++) {
+                write_transposed_key_head(
+                    key_cache_transposed, H, D, block_size,
+                    shadow_block_limit, slot, head,
+                    src + head * src_head_stride, key_scratch);
+            }
+        }
+    }
+}
